@@ -64,14 +64,34 @@
 
 ## 🚀 快速開始
 
+### 一行指令安裝
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YuHaoLiaoSideProject/LinuxServiceManger/main/install.sh | bash
+```
+
+會自動下載最新版 binary，並可選擇安裝 systemd service 自動啟動。
+
+指定版本：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YuHaoLiaoSideProject/LinuxServiceManger/main/install.sh | bash -s -- --tag v1.0.0
+```
+
+僅下載 binary，不安裝 service：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YuHaoLiaoSideProject/LinuxServiceManger/main/install.sh | bash -s -- --no-service
+```
+
 ### 前置需求
 
 - Linux 作業系統（支援 systemd）
 - 使用者具備執行 `systemctl` 的權限（或用 `sudo` 執行）
 
-### 直接下載
+### 手動下載
 
-從 Release 頁面下載對應平台的 binary，直接執行：
+從 [Release 頁面](https://github.com/YuHaoLiaoSideProject/LinuxServiceManger/releases) 下載對應平台的 binary，直接執行：
 
 ```bash
 # 設定環境變數（可選，未設定會使用預設值）
@@ -81,7 +101,7 @@ export SESSION_KEY=your_random_session_key
 export PORT=8080
 
 # 執行
-./linux-service-manager
+./linux-service-manager-linux-amd64
 ```
 
 打開瀏覽器訪問 `http://localhost:8080` 即可。
@@ -89,6 +109,9 @@ export PORT=8080
 ### 從原始碼編譯
 
 ```bash
+git clone git@github.com:YuHaoLiaoSideProject/LinuxServiceManger.git
+cd LinuxServiceManger
+
 # 本機編譯
 make build
 

@@ -1,0 +1,1677 @@
+{{define "activeClass"}}
+{{- if eq . "active" -}}status-active
+{{- else if eq . "running" -}}status-active
+{{- else if eq . "inactive" -}}status-inactive
+{{- else if eq . "dead" -}}status-inactive
+{{- else if eq . "failed" -}}status-failed
+{{- else -}}status-other
+{{- end -}}
+{{end}}
+
+{{define "statusDot"}}
+{{- if eq . "active" -}}<span class="status-dot dot-active" aria-hidden="true"></span>
+{{- else if eq . "running" -}}<span class="status-dot dot-active" aria-hidden="true"></span>
+{{- else if eq . "inactive" -}}<span class="status-dot dot-inactive" aria-hidden="true"></span>
+{{- else if eq . "dead" -}}<span class="status-dot dot-inactive" aria-hidden="true"></span>
+{{- else if eq . "failed" -}}<span class="status-dot dot-failed" aria-hidden="true"></span>
+{{- else -}}<span class="status-dot dot-other" aria-hidden="true"></span>
+{{- end -}}
+{{end}}
+
+{{define "page"}}
+<!DOCTYPE html>
+<html lang="zh-TW" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linux Service Manager</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <style>
+    /* ============================================================
+       Linux Service Manager — RWD UI/UX Styles
+       ============================================================ */
+
+    *,*::before,*::after{box-sizing:border-box}
+
+    /* ── CSS Variables ── */
+    :root {
+      --lms-accent: #1a73e8;
+      --lms-accent-hover: #1557b0;
+      --lms-accent-light: rgba(26,115,232,0.12);
+      --lms-success: #188038;
+      --lms-success-light: #e6f4ea;
+      --lms-success-border: #a8dab5;
+      --lms-danger: #c5221f;
+      --lms-danger-light: #fce8e6;
+      --lms-danger-border: #f5c6c2;
+      --lms-warning: #e37400;
+      --lms-bg: var(--pico-background-color);
+      --lms-surface: var(--pico-card-background-color);
+      --lms-border: var(--pico-muted-border-color);
+      --lms-text: var(--pico-color);
+      --lms-muted: var(--pico-muted-color);
+      --lms-radius: 10px;
+      --lms-radius-sm: 6px;
+      --lms-radius-lg: 14px;
+      --lms-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      --lms-shadow-lg: 0 12px 40px rgba(0,0,0,0.2);
+      --lms-transition: 0.2s ease;
+    }
+
+    /* ── Accessibility: prefers-reduced-motion ── */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* ── Layout ── */
+    body {
+      min-height: 100vh;
+      background: var(--lms-bg);
+      transition: background 0.3s ease;
+    }
+    .app-container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 3rem;
+    }
+
+    /* ── Header ── */
+    .app-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    .app-header-left {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .app-header-left h1 {
+      margin: 0;
+      font-size: 1.35rem;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .app-header-left h1 .header-icon {
+      font-size: 1.5rem;
+    }
+    .user-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.8rem;
+      color: var(--lms-muted);
+      background: var(--lms-surface);
+      border: 1px solid var(--lms-border);
+      padding: 0.3rem 0.7rem;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+    .app-header-right {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .app-header-right button,
+    .app-header-right a[role="button"] {
+      font-size: 0.8rem;
+      padding: 0.35rem 0.75rem;
+      white-space: nowrap;
+      margin-bottom: 0;
+    }
+
+    /* ── Theme toggle ── */
+    .theme-toggle {
+      background: none;
+      border: 1px solid var(--lms-border);
+      border-radius: 50%;
+      width: 34px;
+      height: 34px;
+      min-width: 34px;
+      min-height: 34px;
+      cursor: pointer;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background var(--lms-transition), transform var(--lms-transition);
+      color: var(--lms-text);
+      flex-shrink: 0;
+      margin-bottom: 0;
+    }
+    .theme-toggle:hover {
+      background: var(--lms-border);
+    }
+    .theme-toggle:focus-visible {
+      outline: 2px solid var(--lms-accent);
+      outline-offset: 2px;
+    }
+    .theme-toggle:active {
+      transform: scale(0.92);
+    }
+
+    /* ── Language toggle ── */
+    .lang-toggle {
+      background: none;
+      border: 1px solid var(--lms-border);
+      border-radius: 50%;
+      width: 34px;
+      height: 34px;
+      min-width: 34px;
+      min-height: 34px;
+      cursor: pointer;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background var(--lms-transition), transform var(--lms-transition);
+      color: var(--lms-text);
+      flex-shrink: 0;
+      margin-bottom: 0;
+    }
+    .lang-toggle:hover {
+      background: var(--lms-border);
+    }
+    .lang-toggle:focus-visible {
+      outline: 2px solid var(--lms-accent);
+      outline-offset: 2px;
+    }
+    .lang-toggle:active {
+      transform: scale(0.92);
+    }
+
+    /* ── Stats bar ── */
+    .stats-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin-bottom: 1rem;
+    }
+    .stat-card {
+      flex: 1;
+      min-width: 100px;
+      background: var(--lms-surface);
+      border: 1px solid var(--lms-border);
+      border-radius: var(--lms-radius);
+      padding: 0.6rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      transition: transform var(--lms-transition), box-shadow var(--lms-transition), border-color var(--lms-transition);
+      cursor: default;
+    }
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+      border-color: var(--lms-accent);
+    }
+    .stat-card .stat-icon {
+      font-size: 1.4rem;
+      flex-shrink: 0;
+    }
+    .stat-card .stat-value {
+      font-size: 1.3rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .stat-card .stat-label {
+      color: var(--lms-muted);
+      font-size: 0.75rem;
+    }
+    .stat-total  { border-left: 4px solid var(--lms-accent); }
+    .stat-active { border-left: 4px solid var(--lms-success); }
+    .stat-failed { border-left: 4px solid var(--lms-danger); }
+
+    /* ── Toolbar (search + actions) ── */
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .toolbar .search-wrap {
+      flex: 1;
+      min-width: 200px;
+      position: relative;
+    }
+    .toolbar .search-wrap input {
+      padding-left: 2.2rem;
+      padding-right: 2.2rem;
+      border-radius: 20px;
+      border: 2px solid var(--lms-border);
+      transition: border-color var(--lms-transition), box-shadow var(--lms-transition);
+      font-size: 0.9rem;
+    }
+    .toolbar .search-wrap input:focus {
+      border-color: var(--lms-accent);
+      box-shadow: 0 0 0 3px var(--lms-accent-light);
+      outline: none;
+    }
+    .toolbar .search-icon {
+      position: absolute;
+      left: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--lms-muted);
+      pointer-events: none;
+      font-size: 0.9rem;
+    }
+    .toolbar .search-clear {
+      position: absolute;
+      right: 0.5rem;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+      color: var(--lms-muted);
+      display: none;
+      padding: 0.25rem 0.4rem;
+      border-radius: 50%;
+      line-height: 1;
+      transition: color var(--lms-transition), background var(--lms-transition);
+    }
+    .toolbar .search-clear:hover {
+      color: var(--lms-text);
+      background: var(--lms-border);
+    }
+    .toolbar .search-clear:focus-visible {
+      outline: 2px solid var(--lms-accent);
+      outline-offset: 1px;
+    }
+    .toolbar .search-clear.visible {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .toolbar .btn-refresh {
+      white-space: nowrap;
+    }
+
+    /* ── Tabs ── */
+    .tabs-bar {
+      display: flex;
+      gap: 0;
+      margin-bottom: 1rem;
+      border-bottom: 2px solid var(--lms-border);
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      padding: 0.5rem 1rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--lms-muted);
+      cursor: pointer;
+      transition: color var(--lms-transition), border-color var(--lms-transition);
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .tab-btn:hover {
+      color: var(--lms-text);
+      border-bottom-color: var(--lms-border);
+    }
+    .tab-btn.active {
+      color: var(--lms-accent);
+      border-bottom-color: var(--lms-accent);
+    }
+    .tab-btn .tab-count {
+      font-size: 0.7rem;
+      background: var(--lms-border);
+      color: var(--lms-muted);
+      border-radius: 10px;
+      padding: 0.1rem 0.5rem;
+      min-width: 1.4em;
+      text-align: center;
+    }
+    .tab-btn.active .tab-count {
+      background: var(--lms-accent-light);
+      color: var(--lms-accent);
+    }
+    .tab-btn:focus-visible {
+      outline: 2px solid var(--lms-accent);
+      outline-offset: -2px;
+      border-radius: 4px 4px 0 0;
+    }
+
+    /* ── Status dots ── */
+    .status-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 0.35rem;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+    .dot-active   { background: var(--lms-success); }
+    .dot-inactive { background: #9e9e9e; }
+    .dot-failed   { background: var(--lms-danger); }
+    .dot-other    { background: var(--lms-warning); }
+    /* pulse animation for running services */
+    .dot-active {
+      animation: dotPulse 2s ease-in-out infinite;
+    }
+    @keyframes dotPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(24,128,56,0.5); }
+      50%      { box-shadow: 0 0 0 6px rgba(24,128,56,0); }
+    }
+
+    .status-active   { color: var(--lms-success); font-weight: 600; }
+    .status-inactive { color: #9e9e9e; }
+    .status-failed   { color: var(--lms-danger); font-weight: 600; }
+    .status-other    { color: var(--lms-warning); }
+
+    /* ── Table ── */
+    .table-wrapper {
+      overflow-x: auto;
+      border-radius: var(--lms-radius);
+      border: 1px solid var(--lms-border);
+      background: var(--lms-surface);
+      box-shadow: var(--lms-shadow);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0;
+      font-size: 0.9rem;
+    }
+    table caption {
+      caption-side: top;
+      font-weight: 600;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.85rem;
+      color: var(--lms-muted);
+      text-align: left;
+      white-space: nowrap;
+    }
+    table caption .caption-sub {
+      font-weight: 400;
+      color: var(--lms-muted);
+      opacity: 0.8;
+    }
+    thead th {
+      position: sticky;
+      top: 0;
+      background: var(--lms-surface);
+      border-bottom: 2px solid var(--lms-border);
+      padding: 0.65rem 0.75rem;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--lms-muted);
+      white-space: nowrap;
+    }
+
+    /* ── Sortable headers ── */
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+      transition: background var(--lms-transition), color var(--lms-transition);
+    }
+    th.sortable:hover {
+      background: var(--lms-accent-light);
+      color: var(--lms-accent);
+    }
+    th.sortable:focus-visible {
+      outline: 2px solid var(--lms-accent);
+      outline-offset: -2px;
+    }
+    .sort-icon {
+      font-size: 0.72rem;
+      margin-left: 0.3rem;
+      opacity: 0.4;
+      transition: opacity var(--lms-transition), color var(--lms-transition);
+    }
+    .sort-icon.active {
+      opacity: 1;
+      color: var(--lms-accent);
+    }
+    tbody td {
+      padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid var(--lms-border);
+      vertical-align: middle;
+    }
+    tbody tr {
+      transition: background var(--lms-transition);
+    }
+    tbody tr:hover {
+      background: var(--lms-accent-light);
+    }
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+    td[data-label="Name"] {
+      font-weight: 600;
+      word-break: break-all;
+    }
+
+    /* ── Action buttons ── */
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.3rem;
+      white-space: nowrap;
+    }
+    .actions button {
+      font-size: 0.78rem;
+      padding: 0.3rem 0.6rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      transition: transform var(--lms-transition), opacity var(--lms-transition), box-shadow var(--lms-transition);
+      border-radius: var(--lms-radius-sm);
+    }
+    .actions button:active:not(.htmx-request) {
+      transform: scale(0.96);
+    }
+    .actions button:focus-visible {
+      outline: 2px solid var(--lms-accent);
+      outline-offset: 2px;
+    }
+    .actions button .btn-icon  { font-size: 0.9rem; }
+    .actions button .btn-label { }
+
+    /* ── Locked badge ── */
+    .locked-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.78rem;
+      color: var(--lms-muted);
+      background: var(--lms-border);
+      padding: 0.3rem 0.6rem;
+      border-radius: var(--lms-radius-sm);
+      cursor: help;
+      white-space: nowrap;
+    }
+    /* loading state */
+    .actions button.htmx-request {
+      pointer-events: none;
+      opacity: 0.65;
+    }
+    .actions button.htmx-request .btn-icon {
+      display: inline-block;
+      animation: spin 0.7s linear infinite;
+    }
+
+    /* ── Spinner ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner-sm {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    /* ── Toast notifications ── */
+    #toast-container {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      max-width: min(380px, calc(100vw - 2rem));
+      pointer-events: none;
+    }
+    .toast {
+      padding: 0.75rem 1rem;
+      border-radius: 10px;
+      font-weight: 500;
+      font-size: 0.875rem;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+      animation: toastSlideIn 0.35s ease-out;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      pointer-events: auto;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    .toast.removing {
+      opacity: 0;
+      transform: translateX(60px);
+    }
+    .toast-success {
+      background: var(--lms-success-light);
+      color: #137333;
+      border: 1px solid var(--lms-success-border);
+    }
+    .toast-error {
+      background: var(--lms-danger-light);
+      color: var(--lms-danger);
+      border: 1px solid var(--lms-danger-border);
+    }
+    .toast-close {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1.1rem;
+      line-height: 1;
+      padding: 0.2rem;
+      margin-left: auto;
+      color: inherit;
+      opacity: 0.6;
+      flex-shrink: 0;
+      border-radius: 50%;
+      transition: opacity var(--lms-transition), background var(--lms-transition);
+    }
+    .toast-close:hover { opacity: 1; background: rgba(0,0,0,0.08); }
+    .toast-close:focus-visible {
+      outline: 2px solid currentColor;
+      outline-offset: 1px;
+      opacity: 1;
+    }
+    @keyframes toastSlideIn {
+      from { opacity: 0; transform: translateX(60px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    /* Toast dark mode */
+    [data-theme="dark"] .toast-success {
+      background: rgba(19,115,51,0.2);
+      border-color: rgba(19,115,51,0.4);
+      color: #8bdb9f;
+    }
+    [data-theme="dark"] .toast-error {
+      background: rgba(197,34,31,0.2);
+      border-color: rgba(197,34,31,0.4);
+      color: #f2a19d;
+    }
+    [data-theme="dark"] .toast-close:hover {
+      background: rgba(255,255,255,0.1);
+    }
+
+    /* ── Modal ── */
+    .lms-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: overlayIn 0.2s ease-out;
+      padding: 0 0.75rem;
+    }
+    @keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
+    .lms-modal {
+      background: var(--lms-surface);
+      border-radius: 14px;
+      padding: 1.75rem;
+      max-width: 420px;
+      width: 100%;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+      animation: modalIn 0.25s ease-out;
+    }
+    @keyframes modalIn {
+      from { opacity: 0; transform: scale(0.92) translateY(10px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .lms-modal h3 {
+      margin: 0 0 0.5rem;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .lms-modal p {
+      margin: 0 0 1.25rem;
+      color: var(--lms-muted);
+      font-size: 0.9rem;
+    }
+    .lms-modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .lms-modal-actions button {
+      font-size: 0.85rem;
+      padding: 0.45rem 1rem;
+      border-radius: 8px;
+      min-width: 80px;
+      min-height: 44px;
+    }
+    .lms-modal-actions button:focus-visible {
+      outline: 2px solid var(--lms-accent);
+      outline-offset: 2px;
+    }
+    .lms-modal-actions button:active {
+      transform: scale(0.96);
+    }
+    /* Modal confirm button (danger action) */
+    .lms-modal-actions .btn-danger {
+      background: var(--lms-danger);
+      border-color: var(--lms-danger);
+      color: #fff;
+    }
+    .lms-modal-actions .btn-danger:hover {
+      background: #a50e0c;
+      border-color: #a50e0c;
+    }
+    [data-theme="dark"] .lms-modal-actions .btn-danger:hover {
+      background: #d93025;
+      border-color: #d93025;
+    }
+
+    /* ── Empty state ── */
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--lms-muted);
+    }
+    .empty-state .empty-icon {
+      font-size: 2.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    /* ── htmx indicator ── */
+    .htmx-indicator {
+      opacity: 0;
+      transition: opacity 0.15s ease-in;
+    }
+    .htmx-request .htmx-indicator,
+    .htmx-request.htmx-indicator {
+      opacity: 1;
+    }
+
+    /* ── Skip-to-content link (accessibility) ── */
+    .skip-link {
+      position: absolute;
+      top: -100%;
+      left: 0.75rem;
+      z-index: 99999;
+      background: var(--lms-accent);
+      color: #fff;
+      padding: 0.5rem 1rem;
+      border-radius: 0 0 var(--lms-radius-sm) var(--lms-radius-sm);
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-decoration: none;
+      transition: top 0.15s ease;
+    }
+    .skip-link:focus {
+      top: 0;
+    }
+
+    /* ── Dark mode refinements ── */
+    [data-theme="dark"] .stat-card:hover {
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    [data-theme="dark"] .toolbar .search-wrap input:focus {
+      box-shadow: 0 0 0 3px rgba(138,180,248,0.2);
+    }
+    [data-theme="dark"] .table-wrapper table tr:hover {
+      background: rgba(138,180,248,0.06);
+    }
+
+    /* ============================================================
+       RWD — Tablet (768px – 1024px)
+       ============================================================ */
+    @media (max-width: 1024px) {
+      .app-container { padding: 1rem 1rem 2rem; }
+      .app-header-left h1 { font-size: 1.15rem; }
+      /* Hide button labels, show icons only */
+      .actions button .btn-label { display: none; }
+      .actions button { padding: 0.35rem 0.5rem; }
+      .actions button .btn-icon { margin: 0; }
+    }
+
+    /* ============================================================
+       RWD — Mobile (< 768px) : Card layout
+       ============================================================ */
+    @media (max-width: 767px) {
+      .app-container { padding: 0.75rem 0.75rem 2rem; }
+      .app-header { flex-direction: column; align-items: flex-start; }
+      .app-header-left { width: 100%; }
+      .app-header-left h1 { font-size: 1.15rem; }
+      .app-header-right { width: 100%; justify-content: flex-start; }
+      .stats-bar { gap: 0.4rem; }
+      .stat-card { padding: 0.45rem 0.75rem; }
+      .stat-card .stat-value { font-size: 1.1rem; }
+      .toolbar { flex-direction: column; }
+      .toolbar .search-wrap { width: 100%; }
+      .toolbar .search-wrap input { min-height: 44px; }
+
+      table caption { font-size: 0.75rem; padding: 0.35rem 0.5rem; white-space: normal; line-height: 1.3; }
+      table caption .caption-sub { display: none; }
+
+      /* Toast at bottom on mobile */
+      #toast-container {
+        top: auto;
+        bottom: 1rem;
+        right: 0.75rem;
+        left: 0.75rem;
+        max-width: none;
+        align-items: stretch;
+      }
+      .toast {
+        font-size: 0.8125rem;
+        padding: 0.65rem 0.85rem;
+      }
+      @keyframes toastSlideIn {
+        from { opacity: 0; transform: translateY(60px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      .toast.removing {
+        transform: translateY(60px);
+      }
+
+      /* Hide the table, show cards */
+      .table-wrapper table thead {
+        display: none;
+      }
+      .table-wrapper table,
+      .table-wrapper table tbody,
+      .table-wrapper table tr,
+      .table-wrapper table td {
+        display: block;
+      }
+      .table-wrapper table tr {
+        background: var(--lms-surface);
+        border: 1px solid var(--lms-border);
+        border-radius: var(--lms-radius);
+        margin-bottom: 0.75rem;
+        padding: 0.75rem;
+        box-shadow: var(--lms-shadow);
+      }
+      .table-wrapper table tr:hover {
+        background: var(--lms-surface);
+        border-color: var(--lms-accent);
+        box-shadow: 0 2px 16px rgba(26,115,232,0.1);
+      }
+      .table-wrapper table td {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.4rem 0;
+        border-bottom: 1px solid var(--lms-border);
+        text-align: right;
+      }
+      .table-wrapper table td:last-child {
+        border-bottom: none;
+      }
+      .table-wrapper table td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--lms-muted);
+        text-align: left;
+        flex-shrink: 0;
+        margin-right: 0.5rem;
+      }
+      .actions {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.35rem;
+      }
+      .actions button {
+        width: 100%;
+        justify-content: center;
+        font-size: 0.78rem;
+        min-height: 40px;
+      }
+      /* Show labels on mobile cards */
+      .actions button .btn-label { display: inline; }
+    }
+
+    /* ============================================================
+       RWD — Small mobile (< 400px)
+       ============================================================ */
+    @media (max-width: 399px) {
+      .app-container { padding: 0.5rem 0.5rem 2rem; }
+      .app-header { gap: 0.5rem; margin-bottom: 0.75rem; }
+      .app-header-left h1 { font-size: 1rem; }
+      .app-header-left h1 .header-icon { font-size: 1.2rem; }
+      .user-badge { font-size: 0.7rem; padding: 0.25rem 0.55rem; }
+      .app-header-right button,
+      .app-header-right a[role="button"] { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
+
+      /* Stats bar: stack vertically */
+      .stats-bar { flex-direction: column; }
+      .stat-card { min-width: auto; padding: 0.4rem 0.75rem; }
+      .stat-card .stat-icon { font-size: 1.1rem; }
+      .stat-card .stat-value { font-size: 1.05rem; }
+
+      .toolbar .search-wrap input { font-size: 0.85rem; }
+
+      table caption { font-size: 0.7rem; padding: 0.25rem 0.4rem; }
+
+      /* Card padding tighter */
+      .table-wrapper table tr { padding: 0.6rem; margin-bottom: 0.6rem; }
+      .table-wrapper table td { padding: 0.3rem 0; font-size: 0.82rem; }
+      .table-wrapper table td::before { font-size: 0.7rem; }
+      .actions button { font-size: 0.75rem; min-height: 44px; }
+
+      /* Modal tighter */
+      .lms-modal { padding: 1.25rem; border-radius: 12px; }
+      .lms-modal h3 { font-size: 1rem; }
+      .lms-modal p { font-size: 0.825rem; margin-bottom: 1rem; }
+      .lms-modal-actions { flex-direction: column; }
+      .lms-modal-actions button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Toast container -->
+  <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Custom confirm modal (hidden) -->
+  <div id="lms-confirm-overlay" class="lms-modal-overlay" style="display:none;" aria-hidden="true">
+    <div class="lms-modal" role="alertdialog" aria-modal="true" aria-labelledby="lms-modal-title">
+      <h3 id="lms-modal-title" data-i18n="modal.title">⚠️ 確認操作</h3>
+      <p id="lms-modal-body"></p>
+      <div class="lms-modal-actions">
+        <button id="lms-modal-cancel" class="secondary" type="button" data-i18n="modal.cancel">取消</button>
+        <button id="lms-modal-confirm" class="btn-danger" type="button" data-i18n="modal.confirm">確認</button>
+      </div>
+    </div>
+  </div>
+
+  <a href="#main-content" class="skip-link" data-i18n="skip.link">跳至主要內容</a>
+  <main class="app-container" id="main-content">
+    <!-- ── Header ── -->
+    <header class="app-header">
+      <div class="app-header-left">
+        <h1><span class="header-icon" aria-hidden="true">🖥</span> Linux Service Manager</h1>
+        <span class="user-badge">👤 {{.Username}}</span>
+      </div>
+      <div class="app-header-right">
+        <button class="lang-toggle" id="lang-toggle-btn" type="button"
+                aria-label="切換語言 / Switch language" title="切換語言 (中文/English)"
+                data-i18n-aria="lang.toggle.aria" data-i18n-title="lang.toggle.title">
+          🌐
+        </button>
+        <button class="theme-toggle" id="theme-toggle-btn" type="button"
+                aria-label="切換深色模式" title="切換深色模式 (Ctrl+Shift+D)"
+                data-i18n-aria="theme.toggle" data-i18n-title="theme.toggle.title">
+          <span class="theme-icon-light" aria-hidden="true">☀️</span>
+          <span class="theme-icon-dark" aria-hidden="true" style="display:none">🌙</span>
+        </button>
+        <button class="btn-refresh secondary" type="button"
+                hx-get="/services" hx-target="#service-table-body" hx-swap="innerHTML"
+                hx-indicator="#table-spinner"
+                aria-label="重新整理服務列表"
+                data-i18n-aria="header.refresh.aria">
+          <span data-i18n="header.refresh">🔄 重新整理</span>
+          <span id="table-spinner" class="htmx-indicator spinner-sm" aria-hidden="true"></span>
+        </button>
+        <a href="/logout" role="button" class="secondary" aria-label="登出" data-i18n-aria="header.logout.aria">
+          <span data-i18n="header.logout">🚪 登出</span>
+        </a>
+      </div>
+    </header>
+
+    <!-- ── Tabs bar ── -->
+    <div class="tabs-bar" id="tabs-bar" role="tablist" aria-label="服務分類">
+      <button class="tab-btn active" id="tab-my" role="tab" aria-selected="true"
+              data-tab="my"><span data-i18n="tab.my">我的服務</span> <span class="tab-count" id="tab-count-my">0</span></button>
+      <button class="tab-btn" id="tab-system" role="tab" aria-selected="false"
+              data-tab="system"><span data-i18n="tab.system">系統服務</span> <span class="tab-count" id="tab-count-system">0</span></button>
+    </div>
+
+    <!-- ── Stats bar ── -->
+    <div class="stats-bar" id="stats-bar" aria-label="服務狀態統計">
+      <div class="stat-card stat-total">
+        <span class="stat-icon" aria-hidden="true">📋</span>
+        <div>
+          <div class="stat-value" id="stat-total">0</div>
+          <div class="stat-label" data-i18n="stats.total">總服務數</div>
+        </div>
+      </div>
+      <div class="stat-card stat-active">
+        <span class="stat-icon" aria-hidden="true">✅</span>
+        <div>
+          <div class="stat-value" id="stat-running">0</div>
+          <div class="stat-label" data-i18n="stats.running">執行中</div>
+        </div>
+      </div>
+      <div class="stat-card stat-failed">
+        <span class="stat-icon" aria-hidden="true">❌</span>
+        <div>
+          <div class="stat-value" id="stat-failed">0</div>
+          <div class="stat-label" data-i18n="stats.failed">失敗</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Toolbar: search + actions ── -->
+    <div class="toolbar">
+      <div class="search-wrap">
+        <span class="search-icon" aria-hidden="true">🔍</span>
+        <input type="search" id="service-search" name="search"
+               placeholder="搜尋服務名稱..."
+               data-i18n="search.placeholder"
+               aria-label="搜尋服務名稱"
+               data-i18n-aria="search.aria"
+               autocomplete="off">
+        <button class="search-clear" id="search-clear-btn" type="button"
+                aria-label="清除搜尋" title="清除"
+                data-i18n-aria="search.clear.aria" data-i18n-title="search.clear.title">✕</button>
+      </div>
+    </div>
+
+    <!-- ── Service table ── -->
+    <div class="table-wrapper">
+      {{template "table" .}}
+    </div>
+  </main>
+
+  <script>
+    (function() {
+      // ============================================================
+      //  i18n — Translation system
+      // ============================================================
+      const translations = {
+        'zh-TW': {
+          'stats.total': '總服務數',
+          'stats.running': '執行中',
+          'stats.failed': '失敗',
+          'search.placeholder': '搜尋服務名稱...',
+          'search.aria': '搜尋服務名稱',
+          'search.clear.aria': '清除搜尋',
+          'search.clear.title': '清除',
+          'caption.title': '系統服務列表',
+          'caption.sub': '— 點擊操作按鈕管理服務',
+          'header.refresh': '🔄 重新整理',
+          'header.logout': '🚪 登出',
+          'header.refresh.aria': '重新整理服務列表',
+          'header.logout.aria': '登出',
+          'theme.toggle': '切換深色模式',
+          'theme.toggle.title': '切換深色模式 (Ctrl+Shift+D)',
+          'lang.toggle.aria': '切換語言 / Switch language',
+          'lang.toggle.title': '切換語言 (中文/English)',
+          'skip.link': '跳至主要內容',
+          'locked.badge': '🔒 已鎖定',
+          'locked.tooltip': '此服務受保護，無法直接操作。設定 UNLOCKED_SERVICES 環境變數解鎖。',
+          'tab.my': '我的服務',
+          'tab.system': '系統服務',
+          'modal.title': '⚠️ 確認操作',
+          'modal.cancel': '取消',
+          'modal.confirm': '確認',
+          'empty.state': '找不到任何服務，或無法連線至 systemd。',
+          'search.empty': '沒有符合「{term}」的服務',
+          'toast.close': '關閉通知',
+          'action.start': '▶ Start',
+          'action.stop': '⏹ Stop',
+          'action.restart': '🔄 Restart',
+          'action.start.aria': '啟動 {name}',
+          'action.stop.aria': '停止 {name}',
+          'action.restart.aria': '重啟 {name}',
+          'action.start.label': 'Start',
+          'action.stop.label': 'Stop',
+          'action.restart.label': 'Restart',
+          'confirm.stop': '確定要停止 {name} 嗎？',
+          'confirm.restart': '確定要重啟 {name} 嗎？',
+          'modal.default': '確定要執行此操作嗎？',
+        },
+        'en': {
+          'stats.total': 'Total Services',
+          'stats.running': 'Running',
+          'stats.failed': 'Failed',
+          'search.placeholder': 'Search services...',
+          'search.aria': 'Search services',
+          'search.clear.aria': 'Clear search',
+          'search.clear.title': 'Clear',
+          'caption.title': 'Service List',
+          'caption.sub': '— Click action buttons to manage services',
+          'header.refresh': '🔄 Refresh',
+          'header.logout': '🚪 Logout',
+          'header.refresh.aria': 'Refresh service list',
+          'header.logout.aria': 'Logout',
+          'theme.toggle': 'Toggle dark mode',
+          'theme.toggle.title': 'Toggle dark mode (Ctrl+Shift+D)',
+          'lang.toggle.aria': '切換語言 / Switch language',
+          'lang.toggle.title': '切換語言 (中文/English)',
+          'skip.link': 'Skip to main content',
+          'locked.badge': '🔒 Locked',
+          'locked.tooltip': 'This service is protected. Set the UNLOCKED_SERVICES environment variable to unlock.',
+          'tab.my': 'My Services',
+          'tab.system': 'System Services',
+          'modal.title': '⚠️ Confirm Action',
+          'modal.cancel': 'Cancel',
+          'modal.confirm': 'Confirm',
+          'empty.state': 'No services found or unable to connect to systemd.',
+          'search.empty': 'No services matching "{term}"',
+          'toast.close': 'Close',
+          'action.start': '▶ Start',
+          'action.stop': '⏹ Stop',
+          'action.restart': '🔄 Restart',
+          'action.start.aria': 'Start {name}',
+          'action.stop.aria': 'Stop {name}',
+          'action.restart.aria': 'Restart {name}',
+          'action.start.label': 'Start',
+          'action.stop.label': 'Stop',
+          'action.restart.label': 'Restart',
+          'confirm.stop': 'Are you sure you want to stop {name}?',
+          'confirm.restart': 'Are you sure you want to restart {name}?',
+          'modal.default': 'Are you sure you want to proceed?',
+        }
+      };
+
+      // Get current lang (priority: localStorage > browser > default zh-TW)
+      function getCurrentLang() {
+        try {
+          const stored = localStorage.getItem('lms-lang');
+          if (stored && translations[stored]) return stored;
+        } catch(e) {}
+        const browserLang = navigator.language || '';
+        if (browserLang.startsWith('zh')) return 'zh-TW';
+        return 'en';
+      }
+
+      let currentLang = getCurrentLang();
+
+      // Set language
+      function setLang(lang) {
+        currentLang = lang;
+        try { localStorage.setItem('lms-lang', lang); } catch(e) {}
+        document.documentElement.lang = lang;
+        applyTranslations();
+      }
+
+      // Translate function
+      function t(key, params) {
+        let text = (translations[currentLang] && translations[currentLang][key]) || key;
+        if (params) {
+          Object.keys(params).forEach(function(k) {
+            text = text.replace('{' + k + '}', params[k]);
+          });
+        }
+        return text;
+      }
+
+      // Toggle language
+      function toggleLang() {
+        setLang(currentLang === 'zh-TW' ? 'en' : 'zh-TW');
+      }
+
+      // Apply translations to DOM
+      function applyTranslations() {
+        // data-i18n: textContent / placeholder
+        document.querySelectorAll('[data-i18n]').forEach(function(el) {
+          const key = el.getAttribute('data-i18n');
+          if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+            el.placeholder = t(key);
+          } else {
+            el.textContent = t(key);
+          }
+        });
+
+        // data-i18n-aria: aria-label
+        document.querySelectorAll('[data-i18n-aria]').forEach(function(el) {
+          el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria')));
+        });
+
+        // data-i18n-title: title
+        document.querySelectorAll('[data-i18n-title]').forEach(function(el) {
+          el.setAttribute('title', t(el.getAttribute('data-i18n-title')));
+        });
+
+        updateDynamicTranslations();
+        updateSortIndicators();
+      }
+
+      // Update dynamic content (action buttons, locked badges, etc.)
+      function updateDynamicTranslations() {
+        // Locked badge tooltips
+        document.querySelectorAll('.locked-badge').forEach(function(badge) {
+          badge.setAttribute('title', t('locked.tooltip'));
+        });
+
+        // Action buttons: aria-labels and hx-confirm
+        document.querySelectorAll('#service-table-body .actions button').forEach(function(btn) {
+          var nameEl = btn.closest('tr') ? btn.closest('tr').querySelector('td[data-label="Name"]') : null;
+          var name = nameEl ? nameEl.textContent.trim() : '';
+
+          var url = btn.getAttribute('hx-post') || '';
+          if (url.indexOf('/start') !== -1) {
+            btn.setAttribute('aria-label', t('action.start.aria', {name: name}));
+          } else if (url.indexOf('/stop') !== -1) {
+            btn.setAttribute('aria-label', t('action.stop.aria', {name: name}));
+            btn.setAttribute('hx-confirm', t('confirm.stop', {name: name}));
+          } else if (url.indexOf('/restart') !== -1) {
+            btn.setAttribute('aria-label', t('action.restart.aria', {name: name}));
+            btn.setAttribute('hx-confirm', t('confirm.restart', {name: name}));
+          }
+        });
+      }
+
+      // ============================================================
+      //  Dark mode
+      // ============================================================
+      const html = document.documentElement;
+      const themeBtn = document.getElementById('theme-toggle-btn');
+      const iconLight = themeBtn.querySelector('.theme-icon-light');
+      const iconDark = themeBtn.querySelector('.theme-icon-dark');
+
+      function setTheme(dark) {
+        html.setAttribute('data-theme', dark ? 'dark' : 'light');
+        iconLight.style.display = dark ? 'none' : '';
+        iconDark.style.display = dark ? '' : 'none';
+        try { localStorage.setItem('lms-theme', dark ? 'dark' : 'light'); } catch(e) {}
+      }
+
+      function toggleTheme() {
+        setTheme(html.getAttribute('data-theme') !== 'dark');
+      }
+
+      try {
+        const saved = localStorage.getItem('lms-theme');
+        if (saved) setTheme(saved === 'dark');
+        else if (window.matchMedia('(prefers-color-scheme: dark)').matches) setTheme(true);
+      } catch(e) {}
+
+      themeBtn.addEventListener('click', toggleTheme);
+
+      // Keyboard shortcut: Ctrl+Shift+D
+      document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+          e.preventDefault();
+          toggleTheme();
+        }
+      });
+
+      // Language toggle button
+      var langBtn = document.getElementById('lang-toggle-btn');
+      langBtn.addEventListener('click', toggleLang);
+
+      // ============================================================
+      //  Sort state
+      // ============================================================
+      let sortColumn = null;  // 'Name' | 'Load' | 'Active' | 'Sub' | null
+      let sortAscending = true;
+
+      function getCellValue(row, col) {
+        if (col === 'Active') {
+          const span = row.querySelector('td[data-label="Active"] .status-active, td[data-label="Active"] .status-inactive, td[data-label="Active"] .status-failed, td[data-label="Active"] .status-other');
+          return span ? span.textContent.trim().toLowerCase() : '';
+        }
+        const cell = row.querySelector('td[data-label="' + col + '"]');
+        return cell ? cell.textContent.trim().toLowerCase() : '';
+      }
+
+      function sortRows() {
+        if (!sortColumn) return;
+        const tbody = document.getElementById('service-table-body');
+        if (!tbody) return;
+
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        const dataRows = rows.filter(function(r) {
+          return r.querySelector('td[data-label="' + sortColumn + '"]');
+        });
+        const specialRows = rows.filter(function(r) {
+          return !r.querySelector('td[data-label="' + sortColumn + '"]');
+        });
+
+        dataRows.sort(function(a, b) {
+          const valA = getCellValue(a, sortColumn);
+          const valB = getCellValue(b, sortColumn);
+          const numA = parseFloat(valA);
+          const numB = parseFloat(valB);
+          if (!isNaN(numA) && !isNaN(numB)) {
+            return sortAscending ? numA - numB : numB - numA;
+          }
+          if (valA < valB) return sortAscending ? -1 : 1;
+          if (valA > valB) return sortAscending ? 1 : -1;
+          return 0;
+        });
+
+        dataRows.forEach(function(r) { tbody.appendChild(r); });
+        specialRows.forEach(function(r) { tbody.appendChild(r); });
+      }
+
+      function updateSortIndicators() {
+        document.querySelectorAll('th.sortable').forEach(function(th) {
+          const icon = th.querySelector('.sort-icon');
+          if (!icon) return;
+          const col = th.getAttribute('data-sort');
+          th.setAttribute('aria-sort', 'none');
+          icon.classList.remove('active');
+          icon.textContent = '';
+          if (col === sortColumn) {
+            icon.textContent = sortAscending ? '▲' : '▼';
+            icon.classList.add('active');
+            th.setAttribute('aria-sort', sortAscending ? 'ascending' : 'descending');
+          }
+        });
+      }
+
+      function handleSortClick(col) {
+        if (sortColumn === col) {
+          sortAscending = !sortAscending;
+        } else {
+          sortColumn = col;
+          sortAscending = true;
+        }
+        updateSortIndicators();
+        sortRows();
+        updateStats();
+        if (searchInput.value.trim() !== '') applyRowVisibility();
+      }
+
+      // ============================================================
+      //  Tab state
+      // ============================================================
+      var activeTab = 'my';  // 'my' | 'system'
+
+      function getTabFromRow(row) {
+        var actions = row.querySelector('td[data-label="Actions"]');
+        if (!actions) return 'system';
+        if (actions.querySelector('.locked-badge')) return 'system';
+        if (actions.querySelector('button')) return 'my';
+        return 'system';
+      }
+
+      function setActiveTab(tab) {
+        activeTab = tab;
+        try { localStorage.setItem('lms-tab', tab); } catch(e) {}
+
+        document.querySelectorAll('.tab-btn').forEach(function(btn) {
+          var isActive = btn.getAttribute('data-tab') === tab;
+          btn.classList.toggle('active', isActive);
+          btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+
+        applyRowVisibility();
+        updateStats();
+        updateTabCounts();
+        if (sortColumn) sortRows();
+      }
+
+      function applyRowVisibility() {
+        var term = (document.getElementById('service-search').value || '').toLowerCase().trim();
+        var rows = document.querySelectorAll('#service-table-body tr');
+        var anyVisible = false;
+
+        rows.forEach(function(row) {
+          var nameCell = row.querySelector('td[data-label="Name"]');
+          if (!nameCell) { row.style.display = 'none'; return; }
+
+          var name = nameCell.textContent.toLowerCase();
+          var rowTab = getTabFromRow(row);
+
+          var matchesSearch = (term === '' || name.indexOf(term) !== -1);
+          var matchesTab = (activeTab === 'my') ? (rowTab === 'my') : (rowTab === 'system');
+
+          if (matchesSearch && matchesTab) {
+            row.style.display = '';
+            anyVisible = true;
+          } else {
+            row.style.display = 'none';
+          }
+        });
+
+        var emptyEl = document.getElementById('search-empty');
+        if (!anyVisible && rows.length > 0 && term !== '') {
+          if (!emptyEl) {
+            emptyEl = document.createElement('tr');
+            emptyEl.id = 'search-empty';
+            emptyEl.innerHTML = '<td colspan="5"><div class="empty-state"><div class="empty-icon">🔍</div><em>' + escapeHtml(t('search.empty', {term: term})) + '</em></div></td>';
+            document.getElementById('service-table-body').appendChild(emptyEl);
+          } else {
+            emptyEl.style.display = '';
+            emptyEl.querySelector('em').textContent = t('search.empty', {term: term});
+          }
+        } else if (emptyEl) {
+          emptyEl.style.display = 'none';
+        }
+      }
+
+      function updateTabCounts() {
+        var rows = document.querySelectorAll('#service-table-body tr');
+        var myCount = 0, sysCount = 0;
+        rows.forEach(function(row) {
+          if (!row.querySelector('td[data-label="Name"]')) return;
+          if (getTabFromRow(row) === 'my') myCount++; else sysCount++;
+        });
+        var myCountEl = document.getElementById('tab-count-my');
+        var sysCountEl = document.getElementById('tab-count-system');
+        if (myCountEl) myCountEl.textContent = myCount;
+        if (sysCountEl) sysCountEl.textContent = sysCount;
+      }
+
+      // ============================================================
+      //  Stats updater (scoped to visible rows)
+      // ============================================================
+      function updateStats() {
+        const rows = document.querySelectorAll('#service-table-body tr');
+        let total = 0, running = 0, failed = 0;
+        rows.forEach(function(row) {
+          const statusEl = row.querySelector('.status-active, .status-inactive, .status-failed, .status-other');
+          if (!statusEl) return;
+          if (row.style.display === 'none') return;
+          total++;
+          const cls = statusEl.className;
+          if (cls.indexOf('status-active') !== -1) running++;
+          if (cls.indexOf('status-failed') !== -1) failed++;
+        });
+        document.getElementById('stat-total').textContent = total;
+        document.getElementById('stat-running').textContent = running;
+        document.getElementById('stat-failed').textContent = failed;
+      }
+
+      // ============================================================
+      //  Search / filter (uses applyRowVisibility which respects tab)
+      // ============================================================
+      const searchInput = document.getElementById('service-search');
+
+      function filterRows() {
+        applyRowVisibility();
+      }
+
+      function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+      }
+
+      searchInput.addEventListener('input', function() {
+        applyRowVisibility();
+        updateClearButton();
+      });
+
+      // Clear button for search
+      var searchClearBtn = document.getElementById('search-clear-btn');
+      function updateClearButton() {
+        if (searchInput.value.trim() !== '') {
+          searchClearBtn.classList.add('visible');
+        } else {
+          searchClearBtn.classList.remove('visible');
+        }
+      }
+      searchClearBtn.addEventListener('click', function() {
+        searchInput.value = '';
+        searchInput.focus();
+        applyRowVisibility();
+        updateClearButton();
+      });
+      searchInput.addEventListener('search', function() {
+        if (searchInput.value === '') {
+          applyRowVisibility();
+          updateClearButton();
+        }
+      });
+
+      // ============================================================
+      //  Toast system
+      // ============================================================
+      function showToast(message, type, duration) {
+        type = type || 'success';
+        duration = duration || 3500;
+        var container = document.getElementById('toast-container');
+        var toast = document.createElement('div');
+        toast.className = 'toast toast-' + type;
+        toast.setAttribute('role', 'status');
+        toast.setAttribute('aria-live', 'polite');
+        var icon = type === 'success' ? '✅' : '❌';
+        toast.innerHTML = '<span>' + icon + ' ' + escapeHtml(message) + '</span>' +
+          '<button class="toast-close" aria-label="' + escapeHtml(t('toast.close')) + '" type="button">✕</button>';
+
+        container.appendChild(toast);
+
+        var closeBtn = toast.querySelector('.toast-close');
+        var timer;
+
+        function removeToast() {
+          clearTimeout(timer);
+          toast.classList.add('removing');
+          setTimeout(function() {
+            if (toast.parentNode) toast.parentNode.removeChild(toast);
+          }, 300);
+        }
+
+        closeBtn.addEventListener('click', removeToast);
+
+        timer = setTimeout(removeToast, duration);
+      }
+
+      // Intercept flash-container OOB swaps and convert to toasts
+      document.body.addEventListener('htmx:oobAfterSwap', function(evt) {
+        if (evt.detail.target.id === 'flash-container' || evt.detail.target.id === 'toast-container') {
+          var el = evt.detail.target;
+          var flashEl = el.querySelector('.flash, .flash-success, .flash-error');
+          if (flashEl) {
+            var isSuccess = flashEl.className.indexOf('success') !== -1;
+            showToast(flashEl.textContent.trim(), isSuccess ? 'success' : 'error');
+            // Clear the flash container
+            el.innerHTML = '';
+          }
+        }
+      });
+
+      // Also handle regular swap on flash-container
+      document.body.addEventListener('htmx:afterSwap', function(evt) {
+        if (evt.detail.target.id === 'flash-container') {
+          var el = evt.detail.target;
+          var flashEl = el.querySelector('.flash, .flash-success, .flash-error');
+          if (flashEl) {
+            var isSuccess = flashEl.className.indexOf('success') !== -1;
+            showToast(flashEl.textContent.trim(), isSuccess ? 'success' : 'error');
+            el.innerHTML = '';
+          }
+        }
+        // Update stats + re-apply sort, filter, tab & translations after any table swap
+        if (evt.detail.target.id === 'service-table-body') {
+          updateTabCounts();
+          applyRowVisibility();
+          updateStats();
+          if (sortColumn) {
+            sortRows();
+          }
+          updateDynamicTranslations();
+          enhanceActionButtons();
+        }
+      });
+
+      // ============================================================
+      //  Custom confirm modal
+      // ============================================================
+      var modalOverlay = document.getElementById('lms-confirm-overlay');
+      var modalBody = document.getElementById('lms-modal-body');
+      var modalCancel = document.getElementById('lms-modal-cancel');
+      var modalConfirm = document.getElementById('lms-modal-confirm');
+      var pendingConfirm = null; // { issueRequest: fn }
+
+      function showModal(message) {
+        modalBody.textContent = message;
+        modalOverlay.style.display = 'flex';
+        modalOverlay.setAttribute('aria-hidden', 'false');
+        modalConfirm.focus();
+      }
+
+      function hideModal() {
+        modalOverlay.style.display = 'none';
+        modalOverlay.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+        pendingConfirm = null;
+        // Return focus to previously focused element
+        if (modalTrigger) modalTrigger.focus();
+      }
+      var modalTrigger = null;
+
+      modalCancel.addEventListener('click', hideModal);
+      modalOverlay.addEventListener('click', function(e) {
+        if (e.target === modalOverlay) hideModal();
+      });
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && modalOverlay.style.display === 'flex') {
+          hideModal();
+        }
+      });
+      modalConfirm.addEventListener('click', function() {
+        if (pendingConfirm && pendingConfirm.issueRequest) {
+          pendingConfirm.issueRequest();
+        }
+        hideModal();
+      });
+
+      // Intercept htmx:confirm to show custom modal
+      document.body.addEventListener('htmx:confirm', function(evt) {
+        evt.preventDefault();
+        pendingConfirm = { issueRequest: evt.detail.issueRequest };
+        modalTrigger = evt.detail.triggeringEvent ? evt.detail.triggeringEvent.target : document.activeElement;
+        document.body.style.overflow = 'hidden';
+        showModal(evt.detail.question || t('modal.default'));
+      });
+
+      // ============================================================
+      //  Enhance action buttons (runs on load and after each swap)
+      // ============================================================
+      function enhanceActionButtons() {
+        // Add loading spinner behavior — htmx auto-adds .htmx-request class
+        // which our CSS handles. No extra JS needed for basic loading.
+      }
+
+      // Handle tab clicks
+      document.querySelectorAll('.tab-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          setActiveTab(this.getAttribute('data-tab'));
+        });
+      });
+
+      // ============================================================
+      //  Init
+      // ============================================================
+      // Restore tab preference
+      try {
+        var savedTab = localStorage.getItem('lms-tab');
+        if (savedTab === 'my' || savedTab === 'system') activeTab = savedTab;
+      } catch(e) {}
+      // Set initial lang attribute
+      document.documentElement.lang = currentLang;
+      applyTranslations();
+      setActiveTab(activeTab);
+      updateTabCounts();
+      updateStats();
+      enhanceActionButtons();
+
+      // Attach sort click/keyboard handlers to sortable headers
+      document.querySelectorAll('th.sortable').forEach(function(th) {
+        th.addEventListener('click', function() {
+          handleSortClick(this.getAttribute('data-sort'));
+        });
+        th.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleSortClick(this.getAttribute('data-sort'));
+          }
+        });
+      });
+
+      // Listen for system color scheme changes
+      try {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+          if (!localStorage.getItem('lms-theme')) {
+            setTheme(e.matches);
+          }
+        });
+      } catch(e) {}
+    })();
+  </script>
+</body>
+</html>
+{{end}}
+
+{{define "table"}}
+<table role="table" aria-label="系統服務列表" data-i18n-aria="caption.title">
+  <caption><span class="caption-title" data-i18n="caption.title">系統服務列表</span> <span class="caption-sub" data-i18n="caption.sub">— 點擊操作按鈕管理服務</span></caption>
+  <thead>
+    <tr>
+      <th scope="col" data-sort="Name" class="sortable" aria-sort="none" tabindex="0" role="columnheader">Name <span class="sort-icon" aria-hidden="true"></span></th>
+      <th scope="col" data-sort="Load" class="sortable" aria-sort="none" tabindex="0" role="columnheader">Load <span class="sort-icon" aria-hidden="true"></span></th>
+      <th scope="col" data-sort="Active" class="sortable" aria-sort="none" tabindex="0" role="columnheader">Active <span class="sort-icon" aria-hidden="true"></span></th>
+      <th scope="col" data-sort="Sub" class="sortable" aria-sort="none" tabindex="0" role="columnheader">Sub <span class="sort-icon" aria-hidden="true"></span></th>
+      <th scope="col">Actions</th>
+    </tr>
+  </thead>
+  <tbody id="service-table-body">
+    {{template "rows" .}}
+  </tbody>
+</table>
+{{end}}
+
+{{define "rows"}}
+{{range .Services}}
+<tr>
+  <td data-label="Name">{{.Name}}</td>
+  <td data-label="Load">{{.Load}}</td>
+  <td data-label="Active">
+    {{template "statusDot" .Active}}
+    <span class="{{template "activeClass" .Active}}">{{.Active}}</span>
+  </td>
+  <td data-label="Sub">{{.Sub}}</td>
+  <td data-label="Actions" class="actions">
+    {{if .Locked}}
+    <span class="locked-badge" data-i18n="locked.badge" data-i18n-title="locked.tooltip" title="此服務受保護，無法直接操作。設定 UNLOCKED_SERVICES 環境變數解鎖。">🔒 已鎖定</span>
+    {{else}}
+    {{if or (eq .Active "inactive") (eq .Active "dead") (eq .Active "failed")}}
+    <button class="outline secondary"
+            hx-post="/api/services/{{.Name}}/start"
+            hx-target="#service-table-body"
+            hx-swap="innerHTML"
+            aria-label="啟動 {{.Name}}">
+      <span class="btn-icon">▶</span>
+      <span class="btn-label">Start</span>
+    </button>
+    {{end}}
+    {{if or (eq .Active "active") (eq .Active "running")}}
+    <button class="outline secondary"
+            hx-post="/api/services/{{.Name}}/stop"
+            hx-target="#service-table-body"
+            hx-swap="innerHTML"
+            hx-confirm="確定要停止 {{.Name}} 嗎？"
+            aria-label="停止 {{.Name}}">
+      <span class="btn-icon">⏹</span>
+      <span class="btn-label">Stop</span>
+    </button>
+    {{end}}
+    <button class="outline secondary"
+            hx-post="/api/services/{{.Name}}/restart"
+            hx-target="#service-table-body"
+            hx-swap="innerHTML"
+            hx-confirm="確定要重啟 {{.Name}} 嗎？"
+            aria-label="重啟 {{.Name}}">
+      <span class="btn-icon">🔄</span>
+      <span class="btn-label">Restart</span>
+    </button>
+    {{end}}
+  </td>
+</tr>
+{{else}}
+<tr>
+  <td colspan="5">
+    <div class="empty-state">
+      <div class="empty-icon">📭</div>
+      <em data-i18n="empty.state">找不到任何服務，或無法連線至 systemd。</em>
+    </div>
+  </td>
+</tr>
+{{end}}
+{{end}}

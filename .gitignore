@@ -32,3 +32,6 @@ Thumbs.db
 
 # Pi
 .pi-web
+src/static/
+frontend/dist/
+frontend/node_modules/

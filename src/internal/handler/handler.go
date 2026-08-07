@@ -12,23 +12,28 @@ import (
 	"linux-service-manager/internal/systemd"
 )
 
-// Handler holds the parsed templates.
+// Handler holds the parsed templates and systemd manager.
 type Handler struct {
-	tmpl *template.Template
+	tmpl    *template.Template
+	systemd systemd.ServiceManager
 }
 
-// New creates a new Handler with the given template filesystem.
-func New(tplFS fs.FS) *Handler {
-	tmpl := template.Must(template.ParseFS(tplFS, "index.html", "login.html"))
-	return &Handler{tmpl: tmpl}
+// New creates a new Handler with the given template filesystem and systemd manager.
+// tplFS may be nil for JSON-only usage (e.g. tests).
+func New(tplFS fs.FS, sm systemd.ServiceManager) *Handler {
+	var tmpl *template.Template
+	if tplFS != nil {
+		tmpl = template.Must(template.ParseFS(tplFS, "index.html", "login.html"))
+	}
+	return &Handler{tmpl: tmpl, systemd: sm}
 }
 
 // HandleIndex serves the full HTML page.
 func (h *Handler) HandleIndex(w http.ResponseWriter, r *http.Request) {
-	services, err := systemd.ListServices()
+	services, err := h.systemd.ListServices()
 	if err != nil {
 		log.Printf("ERROR listing services: %v", err)
-		http.Error(w, "Failed to list services: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Failed to list services", http.StatusInternalServerError)
 		return
 	}
 
@@ -48,10 +53,10 @@ func (h *Handler) HandleIndex(w http.ResponseWriter, r *http.Request) {
 
 // HandleServices returns only the table rows (for htmx AJAX refresh).
 func (h *Handler) HandleServices(w http.ResponseWriter, r *http.Request) {
-	services, err := systemd.ListServices()
+	services, err := h.systemd.ListServices()
 	if err != nil {
 		log.Printf("ERROR listing services: %v", err)
-		http.Error(w, "Failed to list services: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Failed to list services", http.StatusInternalServerError)
 		return
 	}
 
@@ -101,21 +106,21 @@ func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 // HandleStart starts a systemd service.
 func (h *Handler) HandleStart(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	err := systemd.StartService(name)
+	err := h.systemd.StartService(name)
 	h.respondWithFlash(w, name, "啟動", err)
 }
 
 // HandleStop stops a systemd service.
 func (h *Handler) HandleStop(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	err := systemd.StopService(name)
+	err := h.systemd.StopService(name)
 	h.respondWithFlash(w, name, "停止", err)
 }
 
 // HandleRestart restarts a systemd service.
 func (h *Handler) HandleRestart(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	err := systemd.RestartService(name)
+	err := h.systemd.RestartService(name)
 	h.respondWithFlash(w, name, "重啟", err)
 }
 
@@ -124,13 +129,13 @@ func (h *Handler) respondWithFlash(w http.ResponseWriter, name, action string, e
 	var flashType, flashMsg string
 	if err != nil {
 		flashType = "error"
-		flashMsg = name + " " + action + "失敗：" + err.Error()
+		flashMsg = name + " " + action + "失敗"
 	} else {
 		flashType = "success"
 		flashMsg = name + " 已成功" + action
 	}
 
-	services, listErr := systemd.ListServices()
+	services, listErr := h.systemd.ListServices()
 	if listErr != nil {
 		log.Printf("ERROR listing services: %v", listErr)
 	}

@@ -35,6 +35,12 @@ func init() {
 	}
 }
 
+// HasDefaultSecret returns true if SESSION_KEY or ADMIN_PASS were not
+// explicitly set via environment variables (i.e. the hardcoded fallbacks are in use).
+func HasDefaultSecret() bool {
+	return os.Getenv("SESSION_KEY") == "" || os.Getenv("ADMIN_PASS") == ""
+}
+
 // Login validates the username and password against configured credentials.
 func Login(username, password string) bool {
 	return username == AdminUser && password == AdminPass

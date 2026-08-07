@@ -6,11 +6,43 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/godbus/dbus/v5"
 )
+
+// ServiceManager defines the interface for interacting with systemd services.
+// This allows mocking in tests.
+type ServiceManager interface {
+	ListServices() ([]Service, error)
+	StartService(name string) error
+	StopService(name string) error
+	RestartService(name string) error
+}
+
+// DefaultManager is the real systemd implementation.
+type DefaultManager struct{}
+
+func (m *DefaultManager) ListServices() ([]Service, error)       { return ListServices() }
+func (m *DefaultManager) StartService(name string) error         { return StartService(name) }
+func (m *DefaultManager) StopService(name string) error          { return StopService(name) }
+func (m *DefaultManager) RestartService(name string) error       { return RestartService(name) }
+
+var _ ServiceManager = (*DefaultManager)(nil)
+
+// validServiceName matches systemd unit names for .service units.
+// Allows: letters, digits, @, :, _, ., -  —  must start with alphanumeric, end with .service
+var validServiceName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9:@_.\-]*\.service$`)
+
+// ValidateServiceName checks whether name is a valid systemd service unit name.
+func ValidateServiceName(name string) error {
+	if !validServiceName.MatchString(name) {
+		return fmt.Errorf("invalid service name: %s", name)
+	}
+	return nil
+}
 
 // Service represents a systemd service unit.
 type Service struct {
@@ -172,6 +204,10 @@ func listViaSystemctl() ([]Service, error) {
 
 // StartService starts a systemd service unit using systemctl.
 func StartService(name string) error {
+	if err := ValidateServiceName(name); err != nil {
+		return err
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -185,6 +221,10 @@ func StartService(name string) error {
 
 // StopService stops a systemd service unit using systemctl.
 func StopService(name string) error {
+	if err := ValidateServiceName(name); err != nil {
+		return err
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -198,6 +238,10 @@ func StopService(name string) error {
 
 // RestartService restarts a systemd service unit using systemctl.
 func RestartService(name string) error {
+	if err := ValidateServiceName(name); err != nil {
+		return err
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

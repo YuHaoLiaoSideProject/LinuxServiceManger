@@ -18,17 +18,16 @@ Feature: 管理員登入系統
     When 我輸入帳號 "admin" 與密碼
     And 我點擊「登入」按鈕
     Then 系統驗證帳號密碼通過
-    And 頁面跳轉至服務列表頁
-    And 系統顯示「登入成功」提示
+    And 頁面導向服務列表頁（SPA 路由切換至 Dashboard）
 
   @smoke @happy-path @p0
   Scenario: 已登入管理員主動登出
     Given 我已登入系統
     And 我在服務列表頁
     When 我點擊「登出」按鈕
-    Then 系統清除當前 session
-    And 頁面跳轉至登入頁
-    And 系統顯示「已登出」提示
+    Then 系統呼叫 POST /api/v1/logout 清除當前 session
+    And 前端 auth store 更新為未登入狀態
+    And 後續任何受保護的 API 呼叫將回傳 401 unauthorized
 
   # ============================================================
   # Error Handling
@@ -39,7 +38,7 @@ Feature: 管理員登入系統
     Given 我到達登入頁面
     When 我輸入帳號 "admin" 與錯誤的密碼
     And 我點擊「登入」按鈕
-    Then 系統拒絕登入
+    Then 系統回傳 401 JSON 回應 `{"error": "invalid credentials"}`
     And 頁面停留在登入頁
     And 系統顯示「帳號或密碼錯誤」提示
 
@@ -48,7 +47,7 @@ Feature: 管理員登入系統
     Given 我到達登入頁面
     When 我輸入不存在的帳號 "nonexistent" 與任意密碼
     And 我點擊「登入」按鈕
-    Then 系統拒絕登入
+    Then 系統回傳 401 JSON 回應 `{"error": "invalid credentials"}`
     And 頁面停留在登入頁
     And 系統顯示「帳號或密碼錯誤」提示
 
@@ -59,13 +58,12 @@ Feature: 管理員登入系統
     Then 系統強制跳轉至登入頁
 
   @error-handling @security @p1
-  Scenario: 閒置逾時自動登出
+  Scenario: 閒置逾時 session 失效後 API 回傳 401
     Given 我已登入系統
-    And 我已閒置超過 30 分鐘
-    When 我嘗試操作任何服務
-    Then 系統自動清除 session
-    And 頁面跳轉至登入頁
-    And 系統顯示「閒置過久，已自動登出」提示
+    And 我已閒置超過 30 分鐘（session MaxAge=1800 已過期）
+    When 我嘗試呼叫任何受保護的 API（如 GET /api/v1/services）
+    Then 伺服器回傳 401 JSON 回應 `{"error": "unauthorized"}`
+    And 前端顯示操作失敗的錯誤提示
 
   # ============================================================
   # Edge Cases
@@ -73,6 +71,7 @@ Feature: 管理員登入系統
 
   @edge-case @security @p1
   Scenario: 連續登入失敗達上限後帳號鎖定
+    # 註：目前尚未實作帳號鎖定機制（無 rate limiting / account lockout）
     Given 我到達登入頁面
     When 我連續 5 次輸入錯誤密碼
     Then 系統鎖定該帳號

@@ -1,24 +1,27 @@
 # 🖥 Linux Service Manager
 
-一套用 Go 打造的輕量級 Web 管理面板，讓你可以透過瀏覽器遠端管理 Linux 上的 systemd 服務。
+一套用 Go + Vue 3 打造的輕量級 Web 管理面板，讓你可以透過瀏覽器遠端管理 Linux 上的 systemd 服務。
 
 [![Go Version](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go)](https://go.dev)
+[![Vue](https://img.shields.io/badge/Vue-3.x-4FC08D?logo=vue.js)](https://vuejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript)](https://www.typescriptlang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## ✨ 功能特色
 
 | 模組 | 功能 |
 |------|------|
-| 🔐 **管理員登入** | 帳號密碼驗證、Cookie-based session、30 分鐘閒置逾時 |
-| 📋 **服務列表** | 即時查詢所有 systemd 服務，含 Load / Active / Sub 狀態 |
-| ▶️ **服務操作** | Start、Stop、Restart，支援二次確認對話框 |
+| 🔐 **管理員登入** | 帳號密碼驗證、Cookie-based session、30 分鐘閒置逾時、HttpOnly |
+| 📋 **服務列表** | 即時查詢所有 systemd 服務，含 Load / Active / Sub 狀態，支援排序欄位 |
+| ▶️ **服務操作** | Start、Stop、Restart，附帶確認對話框防止誤操作 |
 | 🔒 **服務保護** | 僅 `/etc/systemd/system/` 下的自訂服務可操作，系統服務自動鎖定；可透過環境變數解鎖 |
 | 🔍 **搜尋過濾** | 前端即時搜尋，支援分頁（我的服務 / 系統服務） |
-| 📊 **狀態統計** | 總服務數、執行中、失敗數量一目了然 |
-| 🌗 **深色模式** | 支援亮色 / 暗色主題切換，記憶偏好 |
-| 🌐 **雙語介面** | 繁體中文 / English 切換 |
+| 📊 **狀態統計** | 總服務數、執行中、失敗數量一目了然（StatsBar） |
+| 🌗 **深色模式** | 支援亮色 / 暗色主題切換，記憶偏好 (localStorage) |
+| 🌐 **雙語介面** | 繁體中文 / English 切換 (i18n) |
+| 🛎️ **Toast 通知** | 操作結果即時彈出通知（成功 / 失敗） |
 | 📱 **RWD 響應式** | 桌面表格、平板精簡、手機卡片三種佈局 |
-| 🚀 **單檔部署** | 一個不到 15MB 的 binary，`scp` 上傳直接執行，無 runtime 依賴 |
+| 🚀 **單檔部署** | 一個約 15MB 的 binary，內嵌 Vue 3 SPA，`scp` 上傳直接執行，無 runtime 依賴 |
 
 ## 🛠 技術棧
 
@@ -26,21 +29,27 @@
 |------|------|------|
 | 語言 | Go 1.22+ | 後端全部 |
 | Router | [chi v5](https://github.com/go-chi/chi) | HTTP routing + middleware |
-| 模板 | `html/template` | 伺服器端渲染 |
-| 前端互動 | [htmx 2.0](https://htmx.org) | AJAX 請求、局部更新、確認對話框 |
-| 前端樣式 | [PicoCSS](https://picocss.com) | 輕量 classless CSS |
+| 前端框架 | [Vue 3](https://vuejs.org) (Composition API) | SPA 單頁應用 |
+| 前端語言 | TypeScript | 型別安全 |
+| 前端建構 | [Vite](https://vitejs.dev) | 開發伺服器 + 打包 |
+| 狀態管理 | [Pinia](https://pinia.vuejs.org) | Auth store |
+| 路由 | [vue-router](https://router.vuejs.org) | SPA 路由 |
+| HTTP 客戶端 | [axios](https://axios-http.com) | API 請求 |
+| CSS | 自訂 CSS（登入表單沿用 PicoCSS 變數） | 樣式 |
 | systemd | [godbus/dbus5](https://github.com/godbus/dbus) + `systemctl` fallback | D-Bus 操作 systemd |
 | Session | [gorilla/sessions](https://github.com/gorilla/sessions) | Cookie-based session |
-| 建構 | Go embed + Makefile | 內嵌模板與靜態檔 |
+| 部署 | Go `embed` + Makefile | 內嵌 SPA 靜態檔為單一 binary |
 
 ### 架構圖
 
 ```
 ┌──────────────────────────────────────────┐
 │                Browser                    │
-│         (htmx + PicoCSS)                  │
+│         (Vue 3 SPA + 自訂 CSS)            │
 └──────────────┬───────────────────────────┘
                │ HTTP (Cookie Session)
+               │ /api/v1/*  JSON API
+               │ /*         SPA static files
 ┌──────────────▼───────────────────────────┐
 │           Go Binary (單一執行檔)           │
 │                                           │
@@ -50,10 +59,11 @@
 │  └────┬────┘  └──────────┘  └────┬────┘ │
 │       │                          │       │
 │  ┌────▼────┐              ┌──────▼─────┐ │
-│  │ html/   │              │  godbus/   │ │
-│  │template │              │  dbus5     │ │
-│  └─────────┘              └──────┬─────┘ │
-│                                  │       │
+│  │ embed   │              │  godbus/   │ │
+│  │ static/ │              │  dbus5     │ │
+│  │ (Vue    │              └──────┬─────┘ │
+│  │  SPA)   │                     │       │
+│  └─────────┘                     │       │
 └──────────────────────────────────┼───────┘
                                    │ D-Bus
                           ┌────────▼────────┐
@@ -94,7 +104,7 @@ curl -fsSL https://raw.githubusercontent.com/YuHaoLiaoSideProject/LinuxServiceMa
 從 [Release 頁面](https://github.com/YuHaoLiaoSideProject/LinuxServiceManger/releases) 下載對應平台的 binary，直接執行：
 
 ```bash
-# 設定環境變數（可選，未設定會使用預設值）
+# 設定環境變數（SESSION_KEY 和 ADMIN_PASS 必須設定，否則啟動失敗）
 export ADMIN_USER=admin
 export ADMIN_PASS=your_secure_password
 export SESSION_KEY=your_random_session_key
@@ -112,19 +122,29 @@ export PORT=8080
 git clone git@github.com:YuHaoLiaoSideProject/LinuxServiceManger.git
 cd LinuxServiceManger
 
-# 本機編譯
+# 安裝前端依賴並建構 SPA
+make frontend
+
+# 本機編譯（內嵌 SPA）
 make build
 
 # 交叉編譯 Linux amd64
 make linux-build
 
-# 直接執行（開發模式）
-make run
+# 開發模式（後端 + 前端 dev server 並行）
+make dev
 ```
 
 手動編譯：
 
 ```bash
+# 先建構前端
+cd frontend
+npm install
+npm run build
+cd ..
+
+# 編譯 Go（會自動 embed src/static/ 下的 SPA 輸出）
 cd src
 go build -o ../linux-service-manager main.go
 ```
@@ -134,10 +154,12 @@ go build -o ../linux-service-manager main.go
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
 | `ADMIN_USER` | `admin` | 管理員帳號 |
-| `ADMIN_PASS` | `admin123` | 管理員密碼 |
-| `SESSION_KEY` | `linux-service-manager-secret-key-change-me` | Session 加密金鑰，**生產環境請務必更換** |
+| `ADMIN_PASS` | `admin123` | 管理員密碼（**必須設定**，否則啟動拒絕） |
+| `SESSION_KEY` | — | Session 加密金鑰（**必須設定**，否則啟動拒絕） |
 | `PORT` | `8080` | HTTP 監聽埠號 |
 | `UNLOCKED_SERVICES` | (空) | 解鎖指定服務的 glob 模式，逗號分隔（見下方說明） |
+
+> ⚠️ **重要**：`ADMIN_PASS` 和 `SESSION_KEY` 兩個環境變數必須明確設定，使用預設值會導致程式拒絕啟動。
 
 ### 解鎖服務
 
@@ -156,37 +178,88 @@ export UNLOCKED_SERVICES="ssh,nginx,docker,my-*"
 
 ```
 linux-service-manager/
-├── main.go                        # 進入點
-├── go.mod / go.sum                # Go module 依賴
-├── Makefile                       # build / run / cross-compile
-├── deploy.sh                      # 部署腳本
-├── internal/
-│   ├── auth/
-│   │   └── auth.go                # session 管理、登入驗證
-│   ├── handler/
-│   │   └── handler.go             # HTTP handler（頁面 + API）
-│   ├── middleware/
-│   │   └── auth.go                # 認證 middleware
-│   └── systemd/
-│       └── systemd.go             # D-Bus / systemctl 操作 systemd
-├── templates/
-│   ├── index.html                 # 主頁面（服務列表、儀表板）
-│   └── login.html                 # 登入頁面
-├── docs/
-│   ├── bdds/                      # BDD 場景定義（Gherkin）
-│   ├── user-stories/              # User Story 文件
-│   └── development/               # 開發決策文件
-└── test/                          # 測試
+├── src/
+│   ├── main.go                    # 進入點 (Go embed static/)
+│   ├── go.mod / go.sum            # Go module 依賴
+│   ├── internal/
+│   │   ├── auth/
+│   │   │   └── auth.go            # Session 管理、登入驗證
+│   │   ├── handler/
+│   │   │   ├── handler.go         # HTML/htmx 路由（legacy）+ 頁面路由
+│   │   │   ├── handler_test.go    # JSON API 測試
+│   │   │   └── json_handler.go    # JSON API (/api/v1/*) handlers
+│   │   ├── middleware/
+│   │   │   └── auth.go            # 認證 middleware（HTML redirect + JSON 401）
+│   │   └── systemd/
+│   │       └── systemd.go         # D-Bus / systemctl 操作 systemd
+│   ├── templates/
+│   │   ├── index.html             # Legacy htmx 頁面
+│   │   └── login.html             # Legacy 登入頁面
+│   └── static/                    # Vue 3 SPA 建構輸出 (npm run build → embed)
+├── frontend/                      # Vue 3 SPA 原始碼
+│   ├── src/
+│   │   ├── main.ts                # Vue 應用進入點
+│   │   ├── App.vue                # 根元件
+│   │   ├── views/
+│   │   │   ├── LoginView.vue      # 登入頁面
+│   │   │   └── DashboardView.vue  # 儀表板（服務管理）
+│   │   ├── components/
+│   │   │   ├── AppHeader.vue      # 頁首：重新整理、登出、主題/語言切換
+│   │   │   ├── ConfirmModal.vue   # Stop/Restart 確認對話框
+│   │   │   ├── LoginForm.vue      # 登入表單
+│   │   │   ├── ServiceRow.vue     # 單一服務列（含操作按鈕）
+│   │   │   ├── ServiceTable.vue   # 可排序、可篩選的服務表格
+│   │   │   ├── StatsBar.vue       # 統計列：總數 / 執行中 / 失敗
+│   │   │   ├── TabsBar.vue        # 分頁：我的服務 / 系統服務
+│   │   │   ├── ToastContainer.vue # Toast 通知容器
+│   │   │   └── Toolbar.vue        # 搜尋欄
+│   │   ├── composables/
+│   │   │   ├── useI18n.ts         # 繁體中文 / English 翻譯
+│   │   │   ├── useTheme.ts        # 亮色 / 暗色主題
+│   │   │   └── useToast.ts        # Toast 通知狀態
+│   │   ├── stores/
+│   │   │   └── auth.ts            # Pinia 認證 store
+│   │   ├── api/
+│   │   │   └── client.ts          # Axios API 客戶端
+│   │   ├── router/
+│   │   │   └── index.ts           # Vue Router 設定
+│   │   └── types/
+│   │       └── service.ts         # TypeScript 型別定義
+│   └── ...                        # Vite 設定、package.json 等
+├── scripts/
+│   ├── deploy.sh                  # 部署腳本
+│   └── check.sh                   # 檢查腳本
+├── install.sh                     # 一鍵安裝腳本
+├── Makefile                       # build / run / dev / frontend / deploy
+└── docs/
+    ├── bdds/                      # BDD 場景定義（Gherkin）
+    ├── user-stories/              # User Story 文件
+    └── development/               # 開發決策文件
 ```
 
 ## 🔌 API 路由
 
+### JSON API（SPA 使用）
+
+前端 Vue 3 SPA 透過 `/api/v1/` 前綴存取以下端點：
+
 | 方法 | 路徑 | 說明 | 認證 |
 |------|------|------|:----:|
-| `GET` | `/login` | 登入頁面 | ❌ |
-| `POST` | `/login` | 提交登入 | ❌ |
-| `GET` | `/logout` | 登出 | ✅ |
-| `GET` | `/` | 服務列表頁（完整 HTML） | ✅ |
+| `POST` | `/api/v1/login` | 登入（form-urlencoded） | ❌ |
+| `POST` | `/api/v1/logout` | 登出 | ✅ |
+| `GET` | `/api/v1/session` | 檢查 session 狀態 | ❌ |
+| `GET` | `/api/v1/services` | 取得所有服務列表 (JSON) | ✅ |
+| `POST` | `/api/v1/services/{name}/start` | 啟動服務 | ✅ |
+| `POST` | `/api/v1/services/{name}/stop` | 停止服務 | ✅ |
+| `POST` | `/api/v1/services/{name}/restart` | 重啟服務 | ✅ |
+
+### Legacy HTML 路由（htmx）
+
+以下路由為舊版 htmx 模式，仍可使用但非主要開發目標：
+
+| 方法 | 路徑 | 說明 | 認證 |
+|------|------|------|:----:|
+| `GET` | `/htmx` | htmx 服務列表頁 | ✅ |
 | `GET` | `/services` | 服務列表（htmx 局部刷新） | ✅ |
 | `POST` | `/api/services/{name}/start` | 啟動服務 | ✅ |
 | `POST` | `/api/services/{name}/stop` | 停止服務 | ✅ |
@@ -199,7 +272,7 @@ linux-service-manager/
 專案內附 `deploy.sh` 腳本，會自動編譯、停止舊服務、安裝 binary、啟動服務：
 
 ```bash
-sudo ./deploy.sh
+sudo ./scripts/deploy.sh
 ```
 
 > 預設部署至 `/opt/linux-service-manager/`，並假設已有同名 systemd service 在執行。
@@ -261,11 +334,11 @@ server {
 
 | 項目 | 建議 |
 |------|------|
-| **預設帳密** | 務必透過環境變數更換 `ADMIN_USER` 和 `ADMIN_PASS` |
-| **Session Key** | 務必更換 `SESSION_KEY` 為隨機長字串 |
+| **SESSION_KEY** | 必須設定為隨機長字串，程式拒絕使用預設值啟動 |
+| **ADMIN_PASS** | 必須更換為強密碼，程式拒絕使用預設值啟動 |
 | **HTTPS** | 生產環境請搭配 reverse proxy 啟用 HTTPS |
+| **Session** | Cookie 設為 HttpOnly，30 分鐘閒置自動逾時 |
 | **權限** | 避免以 root 直接執行，可考慮使用 `sudo` 或 polkit 設定 |
-| **防護** | 登入頁面有簡易的帳號鎖定機制（連續失敗） |
 
 ## 📖 相關文件
 

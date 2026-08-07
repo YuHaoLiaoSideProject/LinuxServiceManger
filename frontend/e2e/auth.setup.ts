@@ -1,0 +1,182 @@
+/**
+ * Shared authentication helper for E2E tests.
+ *
+ * Route note: The dashboard route path is `/` (name: 'dashboard'),
+ * not `/dashboard`. After login, the app redirects to `/`.
+ *
+ * IMPORTANT: Always navigate to `/` (not `/login`) because Vite's proxy
+ * forwards `/login` to localhost:8080 (Pi agent).
+ */
+
+import type { Page } from '@playwright/test'
+
+export const VALID_USER = 'admin'
+export const VALID_PASS = 'admin123'
+
+// ── Mock Data ─────────────────────────────────────────────────────
+
+export const MOCK_SERVICES = [
+  { name: 'nginx.service', load: 'loaded', active: 'active', sub: 'running', locked: false },
+  { name: 'myapp.service', load: 'loaded', active: 'inactive', sub: 'dead', locked: false },
+  { name: 'crash.service', load: 'loaded', active: 'failed', sub: 'failed', locked: false },
+  { name: 'sshd.service', load: 'loaded', active: 'active', sub: 'running', locked: true },
+  { name: 'bus-name@.service', load: 'loaded', active: 'active', sub: 'running', locked: false },
+]
+
+// ── API Mock Setup ────────────────────────────────────────────────
+
+export interface MockOptions {
+  /** Whether GET /api/v1/session returns authenticated (dynamic: updates on login/logout) */
+  authenticated?: boolean
+  /** Service list to return from GET /api/v1/services */
+  services?: typeof MOCK_SERVICES
+  /** Whether to include service action mocks (start/stop/restart) */
+  includeActions?: boolean
+}
+
+/**
+ * Set up all API mocks on the page.
+ * Session state is dynamic: after a successful login POST, session returns
+ * authenticated; after logout, session returns unauthenticated.
+ */
+export async function setupApiMocks(page: Page, options: MockOptions = {}) {
+  const { authenticated = false, services = MOCK_SERVICES, includeActions = false } = options
+
+  // Mutable state so session response can change after login/logout
+  let loggedIn = authenticated
+
+  // Session check (called by authStore.init() on app mount)
+  await page.route('**/api/v1/session', async (route) => {
+    await route.fulfill({
+      status: loggedIn ? 200 : 401,
+      contentType: 'application/json',
+      body: JSON.stringify(
+        loggedIn
+          ? { authenticated: true, username: VALID_USER }
+          : { error: 'unauthorized' },
+      ),
+    })
+  })
+
+  // Login
+  await page.route('**/api/v1/login', async (route) => {
+    const body = route.request().postData() || ''
+    if (
+      body.includes(`username=${encodeURIComponent(VALID_USER)}`) &&
+      body.includes(`password=${encodeURIComponent(VALID_PASS)}`)
+    ) {
+      loggedIn = true
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ username: VALID_USER, message: 'Login successful' }),
+      })
+    } else {
+      await route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'invalid credentials' }),
+      })
+    }
+  })
+
+  // Logout
+  await page.route('**/api/v1/logout', async (route) => {
+    loggedIn = false
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ message: 'logged out' }),
+    })
+  })
+
+  // Services list
+  await page.route('**/api/v1/services', async (route) => {
+    await route.fulfill({
+      status: loggedIn ? 200 : 401,
+      contentType: 'application/json',
+      body: JSON.stringify(loggedIn ? services : { error: 'unauthorized' }),
+    })
+  })
+
+  if (includeActions) {
+    // Service actions (start/stop/restart)
+    await page.route('**/api/v1/services/*/start', async (route) => {
+      const name = route.request().url().match(/\/services\/(.+?)\/start/)?.[1] || 'unknown'
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: `${name} started` }),
+      })
+    })
+
+    await page.route('**/api/v1/services/*/stop', async (route) => {
+      const name = route.request().url().match(/\/services\/(.+?)\/stop/)?.[1] || 'unknown'
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: `${name} stopped` }),
+      })
+    })
+
+    await page.route('**/api/v1/services/*/restart', async (route) => {
+      const name = route.request().url().match(/\/services\/(.+?)\/restart/)?.[1] || 'unknown'
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: `${name} restarted` }),
+      })
+    })
+  }
+}
+
+// ── Navigation helpers ────────────────────────────────────────────
+
+/**
+ * Navigate to the app and log in from an unauthenticated state.
+ * After login, URL will be http://localhost:5199/ (the dashboard route).
+ */
+export async function loginViaUI(page: Page) {
+  await page.goto('/')
+  await page.waitForURL((url) => url.pathname === '/login', { timeout: 10_000 })
+  await page.waitForSelector('.login-form', { timeout: 10_000 })
+
+  await page.fill('input[type="text"]', VALID_USER)
+  await page.fill('input[type="password"]', VALID_PASS)
+  await page.click('button[type="submit"]')
+
+  await page.waitForURL((url) => url.pathname === '/', { timeout: 10_000 })
+  await page.waitForSelector('.app-header', { timeout: 10_000 })
+}
+
+/**
+ * Navigate directly to the dashboard when already authenticated.
+ */
+export async function gotoDashboard(page: Page) {
+  await page.goto('/')
+  await page.waitForURL((url) => url.pathname === '/', { timeout: 10_000 })
+  await page.waitForSelector('.app-header', { timeout: 10_000 })
+}
+
+// ── Selector helpers ──────────────────────────────────────────────
+
+/**
+ * Get a service row by name and find a specific action button.
+ * Uses exact text matching to avoid "Start" matching "Restart".
+ */
+export function getServiceRow(page: Page, serviceName: string) {
+  return page.locator('#service-table-body tr', { hasText: serviceName })
+}
+
+/**
+ * Click a specific action button on a service row.
+ * Uses exact text matching via getByRole or getByLabel.
+ */
+export function getActionButton(row: ReturnType<Page['locator']>, action: 'start' | 'stop' | 'restart') {
+  const labels = {
+    start: '▶',
+    stop: '⏹',
+    restart: '🔄',
+  }
+  return row.locator('button').filter({ hasText: labels[action] })
+}

@@ -137,14 +137,13 @@ func (h *Handler) respondWithFlash(w http.ResponseWriter, name, action string, e
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-	// Flash message via htmx OOB swap
-	flashHTML := `<div id="flash-container" hx-swap-oob="true">
-  <div class="flash flash-` + flashType + `">` + flashMsg + `</div>
-</div>
-`
-	w.Write([]byte(flashHTML))
-
+	// Write rows first, then flash OOB.
+	// Order matters: if the OOB div comes first, whitespace between it and
+	// the <tr> elements can leak into <tbody> and break table layout.
 	h.tmpl.ExecuteTemplate(w, "rows", map[string]interface{}{
 		"Services": services,
 	})
+
+	flashHTML := `<div id="flash-container" hx-swap-oob="true"><div class="flash flash-` + flashType + `">` + flashMsg + `</div></div>`
+	w.Write([]byte(flashHTML))
 }

@@ -1,6 +1,9 @@
 {{define "activeClass"}}
 {{- if eq . "active" -}}status-active
 {{- else if eq . "running" -}}status-active
+{{- else if eq . "activating" -}}status-active
+{{- else if eq . "deactivating" -}}status-active
+{{- else if eq . "reloading" -}}status-active
 {{- else if eq . "inactive" -}}status-inactive
 {{- else if eq . "dead" -}}status-inactive
 {{- else if eq . "failed" -}}status-failed
@@ -11,6 +14,9 @@
 {{define "statusDot"}}
 {{- if eq . "active" -}}<span class="status-dot dot-active" aria-hidden="true"></span>
 {{- else if eq . "running" -}}<span class="status-dot dot-active" aria-hidden="true"></span>
+{{- else if eq . "activating" -}}<span class="status-dot dot-active" aria-hidden="true"></span>
+{{- else if eq . "deactivating" -}}<span class="status-dot dot-active" aria-hidden="true"></span>
+{{- else if eq . "reloading" -}}<span class="status-dot dot-active" aria-hidden="true"></span>
 {{- else if eq . "inactive" -}}<span class="status-dot dot-inactive" aria-hidden="true"></span>
 {{- else if eq . "dead" -}}<span class="status-dot dot-inactive" aria-hidden="true"></span>
 {{- else if eq . "failed" -}}<span class="status-dot dot-failed" aria-hidden="true"></span>
@@ -1641,7 +1647,7 @@
       <span class="btn-label">Start</span>
     </button>
     {{end}}
-    {{if or (eq .Active "active") (eq .Active "running")}}
+    {{if or (eq .Active "active") (eq .Active "running") (eq .Active "activating") (eq .Active "deactivating") (eq .Active "reloading")}}
     <button class="outline secondary"
             hx-post="/api/services/{{.Name}}/stop"
             hx-target="#service-table-body"

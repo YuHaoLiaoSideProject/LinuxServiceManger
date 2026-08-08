@@ -2,9 +2,9 @@
 
 一套用 Go + Vue 3 打造的輕量級 Web 管理面板，讓你可以透過瀏覽器遠端管理 Linux 上的 systemd 服務。
 
-[![Go Version](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go)](https://go.dev)
+[![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go)](https://go.dev)
 [![Vue](https://img.shields.io/badge/Vue-3.x-4FC08D?logo=vue.js)](https://vuejs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript)](https://www.typescriptlang.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6?logo=typescript)](https://www.typescriptlang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ## ✨ 功能特色
@@ -27,7 +27,7 @@
 
 | 層級 | 技術 | 用途 |
 |------|------|------|
-| 語言 | Go 1.22+ | 後端全部 |
+| 語言 | Go 1.24+ | 後端全部 |
 | Router | [chi v5](https://github.com/go-chi/chi) | HTTP routing + middleware |
 | 前端框架 | [Vue 3](https://vuejs.org) (Composition API) | SPA 單頁應用 |
 | 前端語言 | TypeScript | 型別安全 |
@@ -39,6 +39,7 @@
 | systemd | [godbus/dbus5](https://github.com/godbus/dbus) + `systemctl` fallback | D-Bus 操作 systemd |
 | Session | [gorilla/sessions](https://github.com/gorilla/sessions) | Cookie-based session |
 | 部署 | Go `embed` + Makefile | 內嵌 SPA 靜態檔為單一 binary |
+| 測試 | [vitest](https://vitest.dev) + [@vue/test-utils](https://test-utils.vuejs.org) | 前端單元測試 |
 
 ### 架構圖
 
@@ -128,11 +129,23 @@ make frontend
 # 本機編譯（內嵌 SPA）
 make build
 
+# 本機靜態編譯（無 CGO，更可攜）
+make static
+
 # 交叉編譯 Linux amd64
 make linux-build
 
-# 開發模式（後端 + 前端 dev server 並行）
-make dev
+# 交叉編譯 Linux amd64（靜態，最可攜）
+make linux-static
+
+# 執行測試
+make test
+
+# 開發模式：啟動後端
+make dev-backend
+
+# 開發模式：啟動前端 dev server（另開終端）
+make dev-frontend
 ```
 
 手動編譯：
@@ -183,15 +196,18 @@ linux-service-manager/
 │   ├── go.mod / go.sum            # Go module 依賴
 │   ├── internal/
 │   │   ├── auth/
-│   │   │   └── auth.go            # Session 管理、登入驗證
+│   │   │   ├── auth.go            # Session 管理、登入驗證
+│   │   │   └── auth_test.go       # Session 測試
 │   │   ├── handler/
 │   │   │   ├── handler.go         # HTML/htmx 路由（legacy）+ 頁面路由
 │   │   │   ├── handler_test.go    # JSON API 測試
 │   │   │   └── json_handler.go    # JSON API (/api/v1/*) handlers
 │   │   ├── middleware/
-│   │   │   └── auth.go            # 認證 middleware（HTML redirect + JSON 401）
+│   │   │   ├── auth.go            # 認證 middleware（HTML redirect + JSON 401）
+│   │   │   └── auth_test.go       # middleware 測試
 │   │   └── systemd/
-│   │       └── systemd.go         # D-Bus / systemctl 操作 systemd
+│   │       ├── systemd.go         # D-Bus / systemctl 操作 systemd
+│   │       └── systemd_test.go    # systemd 測試
 │   ├── templates/
 │   │   ├── index.html             # Legacy htmx 頁面
 │   │   └── login.html             # Legacy 登入頁面
@@ -223,8 +239,9 @@ linux-service-manager/
 │   │   │   └── client.ts          # Axios API 客戶端
 │   │   ├── router/
 │   │   │   └── index.ts           # Vue Router 設定
-│   │   └── types/
-│   │       └── service.ts         # TypeScript 型別定義
+│   │   ├── types/
+│   │   │   └── service.ts         # TypeScript 型別定義
+│   │   └── __tests__/             # 元件與 composable 單元測試
 │   └── ...                        # Vite 設定、package.json 等
 ├── scripts/
 │   ├── deploy.sh                  # 部署腳本
@@ -344,8 +361,11 @@ server {
 
 - [User Story: 管理員登入系統](docs/user-stories/001-管理員登入系統.md)
 - [User Story: 管理員管理 systemd 服務](docs/user-stories/002-管理員管理systemd服務.md)
+- [User Story: 部署安全性](docs/user-stories/003-部署安全性.md)
 - [BDD: 管理員登入系統](docs/bdds/001-管理員登入系統.feature)
 - [BDD: 管理員管理 systemd 服務](docs/bdds/002-管理員管理systemd服務.feature)
+- [BDD: 部署安全性](docs/bdds/003-部署安全性.feature)
+- [測試計畫](docs/test-plans/)
 - [開發方案決策文件](docs/development/001-linux-service-manager.md)
 
 ## 📝 License

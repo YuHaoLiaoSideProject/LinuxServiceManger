@@ -50,6 +50,7 @@ func main() {
 		r.Post("/api/v1/services/{name}/restart", h.HandleRestartJSON)
 		r.Post("/api/v1/services/{name}/enable", h.HandleEnableJSON)
 		r.Post("/api/v1/services/{name}/disable", h.HandleDisableJSON)
+		r.Get("/api/v1/services/{name}/logs/ws", h.HandleServiceLogsWS)
 	})
 
 	// HTML routes (legacy htmx) — protected

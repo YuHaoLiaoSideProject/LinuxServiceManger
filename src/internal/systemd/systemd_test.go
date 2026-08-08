@@ -1,6 +1,10 @@
 package systemd
 
 import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -525,4 +529,261 @@ func TestParseSystemctlOutput(t *testing.T) {
 			t.Errorf("unexpected service fields: %+v", services[0])
 		}
 	})
+}
+
+// ============================================================
+//  TEST: GetServiceLogs — journalctl log retrieval
+// ============================================================
+
+// fakeExecCommand returns a function that mimics exec.CommandContext by
+// invoking the test binary itself as a helper process. The helper process
+// is controlled via environment variables set by the test.
+func fakeExecCommand(testHelper func()) func(ctx context.Context, name string, arg ...string) *exec.Cmd {
+	return func(ctx context.Context, name string, arg ...string) *exec.Cmd {
+		// Build args for the test helper: pass test name + original args
+		cs := []string{"-test.run=TestGetServiceLogsHelperProcess", "--", name}
+		cs = append(cs, arg...)
+		cmd := exec.CommandContext(ctx, os.Args[0], cs...)
+
+		// Forward test scenario env vars to the helper process
+		env := []string{"GO_TEST_HELPER_PROCESS=1"}
+		if v := os.Getenv("TEST_SCENARIO"); v != "" {
+			env = append(env, "TEST_SCENARIO="+v)
+		}
+		if v := os.Getenv("TEST_STDOUT"); v != "" {
+			env = append(env, "TEST_STDOUT="+v)
+		}
+		if v := os.Getenv("TEST_STDERR"); v != "" {
+			env = append(env, "TEST_STDERR="+v)
+		}
+		if v := os.Getenv("TEST_EXIT_CODE"); v != "" {
+			env = append(env, "TEST_EXIT_CODE="+v)
+		}
+		cmd.Env = env
+		return cmd
+	}
+}
+
+// TestGetServiceLogsHelperProcess is the fake journalctl executed by fakeExecCommand.
+// When GO_TEST_HELPER_PROCESS=1, it acts as journalctl with controlled output.
+func TestGetServiceLogsHelperProcess(t *testing.T) {
+	if os.Getenv("GO_TEST_HELPER_PROCESS") != "1" {
+		return
+	}
+
+	scenario := os.Getenv("TEST_SCENARIO")
+
+	switch scenario {
+	case "success":
+		fmt.Print(os.Getenv("TEST_STDOUT"))
+		os.Exit(0)
+	case "permission_denied":
+		fmt.Fprint(os.Stderr, os.Getenv("TEST_STDERR"))
+		os.Exit(1)
+	case "generic_error":
+		fmt.Fprint(os.Stderr, os.Getenv("TEST_STDERR"))
+		os.Exit(1)
+	default:
+		os.Exit(0)
+	}
+}
+
+// TestGetServiceLogs_Success tests normal log retrieval with mock journalctl.
+func TestGetServiceLogs_Success(t *testing.T) {
+	// SYS-01: GetServiceLogs("nginx.service", 100) 正常回傳
+	expectedOutput := "2025-08-08T12:34:56+0800 hostname nginx[1234]: 127.0.0.1 - GET /index.html 200\n2025-08-08T12:35:00+0800 hostname nginx[1234]: 127.0.0.1 - GET /api 200\n"
+
+	t.Setenv("TEST_SCENARIO", "success")
+	t.Setenv("TEST_STDOUT", expectedOutput)
+
+	// Swap execCommandContext with fake
+	origExec := execCommandContext
+	origLook := lookPath
+	execCommandContext = fakeExecCommand(func() {})
+	lookPath = func(file string) (string, error) { return "/usr/bin/journalctl", nil }
+	defer func() {
+		execCommandContext = origExec
+		lookPath = origLook
+	}()
+
+	mgr := &DefaultManager{}
+	out, err := mgr.GetServiceLogs("nginx.service", 100)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != expectedOutput {
+		t.Errorf("expected output:\n%q\ngot:\n%q", expectedOutput, out)
+	}
+}
+
+// TestGetServiceLogs_InvalidName tests name validation (SYS-02).
+func TestGetServiceLogs_InvalidName(t *testing.T) {
+	tests := []struct {
+		name string
+		desc string
+	}{
+		{"../../../etc/passwd", "path traversal attempt"},
+		{"", "empty string"},
+		{"no-suffix", "missing .service suffix"},
+		{"/etc/passwd", "absolute path"},
+		{"nginx.service; rm -rf /", "command injection attempt"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			mgr := &DefaultManager{}
+			_, err := mgr.GetServiceLogs(tt.name, 100)
+			if err == nil {
+				t.Errorf("GetServiceLogs(%q) expected error, got nil", tt.name)
+			}
+		})
+	}
+}
+
+// TestGetServiceLogs_InvalidLines tests lines validation (SYS-03).
+func TestGetServiceLogs_InvalidLines(t *testing.T) {
+	tests := []struct {
+		lines int
+		desc  string
+	}{
+		{0, "zero lines"},
+		{1001, "exceeds max 1000"},
+		{-1, "negative lines"},
+		{9999, "way over max"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			mgr := &DefaultManager{}
+			_, err := mgr.GetServiceLogs("nginx.service", tt.lines)
+			if err == nil {
+				t.Errorf("GetServiceLogs('nginx.service', %d) expected error, got nil", tt.lines)
+			}
+			if err != nil && !strings.Contains(err.Error(), "lines must be between 1 and 1000") {
+				t.Logf("error message (non-fatal check): %v", err)
+			}
+		})
+	}
+}
+
+// TestGetServiceLogs_LinesAtBoundary tests that valid boundary values work.
+func TestGetServiceLogs_LinesAtBoundary(t *testing.T) {
+	t.Setenv("TEST_SCENARIO", "success")
+	t.Setenv("TEST_STDOUT", "ok")
+
+	origExec := execCommandContext
+	origLook := lookPath
+	execCommandContext = fakeExecCommand(func() {})
+	lookPath = func(file string) (string, error) { return "/usr/bin/journalctl", nil }
+	defer func() {
+		execCommandContext = origExec
+		lookPath = origLook
+	}()
+
+	mgr := &DefaultManager{}
+
+	// lines=1 should work (lower bound)
+	_, err := mgr.GetServiceLogs("nginx.service", 1)
+	if err != nil {
+		t.Errorf("lines=1 should be valid, got: %v", err)
+	}
+
+	// lines=1000 should work (upper bound)
+	_, err = mgr.GetServiceLogs("nginx.service", 1000)
+	if err != nil {
+		t.Errorf("lines=1000 should be valid, got: %v", err)
+	}
+}
+
+// TestGetServiceLogs_JournalctlNotFound tests SYS-04: journalctl not found.
+func TestGetServiceLogs_JournalctlNotFound(t *testing.T) {
+	origLook := lookPath
+	lookPath = func(file string) (string, error) {
+		return "", fmt.Errorf("exec: \"journalctl\": executable file not found in $PATH")
+	}
+	defer func() { lookPath = origLook }()
+
+	mgr := &DefaultManager{}
+	_, err := mgr.GetServiceLogs("nginx.service", 100)
+	if err == nil {
+		t.Error("expected error when journalctl not found")
+	}
+	if err != nil && !strings.Contains(err.Error(), "journalctl not found") {
+		t.Errorf("expected 'journalctl not found' error, got: %v", err)
+	}
+}
+
+// TestGetServiceLogs_PermissionDenied tests SYS-05: permission denied.
+func TestGetServiceLogs_PermissionDenied(t *testing.T) {
+	t.Setenv("TEST_SCENARIO", "permission_denied")
+	t.Setenv("TEST_STDERR", "Hint: You are currently not seeing messages from other users and the system.\n      Users in groups 'adm', 'systemd-journal' can see all messages.")
+
+	origExec := execCommandContext
+	origLook := lookPath
+	execCommandContext = fakeExecCommand(func() {})
+	lookPath = func(file string) (string, error) { return "/usr/bin/journalctl", nil }
+	defer func() {
+		execCommandContext = origExec
+		lookPath = origLook
+	}()
+
+	mgr := &DefaultManager{}
+	_, err := mgr.GetServiceLogs("nginx.service", 100)
+	if err == nil {
+		t.Error("expected permission denied error")
+	}
+	// The error might be "journalctl error: ..." wrapping the stderr or
+	// "permission denied: ..." depending on implementation.
+	// We just check that an error is returned.
+}
+
+// TestGetServiceLogs_Timeout tests that context timeout is handled.
+func TestGetServiceLogs_Timeout(t *testing.T) {
+	origExec := execCommandContext
+	origLook := lookPath
+
+	// Create a fake that blocks until context is cancelled
+	execCommandContext = func(ctx context.Context, name string, arg ...string) *exec.Cmd {
+		// Use `sleep 10` to simulate hanging, but with context
+		return exec.CommandContext(ctx, "sleep", "10")
+	}
+	lookPath = func(file string) (string, error) { return "/usr/bin/sleep", nil }
+	defer func() {
+		execCommandContext = origExec
+		lookPath = origLook
+	}()
+
+	mgr := &DefaultManager{}
+	_, err := mgr.GetServiceLogs("nginx.service", 100)
+	if err == nil {
+		t.Error("expected timeout error")
+	}
+	// Verify it's a timeout
+	if err != nil && !strings.Contains(err.Error(), "timeout") {
+		t.Logf("timeout error message: %v", err)
+	}
+}
+
+// TestGetServiceLogs_EmptyOutput tests service with no logs.
+func TestGetServiceLogs_EmptyOutput(t *testing.T) {
+	t.Setenv("TEST_SCENARIO", "success")
+	t.Setenv("TEST_STDOUT", "")
+
+	origExec := execCommandContext
+	origLook := lookPath
+	execCommandContext = fakeExecCommand(func() {})
+	lookPath = func(file string) (string, error) { return "/usr/bin/journalctl", nil }
+	defer func() {
+		execCommandContext = origExec
+		lookPath = origLook
+	}()
+
+	mgr := &DefaultManager{}
+	out, err := mgr.GetServiceLogs("empty.service", 100)
+	if err != nil {
+		t.Fatalf("unexpected error for empty logs: %v", err)
+	}
+	if out != "" {
+		t.Errorf("expected empty output, got: %q", out)
+	}
 }

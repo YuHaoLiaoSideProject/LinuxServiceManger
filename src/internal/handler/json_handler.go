@@ -1,13 +1,20 @@
 package handler
 
 import (
+	"bufio"
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os/exec"
+	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/gorilla/websocket"
 
 	"linux-service-manager/internal/auth"
+	"linux-service-manager/internal/systemd"
 )
 
 // ============================================================
@@ -203,4 +210,109 @@ func (h *Handler) HandleDisableJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, messageJSON{Message: name + " disabled"})
+}
+
+// ============================================================
+//  WebSocket log streaming (journalctl -f)
+// ============================================================
+
+// wsExecCommandContext and wsLookPath are package-level variables to allow mocking in tests.
+var wsExecCommandContext = exec.CommandContext
+var wsLookPath = exec.LookPath
+
+// wsUpgrader is the WebSocket upgrader for the log streaming endpoint.
+var wsUpgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
+// HandleServiceLogsWS handles WebSocket connections for streaming service logs.
+// It runs journalctl -f and pipes stdout line-by-line to the WebSocket client.
+func (h *Handler) HandleServiceLogsWS(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+
+	// 1. Parse lines query param (default 100, max 1000)
+	linesStr := r.URL.Query().Get("lines")
+	lines := 100
+	if linesStr != "" {
+		var err error
+		lines, err = strconv.Atoi(linesStr)
+		if err != nil || lines < 1 || lines > 1000 {
+			writeJSON(w, http.StatusBadRequest, messageJSON{
+				Error: "lines must be between 1 and 1000",
+			})
+			return
+		}
+	}
+
+	// 2. Validate service name
+	if err := systemd.ValidateServiceName(name); err != nil {
+		writeJSON(w, http.StatusBadRequest, messageJSON{Error: err.Error()})
+		return
+	}
+
+	// 3. Check journalctl exists
+	if _, err := wsLookPath("journalctl"); err != nil {
+		writeJSON(w, http.StatusInternalServerError, messageJSON{
+			Error: "journalctl not found: system does not support journalctl",
+		})
+		return
+	}
+
+	// 4. Upgrade HTTP → WebSocket
+	conn, err := wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("ERROR upgrading WebSocket for %s: %v", name, err)
+		return
+	}
+	defer conn.Close()
+
+	// 5. Start journalctl -f (follow mode)
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	cmd := wsExecCommandContext(ctx,
+		"journalctl", "-u", name,
+		"-n", strconv.Itoa(lines),
+		"-f",
+		"--no-pager",
+		"-o", "short-iso",
+	)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Printf("ERROR creating stdout pipe for %s: %v", name, err)
+		conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"failed to start journalctl"}`))
+		return
+	}
+
+	if err := cmd.Start(); err != nil {
+		log.Printf("ERROR starting journalctl for %s: %v", name, err)
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "permission denied") {
+			conn.WriteMessage(websocket.TextMessage,
+				[]byte(`{"error":"permission denied: user lacks journalctl access"}`))
+		} else {
+			conn.WriteMessage(websocket.TextMessage,
+				[]byte(`{"error":"`+errMsg+`"}`))
+		}
+		return
+	}
+
+	// 6. Read journalctl stdout line by line, push via WebSocket
+	scanner := bufio.NewScanner(stdout)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if err := conn.WriteMessage(websocket.TextMessage, line); err != nil {
+			// Client disconnected → break loop → cancel ctx → kill journalctl
+			log.Printf("INFO WebSocket write error for %s (client disconnected): %v", name, err)
+			break
+		}
+	}
+
+	// 7. Wait for journalctl to exit
+	if err := cmd.Wait(); err != nil {
+		if ctx.Err() != context.Canceled {
+			log.Printf("ERROR journalctl for %s exited: %v", name, err)
+		}
+	}
 }

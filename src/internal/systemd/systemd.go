@@ -7,11 +7,17 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/godbus/dbus/v5"
 )
+
+// execCommandContext and lookPath are package-level variables to allow
+// mocking in tests. They default to the standard library functions.
+var execCommandContext = exec.CommandContext
+var lookPath = exec.LookPath
 
 // ServiceManager defines the interface for interacting with systemd services.
 // This allows mocking in tests.
@@ -22,6 +28,7 @@ type ServiceManager interface {
 	RestartService(name string) error
 	EnableService(name string) error
 	DisableService(name string) error
+	GetServiceLogs(name string, lines int) (string, error)
 }
 
 // DefaultManager is the real systemd implementation.
@@ -33,6 +40,9 @@ func (m *DefaultManager) StopService(name string) error          { return StopSe
 func (m *DefaultManager) RestartService(name string) error       { return RestartService(name) }
 func (m *DefaultManager) EnableService(name string) error        { return EnableService(name) }
 func (m *DefaultManager) DisableService(name string) error       { return DisableService(name) }
+func (m *DefaultManager) GetServiceLogs(name string, lines int) (string, error) {
+	return GetServiceLogs(name, lines)
+}
 
 var _ ServiceManager = (*DefaultManager)(nil)
 
@@ -454,4 +464,49 @@ func isUnlockedByConfig(name string) bool {
 	}
 
 	return false
+}
+
+// GetServiceLogs retrieves the last N lines of a service's journald logs.
+// It executes journalctl with the given service name and line count.
+func GetServiceLogs(name string, lines int) (string, error) {
+	// 1. Validate service name
+	if err := ValidateServiceName(name); err != nil {
+		return "", err
+	}
+
+	// 2. Validate lines range
+	if lines < 1 || lines > 1000 {
+		return "", fmt.Errorf("lines must be between 1 and 1000")
+	}
+
+	// 3. Check journalctl exists
+	if _, err := lookPath("journalctl"); err != nil {
+		return "", fmt.Errorf("journalctl not found: system does not support journalctl")
+	}
+
+	// 4. Execute journalctl
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := execCommandContext(ctx,
+		"journalctl", "-u", name,
+		"-n", strconv.Itoa(lines),
+		"--no-pager",
+		"-o", "short-iso",
+	)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("timeout reading logs")
+		}
+		stderr := strings.TrimSpace(string(out))
+		if strings.Contains(stderr, "permission denied") ||
+			strings.Contains(stderr, "not authorized") {
+			return "", fmt.Errorf("permission denied: user lacks journalctl access")
+		}
+		return "", fmt.Errorf("journalctl error: %s", stderr)
+	}
+
+	return string(out), nil
 }

@@ -1,8 +1,8 @@
 # journalctl 日誌檢視器 — 開發規格（WebSocket 版）
 
 > **對應 Roadmap**：Phase 1 — `docs/development/002-expansion-roadmap.md`
-> **技術決策**：`docs/tech-decision-journalctl-log-viewer-2026-08-08.md`（方案 B：WebSocket + journalctl -f）
-> **前次決策**：`docs/tech-decision-journalctl-log-viewer-2025-08-08.md`（方案 A：HTTP Polling，已廢棄）
+> **技術決策**：`docs/tech-decisions/005-journalctl-log-viewer.md`（方案 B：WebSocket + journalctl -f）
+> **前次決策**：已合併至上方文件附錄（方案 A：HTTP Polling，已廢棄）
 > **操作流程**：`docs/interaction-flows/005-journalctl-log-viewer.md`
 > **BDD**：`docs/bdds/005-journalctl-log-viewer.feature`
 > **測試計畫**：`docs/test-plans/005-journalctl-log-viewer測試計畫.md`

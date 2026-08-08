@@ -22,7 +22,10 @@ const reconnecting = ref(false)
 const preRef = ref<HTMLPreElement | null>(null)
 
 let ws: WebSocket | null = null
+const MAX_LOG_LINES = 5000
 let intentionalClose = false
+let reconnectAttempts = 0
+const MAX_RECONNECT_DELAY = 30000
 
 // ── Computed: search filtering ──
 
@@ -65,23 +68,31 @@ function connect() {
       isLoading.value = false
       isConnected.value = true
       reconnecting.value = false
+      reconnectAttempts = 0
     }
 
     ws.onmessage = (event: { data: string }) => {
       const text = event.data
       // Check if it's an error message (JSON)
-      try {
-        const parsed = JSON.parse(text)
-        if (parsed.error) {
-          error.value = parsed.error
-          isLoading.value = false
-          return
+      if (text.startsWith('{') && text.includes('"error"')) {
+        try {
+          const parsed = JSON.parse(text)
+          if (parsed.error) {
+            error.value = parsed.error
+            isLoading.value = false
+            return
+          }
+        } catch {
+          // Not valid JSON, treat as regular log line
         }
-      } catch {
-        // Not JSON, it's a regular log line
       }
 
       logLines.value.push({ text, match: false })
+
+      // Trim to memory cap
+      if (logLines.value.length > MAX_LOG_LINES) {
+        logLines.value = logLines.value.slice(-MAX_LOG_LINES)
+      }
 
       // Auto-scroll to bottom
       nextTick(() => {
@@ -98,9 +109,11 @@ function connect() {
       // Reconnect if not intentional
       if (!intentionalClose && props.visible && props.serviceName) {
         reconnecting.value = true
+        reconnectAttempts++
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY)
         setTimeout(() => {
           connect()
-        }, 1000)
+        }, delay)
       }
     }
 
@@ -195,26 +208,24 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-if="visible" class="drawer-overlay" @click.self="handleClose">
-    <div class="log-drawer">
+  <Teleport to="body">
+    <div v-if="visible" class="drawer-overlay" @click.self="handleClose">
+      <div class="log-drawer" :class="{ 'drawer--open': visible }">
       <!-- Header -->
       <div class="drawer-header">
         <h2 class="drawer-title">
-          📋 {{ serviceName }} — 日誌
+          📋 {{ serviceName }} Logs
         </h2>
         <div class="drawer-controls">
-          <select v-model="lineCount" class="line-count-select">
-            <option value="50">50 行</option>
-            <option value="100">100 行</option>
-            <option value="200">200 行</option>
-            <option value="500">500 行</option>
-          </select>
+          <span class="connection-status" :class="{ connected: isConnected }" aria-live="polite">
+            {{ isConnected ? '● LIVE' : (reconnecting ? '⟳ 重連中' : '○ 離線') }}
+          </span>
           <button class="close-btn" @click="handleClose" aria-label="關閉日誌檢視器">✕</button>
         </div>
       </div>
 
       <!-- Search bar -->
-      <div v-if="isConnected && logLines.length > 0" class="search-bar">
+      <div v-if="logLines.length > 0" class="search-bar">
         <input
           v-model="searchQuery"
           class="search-input"
@@ -245,7 +256,7 @@ onUnmounted(() => {
         </div>
 
         <!-- Empty state -->
-        <div v-else-if="isConnected && logLines.length === 0" class="empty-state">
+        <div v-else-if="!isLoading && !error && logLines.length === 0" class="empty-state">
           📭 此服務尚無日誌記錄
         </div>
 
@@ -254,10 +265,25 @@ onUnmounted(() => {
           v-else
           ref="preRef"
           class="log-content"
-        ><code><template v-for="(line, idx) in filteredLines" :key="idx"><span :class="{ highlight: line.match, dim: searchQuery && !line.match }">{{ line.text }}</span></template></code></pre>
+        ><code><span
+  v-for="(line, idx) in filteredLines"
+  :key="idx"
+  :class="{ highlight: line.match, dim: searchQuery && !line.match }"
+>{{ line.text }}
+</span></code></pre>
+      </div>
+      <div class="drawer-footer">
+        <select v-model="lineCount" class="line-count-select">
+          <option :value="50">50 行</option>
+          <option :value="100">100 行</option>
+          <option :value="200">200 行</option>
+          <option :value="500">500 行</option>
+        </select>
+        <span class="line-count-hint">顯示最近 {{ lineCount }} 行 · 即時串流中</span>
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -275,10 +301,16 @@ onUnmounted(() => {
   min-width: 400px;
   max-width: 800px;
   height: 100%;
-  background: var(--color-bg-primary, #fff);
+  background: var(--lms-surface, #fff);
   box-shadow: -4px 0 12px rgba(0, 0, 0, 0.15);
   display: flex;
   flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 200ms ease;
+}
+
+.log-drawer.drawer--open {
+  transform: translateX(0);
 }
 
 @media (max-width: 768px) {
@@ -294,7 +326,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--color-border, #e0e0e0);
+  border-bottom: 1px solid var(--lms-border, #e0e0e0);
   flex-shrink: 0;
 }
 
@@ -312,9 +344,9 @@ onUnmounted(() => {
 
 .line-count-select {
   padding: 4px 8px;
-  border: 1px solid var(--color-border, #ccc);
+  border: 1px solid var(--lms-border, #ccc);
   border-radius: 4px;
-  background: var(--color-bg-secondary, #f5f5f5);
+  background: var(--lms-bg, #f5f5f5);
   font-size: 0.85rem;
 }
 
@@ -325,11 +357,23 @@ onUnmounted(() => {
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 4px;
-  color: var(--color-text-secondary, #666);
+  color: var(--lms-muted, #666);
 }
 
 .close-btn:hover {
-  background: var(--color-bg-hover, #eee);
+  background: var(--lms-accent-light, #eee);
+}
+
+.connection-status {
+  font-size: 0.75rem;
+  color: var(--lms-muted);
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+.connection-status.connected {
+  color: var(--lms-success);
+  font-weight: 600;
 }
 
 .search-bar {
@@ -337,28 +381,28 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 20px;
-  border-bottom: 1px solid var(--color-border, #e0e0e0);
+  border-bottom: 1px solid var(--lms-border, #e0e0e0);
   flex-shrink: 0;
 }
 
 .search-input {
   flex: 1;
   padding: 6px 10px;
-  border: 1px solid var(--color-border, #ccc);
+  border: 1px solid var(--lms-border, #ccc);
   border-radius: 4px;
   font-size: 0.85rem;
-  background: var(--color-bg-secondary, #f5f5f5);
-  color: var(--color-text-primary, #333);
+  background: var(--lms-bg, #f5f5f5);
+  color: var(--lms-text, #333);
 }
 
 .search-input:focus {
   outline: none;
-  border-color: var(--color-primary, #4a90d9);
+  border-color: var(--lms-accent, #4a90d9);
 }
 
 .match-count {
   font-size: 0.8rem;
-  color: var(--color-text-secondary, #666);
+  color: var(--lms-muted, #666);
   white-space: nowrap;
 }
 
@@ -372,8 +416,8 @@ onUnmounted(() => {
 
 .reconnect-hint {
   padding: 8px 20px;
-  background: #fff3e0;
-  color: #e65100;
+  background: var(--lms-warning-light, #fff3e0);
+  color: var(--lms-warning, #e65100);
   font-size: 0.85rem;
   text-align: center;
   flex-shrink: 0;
@@ -386,14 +430,14 @@ onUnmounted(() => {
   justify-content: center;
   gap: 12px;
   padding: 40px;
-  color: var(--color-text-secondary, #666);
+  color: var(--lms-muted, #666);
 }
 
 .spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid var(--color-border, #e0e0e0);
-  border-top-color: var(--color-primary, #4a90d9);
+  border: 3px solid var(--lms-border, #e0e0e0);
+  border-top-color: var(--lms-accent, #4a90d9);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -408,21 +452,21 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   padding: 20px;
-  color: #d32f2f;
+  color: var(--lms-danger, #d32f2f);
   text-align: center;
 }
 
 .retry-btn {
   padding: 6px 20px;
-  border: 1px solid var(--color-border, #ccc);
+  border: 1px solid var(--lms-border, #ccc);
   border-radius: 4px;
-  background: var(--color-bg-secondary, #f5f5f5);
+  background: var(--lms-bg, #f5f5f5);
   cursor: pointer;
   font-size: 0.85rem;
 }
 
 .retry-btn:hover {
-  background: var(--color-bg-hover, #eee);
+  background: var(--lms-accent-light, #eee);
 }
 
 .empty-state {
@@ -430,7 +474,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 40px;
-  color: var(--color-text-secondary, #999);
+  color: var(--lms-muted, #999);
   font-style: italic;
 }
 
@@ -441,22 +485,53 @@ onUnmounted(() => {
   overflow-y: auto;
   font-family: 'Courier New', Courier, monospace;
   font-size: 0.85rem;
-  line-height: 1.5;
+  line-height: 1.6;
   white-space: pre-wrap;
-  word-break: break-all;
-  background: var(--color-bg-code, #1e1e1e);
-  color: var(--color-text-code, #d4d4d4);
+  overflow-wrap: break-word;
+  overflow-x: auto;
+  background: var(--lms-code-bg, #1e1e1e);
+  color: var(--lms-code-text, #f5f5f5);
 }
 
 .log-content code {
   font-family: inherit;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  padding: 0;
+  background: transparent;
+  display: block;
 }
 
 .log-content code span.highlight {
   background: rgba(255, 235, 59, 0.4);
 }
 
+.log-content code span {
+  display: block;
+  padding: 1px 4px;
+  border-bottom: 1px solid #ffffff80;
+}
+
+.log-content code span:nth-child(even) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .log-content code span.dim {
-  opacity: 0.4;
+  opacity: 0.55;
+}
+
+.drawer-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--lms-border);
+  flex-shrink: 0;
+}
+
+.line-count-hint {
+  font-size: 0.75rem;
+  color: var(--lms-muted);
 }
 </style>

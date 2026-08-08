@@ -3,7 +3,7 @@
 > **對應 BDD**：`docs/bdds/005-journalctl-log-viewer.feature`
 > **操作流程**：`docs/interaction-flows/005-journalctl-log-viewer.md`
 > **開發規格**：`docs/development/005-journalctl-log-viewer.md`
-> **測試日期**：2025-08-08
+> **測試日期**：2026-08-08
 
 ---
 
@@ -13,7 +13,7 @@
 |------|------|------|------|
 | 單元測試 | Go `GetServiceLogs` + handler | `go test` | 後端 |
 | 單元測試 | Vue LogDrawer 元件邏輯 | Vitest + @vue/test-utils | 前端 |
-| 整合測試 | API endpoint → journalctl | 手動 / 腳本 | 後端 |
+| 整合測試 | WebSocket endpoint → journalctl -f | 手動 / 腳本 | 後端 |
 | 端對端測試 | 完整使用者操作流程 | Playwright | 前端 |
 | 手動驗證 | 真實 Linux 環境 + 權限情境 | 手動 | QA |
 
@@ -37,21 +37,20 @@
 | SYS-10 | journalctl 逾時 | journalctl 執行超過 5 秒 | 呼叫 `GetServiceLogs` | context timeout → error：`timeout reading logs` |
 | SYS-11 | 服務無日誌輸出 | journalctl 回傳空字串 | 呼叫 `GetServiceLogs` | 回傳空字串 `""`，無 error |
 
-### 2.2 Handler 層
+### 2.2 Handler 層（WebSocket）
 
 | # | 測試名稱 | Given | When | Then |
 |---|---------|-------|------|------|
-| HDL-01 | API 正常回應 | mock `GetServiceLogs` 回傳 "line1\nline2\n" | `GET /api/v1/services/nginx.service/logs?lines=100` | 200 OK, `{"content":"line1\nline2\n","lines":2}` |
-| HDL-02 | 預設 lines | 未提供 lines 參數 | `GET /api/v1/services/nginx.service/logs` | 使用預設 lines=100 |
-| HDL-03 | lines 參數格式錯誤 | lines=abc | `GET /api/v1/services/nginx.service/logs?lines=abc` | 400, `{"error":"lines must be between 1 and 1000"}` |
-| HDL-04 | lines 超限 | lines=2000 | `GET /api/v1/services/nginx.service/logs?lines=2000` | 400 |
-| HDL-05 | 服務名稱無效 | name=invalid | `GET /api/v1/services/invalid/logs` | 400 |
-| HDL-06 | 權限不足 | mock 回傳 permission error | `GET /api/v1/services/nginx.service/logs` | 403, error 包含權限說明 |
-| HDL-07 | journalctl 不存在 | mock 回傳 not found error | `GET /api/v1/services/nginx.service/logs` | 500（或自訂狀態碼） |
-| HDL-08 | 逾時 | mock 回傳 timeout error | `GET /api/v1/services/nginx.service/logs` | 504 |
-| HDL-09 | 無日誌 | mock 回傳空字串 | `GET /api/v1/services/empty.service/logs` | 200, `{"content":"","lines":0}` |
-| HDL-10 | 未驗證請求 | 無 session cookie | `GET /api/v1/services/nginx.service/logs` | 401 Unauthorized |
-| HDL-11 | Content-Type | 正常回應 | 檢查 response header | `application/json` |
+| HDL-WS-01 | WebSocket upgrade 成功 | 已驗證 client, 有效 service name, lines=100 | `GET /ws/v1/services/nginx.service/logs?lines=100` 含 Upgrade header | HTTP 101 Switching Protocols, WebSocket 連線建立 |
+| HDL-WS-02 | WebSocket 收到 journalctl 輸出行 | WebSocket 連線已建立, mock journalctl stdout pipe 寫入 "line1\nline2\n" | 讀取 WS TextMessage | 收到 "line1", "line2" 兩條訊息 |
+| HDL-WS-03 | WebSocket client 關閉 → journalctl process killed | WebSocket 連線已建立, journalctl 正在執行 | client 關閉 WebSocket | context cancel 觸發, journalctl process 收到 SIGTERM |
+| HDL-WS-04 | 未驗證請求 | 無 session cookie | `GET /ws/v1/services/nginx.service/logs` 含 Upgrade header | 401 Unauthorized（在 WebSocket upgrade 前攔截） |
+| HDL-WS-05 | journalctl 權限不足 | journalctl 回傳 permission denied | WebSocket 連線建立後, journalctl stderr 寫入 "permission denied" | WebSocket 收到錯誤訊息後關閉 |
+| HDL-WS-06 | journalctl 不存在 | `exec.LookPath("journalctl")` 失敗 | WebSocket upgrade 請求 | WebSocket 收到錯誤訊息 "journalctl not found" 後關閉 |
+| HDL-WS-07 | journalctl process crash | journalctl process 意外終止 (exit code ≠ 0) | WebSocket 連線進行中 | WebSocket 收到 "journalctl process exited with code 1" 後關閉 |
+| HDL-WS-08 | lines 參數格式錯誤 | lines=abc | `GET /ws/v1/services/nginx.service/logs?lines=abc` | WebSocket upgrade 前即回傳 400, `{"error":"lines must be between 1 and 1000"}` |
+| HDL-WS-09 | lines 超限 | lines=2000 | `GET /ws/v1/services/nginx.service/logs?lines=2000` | WebSocket upgrade 前即回傳 400 |
+| HDL-WS-10 | 服務名稱無效 | name=invalid | `GET /ws/v1/services/invalid/logs` | WebSocket upgrade 前即回傳 400 |
 
 ---
 
@@ -63,27 +62,28 @@
 |---|---------|-------|------|------|
 | F-LD-01 | visible=false 時不渲染 | `visible=false` | mount LogDrawer | DOM 中無 drawer 元素 |
 | F-LD-02 | visible=true 時渲染 | `visible=true`, `serviceName="nginx"` | mount LogDrawer | Drawer 存在，標題含 "nginx" |
-| F-LD-03 | 載入中顯示 spinner | `visible=true`, API 未 mock（pending） | mount LogDrawer | 顯示 loading spinner |
-| F-LD-04 | API 成功後顯示日誌 | mock API 回傳內容 | mount + await fetchLogs | `<pre>` 區塊顯示日誌文字 |
-| F-LD-05 | API 失敗顯示錯誤 | mock API reject | mount + await fetchLogs | 顯示錯誤訊息 + 重試按鈕 |
-| F-LD-06 | 無日誌顯示空狀態 | mock API 回傳空 content | mount + await fetchLogs | 顯示「此服務尚無日誌記錄」 |
-| F-LD-07 | 行數選擇器切換 50 | 初始 lineCount=100 | 選擇 50 | lineCount→50，觸發 API 呼叫 lines=50 |
-| F-LD-08 | 行數選擇器切換 500 | 初始 lineCount=100 | 選擇 500 | lineCount→500，觸發 API 呼叫 lines=500 |
-| F-LD-09 | 自動刷新 ON | autoRefresh=false | toggle ON | setInterval 被建立（可用 vi.useFakeTimers） |
-| F-LD-10 | 自動刷新 OFF | autoRefresh=true | toggle OFF | clearInterval 被呼叫 |
-| F-LD-11 | 自動刷新觸發 API | autoRefresh=true, vi.advanceTimersByTime(3000) | 等待 3 秒 | API 被再次呼叫 |
-| F-LD-12 | 搜尋 highlight | logContent="error\ninfo\nerror2", searchQuery="error" | 輸入搜尋 | 兩行有 `highlight` class，一行 `dim` |
-| F-LD-13 | 搜尋計數顯示 | searchQuery="error", 匹配 2 行 | 檢查 UI | 顯示「2 / 3 行」 |
-| F-LD-14 | 清空搜尋恢復顯示 | searchQuery="error"→清空 | 清空搜尋框 | 全部行正常顯示，無 highlight/dim |
-| F-LD-15 | 點擊 ✕ 關閉 | Drawer 開啟 | click ✕ 按鈕 | emit `close` 事件 |
-| F-LD-16 | 點擊遮罩關閉 | Drawer 開啟 | click overlay | emit `close` 事件 |
-| F-LD-17 | Esc 鍵關閉 | Drawer 開啟 | keyboard `Escape` | emit `close` 事件 |
-| F-LD-18 | 關閉時停止自動刷新 | autoRefresh=true | emit close / Esc | clearInterval 被呼叫 |
-| F-LD-19 | 連續失敗 5 次關閉刷新 | autoRefresh=true, API 連續 fail×5 | 5 次輪詢後 | autoRefresh→false，顯示警告 |
-| F-LD-20 | 自動刷新失敗顯示警告 | autoRefresh=true, API fail×1 | 第一次失敗 | 控制列顯示「自動刷新失敗，10 秒後重試」 |
-| F-LD-21 | serviceName 變更重新載入 | visible=true, serviceName 從 A 變 B | watch 觸發 | 重新呼叫 API 取得 B 的日誌 |
-| F-LD-22 | 載入時 Logs 按鈕 disabled | Drawer 正在 loading | 檢查按鈕狀態 | 對應服務的 Logs 按鈕 disabled |
-| F-LD-23 | 點擊錯誤重試按鈕 | error 狀態顯示 | click 重試 | 重新呼叫 fetchLogs |
+| F-LD-03 | 載入中顯示 spinner | `visible=true`, WebSocket 連線中（pending） | mount LogDrawer | 顯示 loading spinner |
+| F-LD-04 | WebSocket 連線成功後顯示日誌 | mock WebSocket, 傳送 TextMessage "line1\nline2" | mount + connectWebSocket | `<pre>` 區塊顯示日誌文字 |
+| F-LD-05 | WebSocket 連線失敗顯示錯誤 | mock WebSocket onError | mount + connectWebSocket | 顯示錯誤訊息 + 重試按鈕 |
+| F-LD-06 | 無日誌顯示空狀態 | mock WebSocket 傳送空內容後關閉 | mount + connectWebSocket | 顯示「此服務尚無日誌記錄」 |
+| F-LD-07 | 行數選擇器切換 50 | 初始 lineCount=100 | 選擇 50 | lineCount→50，關閉舊 WS + 建立新 WS (lines=50) |
+| F-LD-08 | 行數選擇器切換 500 | 初始 lineCount=100 | 選擇 500 | lineCount→500，關閉舊 WS + 建立新 WS (lines=500) |
+| F-LD-09 | WebSocket onopen → 連線指示器 | WebSocket 連線成功 | onopen 觸發 | isConnected=true, 連線指示器顯示 "● LIVE" |
+| F-LD-10 | WebSocket onMessage → 自動追加新行 | WebSocket 已連線, logContent 已有 3 行 | 收到 TextMessage "new log line" | logContent 自動 append 第 4 行 |
+| F-LD-11 | WebSocket onClose (非主動關閉) → 自動重連 | WebSocket 非預期關閉 (非 client 主動 close) | onClose 觸發, code ≠ 1000 | 1 秒後自動呼叫 connectWebSocket 重連 |
+| F-LD-12 | WebSocket onError → 顯示錯誤 + 手動重連 | WebSocket 發生錯誤 | onError 觸發 | 顯示錯誤訊息 + 手動重連按鈕 |
+| F-LD-13 | 手動重連按鈕 → 重新連線 | WebSocket 斷線, 顯示重連按鈕 | click 重連按鈕 | 重新呼叫 connectWebSocket |
+| F-LD-14 | 服務名稱變更 → 重建 WebSocket | visible=true, serviceName 從 A 變 B | watch 觸發 | 關閉舊 WebSocket + 建立新 WebSocket (service B) |
+| F-LD-15 | 搜尋 highlight | logContent="error\ninfo\nerror2", searchQuery="error" | 輸入搜尋 | 兩行有 `highlight` class，一行 `dim` |
+| F-LD-16 | 搜尋計數顯示 | searchQuery="error", 匹配 2 行 | 檢查 UI | 顯示「2 / 3 行」 |
+| F-LD-17 | 清空搜尋恢復顯示 | searchQuery="error"→清空 | 清空搜尋框 | 全部行正常顯示，無 highlight/dim |
+| F-LD-18 | 點擊 ✕ 關閉 | Drawer 開啟 | click ✕ 按鈕 | emit `close` 事件 |
+| F-LD-19 | 點擊遮罩關閉 | Drawer 開啟 | click overlay | emit `close` 事件 |
+| F-LD-20 | Esc 鍵關閉 | Drawer 開啟 | keyboard `Escape` | emit `close` 事件 |
+| F-LD-21 | 關閉 Drawer 時 WebSocket 關閉 | WebSocket 已連線 | emit close / Esc / click ✕ | ws.close() 被呼叫 |
+| F-LD-22 | unmount 時 WebSocket 關閉 | WebSocket 已連線 | component unmount (onUnmounted) | ws.close() 被呼叫, 清除 pending 重連 timer |
+| F-LD-23 | 載入時 Logs 按鈕 disabled | Drawer 正在連線 WebSocket | 檢查按鈕狀態 | 對應服務的 Logs 按鈕 disabled |
+| F-LD-24 | 點擊錯誤重試按鈕 | error 狀態顯示 | click 重試 | 重新呼叫 connectWebSocket |
 
 ### 3.2 ServiceRow 元件（修改部分）
 
@@ -103,7 +103,7 @@
 | E2E-02 | 遮罩點擊關閉 | 1. 開啟 Drawer<br>2. 點擊遮罩區域 | Drawer 關閉 |
 | E2E-03 | Esc 鍵關閉 | 1. 開啟 Drawer<br>2. 按下 Escape | Drawer 關閉 |
 | E2E-04 | 切換服務 | 1. 開啟服務 A 的 Drawer<br>2. 點擊服務 B 的 Logs 按鈕 | Drawer 內容更新為服務 B 日誌，標題也更新 |
-| E2E-05 | 自動刷新 | 1. 開啟 Drawer<br>2. 開啟自動刷新<br>3. 等待 > 3 秒<br>4. 檢查日誌有無更新 | 若後端有新日誌，前端自動顯示新行 |
+| E2E-05 | 即時串流 (WebSocket streaming) | 1. 開啟 Drawer<br>2. 確認連線指示器顯示 "● LIVE"<br>3. 在伺服器端觸發新日誌 (如 `logger -t nginx test`)<br>4. 檢查前端日誌 | 前端即時自動顯示新行，無需手動刷新 |
 | E2E-06 | 行動裝置全螢幕 | 1. 設定 viewport 375×812<br>2. 開啟 Drawer | Drawer 寬度 100vw |
 | E2E-07 | 深色模式 | 1. 切換深色模式<br>2. 開啟 Drawer | Drawer 樣式與深色主題一致 |
 | E2E-08 | 鍵盤焦點困於 Drawer | 1. 開啟 Drawer<br>2. Tab 到最後一個可聚焦元素<br>3. 再 Tab | 焦點回到 Drawer 第一個可聚焦元素 |
@@ -120,7 +120,7 @@
 | MAN-03 | 權限不足 | 用非 systemd-journal 群組的使用者執行 | 顯示權限不足錯誤 |
 | MAN-04 | 日誌內容很多 | 查看日誌量極大（> 10000 行）的服務 | 僅載入指定行數，5 秒內完成 |
 | MAN-05 | 快速切換服務 | 連續點擊多個不同服務的 Logs | 無閃爍、無記憶體洩漏、無殘留內容 |
-| MAN-06 | 長時間自動刷新 | 開啟自動刷新，保持 10 分鐘 | 無記憶體持續成長、頁面不卡頓 |
+| MAN-06 | 長時間即時串流 | WebSocket 保持連線，持續串流 10 分鐘 | 無記憶體持續成長、頁面不卡頓 |
 
 ---
 
@@ -148,4 +148,4 @@
 
 ---
 
-*最後更新：2025-08-08*
+*最後更新：2026-08-08*

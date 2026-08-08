@@ -21,7 +21,7 @@ Feature: journalctl 日誌檢視器
     And Drawer 內容區先顯示 loading spinner
     And API 成功回傳日誌內容後，loading spinner 消失
     And 日誌內容以等寬字體顯示，自動捲動到最底部
-    And Drawer 底部顯示行數選擇器（預設 100）與自動刷新開關（預設 OFF）
+    And Drawer 底部顯示行數選擇器（預設 100）與連線狀態指示「● LIVE」（綠色，代表 WebSocket 已連線即時串流中）
 
   @smoke @happy-path @p0
   Scenario: 調整日誌顯示行數
@@ -29,26 +29,28 @@ Feature: journalctl 日誌檢視器
     And 行數下拉選單目前為「100」
     When 我在行數下拉選單選擇「200」
     Then 內容區回到 loading 狀態
-    And 重新呼叫 API 取得 200 行日誌
+    And 前端透過 WebSocket 重新請求 200 行日誌
     And 日誌內容更新為 200 行，自動捲動到底部
+    And WebSocket 持續串流新行（journalctl -f）
     And 行數下拉選單反映新選擇「200」
 
   @happy-path @p1
-  Scenario: 開啟自動刷新以即時監看日誌
+  Scenario: WebSocket 即時串流日誌
     Given Log Drawer 已開啟且顯示日誌內容
-    And 自動刷新開關目前為 OFF
-    When 我切換自動刷新開關為 ON
-    Then 開關視覺變為 ON（綠色高亮）
-    And 前端每 3 秒自動呼叫 API 取得最新日誌
-    And 新行自動追加到日誌區塊底部
+    And WebSocket 連線已建立，狀態指示顯示「● LIVE」
+    When 目標服務有新日誌輸出
+    Then 新行即時推送至前端並自動追加到日誌區塊底部
     And 若有新內容則自動捲動到底部
+    And 連線狀態指示持續顯示「● LIVE」（綠色）
 
   @happy-path @p1
-  Scenario: 關閉自動刷新停止追加
-    Given Log Drawer 已開啟且自動刷新開關為 ON
-    When 我切換自動刷新開關為 OFF
-    Then 定時器停止，不再呼叫 API
+  Scenario: WebSocket 連線中斷停止串流
+    Given Log Drawer 已開啟且 WebSocket 連線正常（狀態顯示「● LIVE」）
+    When WebSocket 連線中斷（網路異常或後端關閉）
+    Then 連線狀態指示變為「○ 離線」
+    And 日誌串流停止，不再追加新行
     And 日誌內容維持當前狀態不變
+    And 前端自動嘗試重新連線
 
   @happy-path @p1
   Scenario: 搜尋已載入的日誌內容
@@ -64,7 +66,7 @@ Feature: journalctl 日誌檢視器
   Scenario Outline: 關閉日誌 Drawer
     Given Log Drawer 已開啟且顯示日誌內容
     When 我執行<關閉動作>
-    Then 自動刷新定時器停止（若先前為 ON）
+    Then WebSocket 連線關閉（若先前已連線）
     And Drawer 向右滑出關閉
     And 遮罩淡出
     And Dashboard 恢復可互動狀態
@@ -80,10 +82,10 @@ Feature: journalctl 日誌檢視器
   Scenario: 點擊另一服務的 Logs 按鈕切換日誌
     Given Log Drawer 已開啟服務 A 的日誌
     When 我點擊服務 B 的「📋 Logs」按鈕
-    Then 服務 A 的 Drawer 先關閉，停止自動刷新
+    Then 服務 A 的 WebSocket 連線關閉，Drawer 內容清除
     And 隨即開啟服務 B 的 Log Drawer
     And Drawer 標題更新為服務 B 的名稱
-    And 載入服務 B 的日誌內容
+    And 建立服務 B 的 WebSocket 連線並載入日誌內容
 
   # ============================================================
   # Error Handling — 錯誤處理
@@ -119,26 +121,31 @@ Feature: journalctl 日誌檢視器
     And Drawer 顯示錯誤提示「僅顯示最近 1000 行，請縮小行數範圍」
 
   @error-handling @p2
-  Scenario: 自動刷新期間 API 連線失敗
-    Given Log Drawer 已開啟且自動刷新開關為 ON
-    When 某次自動刷新 API 呼叫失敗
+  Scenario: WebSocket 連線中斷自動重連
+    Given Log Drawer 已開啟且 WebSocket 連線正常（狀態顯示「● LIVE」）
+    When WebSocket 連線意外中斷
     Then 目前日誌內容保持不變
-    And 控制列顯示小字警告「自動刷新失敗，10 秒後重試」
-    And 系統於 10 秒後自動重試
+    And 連線狀態指示變為「○ 離線」
+    And 控制列顯示小字警告「連線中斷，將自動重連...」
+    And 前端自動嘗試重新建立 WebSocket 連線
+    And 重連成功後狀態恢復「● LIVE」並繼續串流
 
   @error-handling @p2
-  Scenario: 自動刷新連續失敗五次後自動關閉
-    Given Log Drawer 已開啟且自動刷新開關為 ON
-    When 自動刷新 API 連續失敗 5 次
-    Then 自動刷新開關自動切換為 OFF
-    And 控制列顯示警告提示
+  Scenario: WebSocket 重連失敗顯示手動重連
+    Given Log Drawer 已開啟且 WebSocket 連線已中斷
+    When WebSocket 自動重連連續失敗超過上限次數
+    Then 連線狀態指示顯示「○ 離線」
+    And 控制列顯示警告提示「無法建立連線」
+    And 控制列出現手動重連按鈕「🔗 重新連線」
+    And 自動重連停止，等待使用者手動操作
 
   @error-handling @p1
   Scenario: API 請求逾時
     Given Log Drawer 已開啟
-    When 呼叫日誌 API 超過 5 秒無回應
-    Then 內容區顯示錯誤訊息
+    When 初始日誌載入 API 或 WebSocket 升級超過 5 秒無回應
+    Then 內容區顯示錯誤訊息「連線逾時，請稍後重試」
     And 提供重試按鈕
+    And 連線狀態指示顯示「○ 離線」
 
   # ============================================================
   # Edge Cases — 邊界情況
@@ -154,10 +161,10 @@ Feature: journalctl 日誌檢視器
 
   @edge-case @p2
   Scenario: Drawer 開啟中導航至其他頁面
-    Given Log Drawer 已開啟且自動刷新為 ON
+    Given Log Drawer 已開啟且 WebSocket 連線正常（狀態顯示「● LIVE」）
     When 我透過路由導航至其他頁面
     Then Log Drawer 自動關閉
-    And 自動刷新定時器停止
+    And WebSocket 連線關閉
     And 導航正常繼續
 
   # ============================================================

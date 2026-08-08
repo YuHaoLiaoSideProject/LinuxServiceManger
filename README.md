@@ -250,8 +250,11 @@ linux-service-manager/
 ├── Makefile                       # build / run / dev / frontend / deploy
 └── docs/
     ├── bdds/                      # BDD 場景定義（Gherkin）
-    ├── user-stories/              # User Story 文件
-    └── development/               # 開發決策文件
+    ├── development/               # 開發規格
+    ├── interaction-flows/         # 互動流程設計（Mermaid 流程圖）
+    ├── tech-decisions/            # 技術決策文件
+    ├── test-plans/                # 測試計畫
+    └── user-stories/              # User Story 文件
 ```
 
 ## 🔌 API 路由
@@ -359,14 +362,20 @@ server {
 
 ## 📖 相關文件
 
-- [User Story: 管理員登入系統](docs/user-stories/001-管理員登入系統.md)
-- [User Story: 管理員管理 systemd 服務](docs/user-stories/002-管理員管理systemd服務.md)
-- [User Story: 部署安全性](docs/user-stories/003-部署安全性.md)
-- [BDD: 管理員登入系統](docs/bdds/001-管理員登入系統.feature)
-- [BDD: 管理員管理 systemd 服務](docs/bdds/002-管理員管理systemd服務.feature)
-- [BDD: 部署安全性](docs/bdds/003-部署安全性.feature)
-- [測試計畫](docs/test-plans/)
-- [開發方案決策文件](docs/development/001-linux-service-manager.md)
+### 核心功能
+
+| 編號 | 功能 | User Story | BDD | 開發規格 | 測試計畫 | 互動流程 | 技術決策 |
+|:---:|------|:---:|:---:|:---:|:---:|:---:|:---:|
+| 001 | 管理員登入系統 | [📄](docs/user-stories/001-管理員登入系統.md) | [📄](docs/bdds/001-管理員登入系統.feature) | [📄](docs/development/001-linux-service-manager.md) | [📄](docs/test-plans/001-管理員登入系統測試計畫.md) | — | — |
+| 002 | 管理 systemd 服務 | [📄](docs/user-stories/002-管理員管理systemd服務.md) | [📄](docs/bdds/002-管理員管理systemd服務.feature) | — | [📄](docs/test-plans/002-管理員管理systemd服務測試計畫.md) | — | — |
+| 003 | 部署安全性 | [📄](docs/user-stories/003-部署安全性.md) | [📄](docs/bdds/003-部署安全性.feature) | — | [📄](docs/test-plans/003-部署安全性測試計畫.md) | — | — |
+| 004 | Enable / Disable 服務 | — | [📄](docs/bdds/004-enable-disable-service.feature) | [📄](docs/development/004-enable-disable-service.md) | [📄](docs/test-plans/004-enable-disable-service測試計畫.md) | [📄](docs/interaction-flows/004-enable-disable-service.md) | — |
+| 005 | journalctl 日誌檢視器 | — | [📄](docs/bdds/005-journalctl-log-viewer.feature) | [📄](docs/development/005-journalctl-log-viewer.md) | [📄](docs/test-plans/005-journalctl-log-viewer測試計畫.md) | [📄](docs/interaction-flows/005-journalctl-log-viewer.md) | [📄](docs/tech-decisions/005-journalctl-log-viewer.md) |
+| 006 | PWA 支援 | — | — | — | — | [📄](docs/interaction-flows/006-pwa-support.md) | — |
+
+### 綜合文件
+
+- [擴充藍圖](docs/development/002-expansion-roadmap.md) — 專案整體 roadmap
 
 ## 📝 License
 

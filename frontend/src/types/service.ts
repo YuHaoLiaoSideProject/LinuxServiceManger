@@ -24,3 +24,13 @@ export interface MessageResponse {
   message?: string
   error?: string
 }
+
+export interface LogDrawerState {
+  visible: boolean
+  serviceName: string
+}
+
+export interface LogLine {
+  text: string
+  match: boolean
+}

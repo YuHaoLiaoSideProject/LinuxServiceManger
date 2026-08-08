@@ -112,13 +112,16 @@ describe('ServiceRow — 服務列表列', () => {
     expect(actions.text()).not.toContain('Stop')
   })
 
-  it('locked=true → 顯示 🔒 鎖定圖示，無按鈕', () => {
+  it('locked=true → 顯示 🔒 鎖定圖示，僅有 Logs 按鈕', () => {
     const service = makeService({ locked: true })
     const wrapper = mount(ServiceRow, { props: { service } })
 
     const actions = wrapper.find('.actions')
     expect(actions.text()).toContain('🔒 已鎖定')
-    expect(actions.find('button').exists()).toBe(false)
+    // Only the Logs button should be present for locked services
+    const buttons = actions.findAll('button')
+    expect(buttons.length).toBe(1)
+    expect(buttons[0].text()).toContain('📋 Logs')
   })
 
   // --- 確認對話框行為 ---
@@ -389,6 +392,58 @@ describe('ServiceRow — 服務列表列', () => {
       expect(wrapper.find('.toggle-loading').exists()).toBe(false)
       expect(wrapper.find('.toggle-switch').attributes('disabled')).toBeUndefined()
     })
+  })
+})
+
+// ── Logs 按鈕 ──
+
+describe('ServiceRow — Logs 按鈕', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('F-SR-01: 所有服務（含 locked=false）皆顯示「📋 Logs」按鈕', () => {
+    const service = makeService({ locked: false })
+    const wrapper = mount(ServiceRow, { props: { service } })
+
+    const actions = wrapper.find('.actions')
+    expect(actions.text()).toContain('📋 Logs')
+  })
+
+  it('F-SR-02: 鎖定服務（locked=true）仍有「📋 Logs」按鈕', () => {
+    const service = makeService({ locked: true })
+    const wrapper = mount(ServiceRow, { props: { service } })
+
+    const actions = wrapper.find('.actions')
+    expect(actions.text()).toContain('📋 Logs')
+    expect(actions.text()).toContain('🔒 已鎖定')
+  })
+
+  it('F-SR-03: 點擊 Logs 按鈕 → emit open-logs 事件，payload 為 service.name', async () => {
+    const service = makeService({ name: 'nginx.service', locked: false })
+    const wrapper = mount(ServiceRow, { props: { service } })
+
+    // Find the Logs button
+    const logsBtn = wrapper.find('.btn-logs')
+    expect(logsBtn.exists()).toBe(true)
+
+    await logsBtn.trigger('click')
+
+    const emitted = wrapper.emitted('open-logs')
+    expect(emitted).toBeTruthy()
+    expect(emitted![0]).toEqual(['nginx.service'])
+  })
+
+  it('鎖定服務點擊 Logs 按鈕仍正常 emit open-logs', async () => {
+    const service = makeService({ name: 'locked.service', locked: true })
+    const wrapper = mount(ServiceRow, { props: { service } })
+
+    const logsBtn = wrapper.find('.btn-logs')
+    expect(logsBtn.exists()).toBe(true)
+
+    await logsBtn.trigger('click')
+
+    expect(wrapper.emitted('open-logs')![0]).toEqual(['locked.service'])
   })
 })
 

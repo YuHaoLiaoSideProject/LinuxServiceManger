@@ -12,6 +12,7 @@ import Toolbar from '../components/Toolbar.vue'
 import ServiceTable from '../components/ServiceTable.vue'
 import ConfirmModal from '../components/ConfirmModal.vue'
 import ToastContainer from '../components/ToastContainer.vue'
+import LogDrawer from '../components/LogDrawer.vue'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -21,6 +22,10 @@ const services = ref<Service[]>([])
 const loading = ref(true)
 const tab = ref(localStorage.getItem('lms-tab') || 'my')
 const search = ref('')
+
+// Log drawer state
+const logDrawerVisible = ref(false)
+const logDrawerServiceName = ref('')
 
 async function loadServices() {
   loading.value = true
@@ -116,6 +121,16 @@ async function handleLogout() {
   await auth.logout()
 }
 
+function openLogDrawer(name: string) {
+  logDrawerServiceName.value = name
+  logDrawerVisible.value = true
+}
+
+function closeLogDrawer() {
+  logDrawerVisible.value = false
+  logDrawerServiceName.value = ''
+}
+
 onMounted(loadServices)
 </script>
 
@@ -134,6 +149,7 @@ onMounted(loadServices)
       @action="handleAction"
       @refresh="loadServices"
       @toggle="handleToggle"
+      @open-logs="openLogDrawer"
     />
     <ConfirmModal
       :show="showDisableConfirm"
@@ -142,5 +158,10 @@ onMounted(loadServices)
       @cancel="cancelDisable"
     />
     <ToastContainer />
+    <LogDrawer
+      :serviceName="logDrawerServiceName"
+      :visible="logDrawerVisible"
+      @close="closeLogDrawer"
+    />
   </main>
 </template>

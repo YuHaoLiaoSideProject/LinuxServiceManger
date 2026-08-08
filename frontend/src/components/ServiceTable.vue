@@ -17,6 +17,7 @@ const emit = defineEmits<{
   action: [action: ServiceAction, name: string]
   refresh: []
   toggle: [action: 'enable' | 'disable', name: string]
+  'open-logs': [name: string]
 }>()
 
 // Sort
@@ -137,6 +138,7 @@ const confirmMessage = computed(() => {
             :togglingService="togglingService"
             @action="onAction"
             @toggle="(action, name) => emit('toggle', action, name)"
+            @open-logs="(name) => emit('open-logs', name)"
           />
         </template>
       </tbody>

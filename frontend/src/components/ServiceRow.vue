@@ -11,6 +11,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   action: [action: ServiceAction, name: string]
   toggle: [action: 'enable' | 'disable', name: string]
+  'open-logs': [name: string]
 }>()
 
 const statusClass = computed(() => {
@@ -114,6 +115,10 @@ function doToggle() {
           <span class="btn-icon">🔄</span><span class="btn-label">{{ t('action.restart') }}</span>
         </button>
       </template>
+      <button class="btn-logs outline secondary" title="查看日誌"
+        @click.stop="$emit('open-logs', service.name)">
+        📋 Logs
+      </button>
     </td>
   </tr>
 </template>

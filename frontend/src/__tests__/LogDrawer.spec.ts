@@ -598,7 +598,7 @@ describe('LogDrawer — 日誌檢視器', () => {
   it('F-LD-RECON-01: WebSocket onclose（非主動關閉） → 1 秒後自動重連', async () => {
     vi.useFakeTimers()
 
-    const wrapper = mount(LogDrawer, {
+    mount(LogDrawer, {
       props: { serviceName: 'test.service', visible: true },
     })
     await vi.runAllTimersAsync()

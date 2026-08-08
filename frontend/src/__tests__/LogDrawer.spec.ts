@@ -665,6 +665,202 @@ describe('LogDrawer — 日誌檢視器', () => {
     vi.useRealTimers()
   })
 
+  // ═══════════════════════════════════════════════════════════════
+  // P2: RWD 行動裝置全螢幕
+  // ═══════════════════════════════════════════════════════════════
+
+  // ── F-LD-RWD-01 ──
+  it('F-LD-RWD-01: 窄螢幕時 CSS 包含 media query 將 .log-drawer width 設為 100vw', () => {
+    // Read the source .vue file to verify CSS media query exists
+    // (Vue scoped styles are not injected as <style> tags in happy-dom)
+    const fs = require('fs')
+    const path = require('path')
+    const sourcePath = path.resolve(__dirname, '../components/LogDrawer.vue')
+    const source = fs.readFileSync(sourcePath, 'utf-8')
+
+    // Verify media query exists with 100vw rule in the component source
+    expect(source).toContain('@media (max-width: 768px)')
+    expect(source).toMatch(/width:\s*100vw/)
+    // Also check that min-width and max-width are unset in mobile
+    expect(source).toMatch(/min-width:\s*unset/)
+    expect(source).toMatch(/max-width:\s*unset/)
+  })
+
+  // ═══════════════════════════════════════════════════════════════
+  // P2: Focus Trap
+  // ═══════════════════════════════════════════════════════════════
+
+  // ── F-LD-FT-01 ──
+  it('F-LD-FT-01: Tab 在最後一個可聚焦元素 → 焦點回到第一個', async () => {
+    // Use a unique container to avoid DOM pollution between tests
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+
+    const wrapper = mount(LogDrawer, {
+      props: { serviceName: 'test.service', visible: true },
+      attachTo: container,
+    })
+
+    await wrapper.vm.$nextTick()
+
+    const drawer = document.querySelector('.log-drawer')
+    expect(drawer).not.toBeNull()
+    const focusable = drawer!.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    )
+
+    expect(focusable.length).toBeGreaterThanOrEqual(2)
+
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+
+    // Give elements tabIndex so happy-dom can track focus
+    first.tabIndex = 0
+    last.tabIndex = 0
+    
+    // Focus last element (happy-dom tracks focus for tabIndex-enabled elements)
+    last.focus()
+    
+    // Spy on first.focus() to verify focus trap moves focus
+    const firstFocusSpy = vi.spyOn(first, 'focus')
+
+    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })
+    const preventDefaultSpy = vi.spyOn(event, 'preventDefault')
+    document.dispatchEvent(event)
+
+    // When last is focused and Tab is pressed, preventDefault should be called
+    // and focus should move to first
+    expect(preventDefaultSpy).toHaveBeenCalled()
+    expect(firstFocusSpy).toHaveBeenCalled()
+
+    // Cleanup
+    wrapper.unmount()
+    document.body.removeChild(container)
+  })
+
+  // ── F-LD-FT-02 ──
+  it('F-LD-FT-02: Shift+Tab 在第一個可聚焦元素 → 焦點跳到最後一個', async () => {
+    // Use a unique container to avoid DOM pollution between tests
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+
+    const wrapper = mount(LogDrawer, {
+      props: { serviceName: 'test.service', visible: true },
+      attachTo: container,
+    })
+
+    await wrapper.vm.$nextTick()
+
+    const drawer = document.querySelector('.log-drawer')
+    expect(drawer).not.toBeNull()
+    const focusable = drawer!.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    )
+
+    expect(focusable.length).toBeGreaterThanOrEqual(2)
+
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+
+    // Give elements tabIndex so happy-dom can track focus
+    first.tabIndex = 0
+    last.tabIndex = 0
+
+    // Focus first element
+    first.focus()
+
+    // Spy on last.focus() to verify focus trap moves focus
+    const lastFocusSpy = vi.spyOn(last, 'focus')
+
+    const event = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true })
+    const preventDefaultSpy = vi.spyOn(event, 'preventDefault')
+    document.dispatchEvent(event)
+
+    // When first is focused and Shift+Tab is pressed, preventDefault should be called
+    // and focus should move to last
+    expect(preventDefaultSpy).toHaveBeenCalled()
+    expect(lastFocusSpy).toHaveBeenCalled()
+
+    // Cleanup
+    wrapper.unmount()
+    document.body.removeChild(container)
+  })
+
+  // ── F-LD-FT-03 ──
+  it('F-LD-FT-03: Escape 仍正常關閉 Drawer（確認未破壞既有功能）', async () => {
+    const wrapper = mount(LogDrawer, {
+      props: { serviceName: 'test.service', visible: true },
+    })
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+
+    expect(wrapper.emitted('close')).toBeTruthy()
+    expect(wrapper.emitted('close')!.length).toBe(1)
+  })
+
+  // ── F-LD-FT-04: Edge — no focusable elements ──
+  it('F-LD-FT-04: 沒有可聚焦元素時 Tab 不拋出錯誤', async () => {
+    // Mount with visible=false then test that onKeydown handles gracefully
+    const wrapper = mount(LogDrawer, {
+      props: { serviceName: 'test.service', visible: false },
+    })
+
+    // Should not throw — drawer not visible so focus trap is bypassed
+    expect(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
+    }).not.toThrow()
+  })
+
+  // ═══════════════════════════════════════════════════════════════
+  // P2: ARIA 無障礙屬性
+  // ═══════════════════════════════════════════════════════════════
+
+  // ── F-LD-ARIA-01 ──
+  it('F-LD-ARIA-01: ✕ 按鈕有 aria-label="關閉日誌檢視器"', () => {
+    const wrapper = mount(LogDrawer, {
+      props: { serviceName: 'test.service', visible: true },
+    })
+
+    const closeBtn = wrapper.find('.close-btn')
+    expect(closeBtn.attributes('aria-label')).toBe('關閉日誌檢視器')
+  })
+
+  // ── F-LD-ARIA-02 ──
+  it('F-LD-ARIA-02: 搜尋框有 aria-label="搜尋日誌"', async () => {
+    const wrapper = mount(LogDrawer, {
+      props: { serviceName: 'test.service', visible: true },
+    })
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    // Search bar only appears when connected and has logs
+    lastInstance()?.sendMessage('some log\n')
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    const searchInput = wrapper.find('.search-input')
+    expect(searchInput.exists()).toBe(true)
+    expect(searchInput.attributes('aria-label')).toBe('搜尋日誌')
+  })
+
+  // ── F-LD-ARIA-03 ──
+  it('F-LD-ARIA-03: 連線狀態指示器有 aria-live="polite"', async () => {
+    vi.useFakeTimers()
+
+    const wrapper = mount(LogDrawer, {
+      props: { serviceName: 'test.service', visible: true },
+    })
+    await vi.advanceTimersByTimeAsync(10)
+
+    // Trigger an unexpected close to show reconnect hint
+    lastInstance()?.onclose?.({ code: 1006 })
+    await wrapper.vm.$nextTick()
+
+    const reconnectHint = wrapper.find('.reconnect-hint')
+    expect(reconnectHint.exists()).toBe(true)
+    expect(reconnectHint.attributes('aria-live')).toBe('polite')
+
+    vi.useRealTimers()
+  })
+
   // ── F-LD-RECON-04 ──
   it('F-LD-RECON-04: 主動關閉 Drawer → 不觸發重連', async () => {
     vi.useFakeTimers()

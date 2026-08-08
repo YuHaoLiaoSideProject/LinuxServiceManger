@@ -139,6 +139,26 @@ function handleRetry() {
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && props.visible) {
     handleClose()
+    return
+  }
+  if (e.key !== 'Tab' || !props.visible) return
+
+  const drawer = document.querySelector('.log-drawer')
+  if (!drawer) return
+  const focusable = drawer.querySelectorAll<HTMLElement>(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  )
+  if (focusable.length === 0) return
+
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault()
+    last.focus()
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault()
+    first.focus()
   }
 }
 
@@ -189,7 +209,7 @@ onUnmounted(() => {
             <option value="200">200 行</option>
             <option value="500">500 行</option>
           </select>
-          <button class="close-btn" @click="handleClose" title="關閉">✕</button>
+          <button class="close-btn" @click="handleClose" aria-label="關閉日誌檢視器">✕</button>
         </div>
       </div>
 
@@ -200,6 +220,7 @@ onUnmounted(() => {
           class="search-input"
           type="text"
           placeholder="搜尋日誌..."
+          aria-label="搜尋日誌"
         />
         <span v-if="searchQuery" class="match-count">{{ matchCount }} / {{ totalLines }} 行</span>
       </div>
@@ -207,7 +228,7 @@ onUnmounted(() => {
       <!-- Log content area -->
       <div class="drawer-body">
         <!-- Reconnect hint -->
-        <div v-if="reconnecting" class="reconnect-hint">
+        <div v-if="reconnecting" class="reconnect-hint" aria-live="polite">
           連線中斷，正在重連...
         </div>
 
@@ -258,6 +279,14 @@ onUnmounted(() => {
   box-shadow: -4px 0 12px rgba(0, 0, 0, 0.15);
   display: flex;
   flex-direction: column;
+}
+
+@media (max-width: 768px) {
+  .log-drawer {
+    width: 100vw;
+    min-width: unset;
+    max-width: unset;
+  }
 }
 
 .drawer-header {

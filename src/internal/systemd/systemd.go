@@ -20,6 +20,8 @@ type ServiceManager interface {
 	StartService(name string) error
 	StopService(name string) error
 	RestartService(name string) error
+	EnableService(name string) error
+	DisableService(name string) error
 }
 
 // DefaultManager is the real systemd implementation.
@@ -29,6 +31,8 @@ func (m *DefaultManager) ListServices() ([]Service, error)       { return ListSe
 func (m *DefaultManager) StartService(name string) error         { return StartService(name) }
 func (m *DefaultManager) StopService(name string) error          { return StopService(name) }
 func (m *DefaultManager) RestartService(name string) error       { return RestartService(name) }
+func (m *DefaultManager) EnableService(name string) error        { return EnableService(name) }
+func (m *DefaultManager) DisableService(name string) error       { return DisableService(name) }
 
 var _ ServiceManager = (*DefaultManager)(nil)
 
@@ -232,6 +236,40 @@ func StopService(name string) error {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("systemctl stop %s: %s: %w", name, strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
+// EnableService enables a systemd service unit using systemctl.
+func EnableService(name string) error {
+	if err := ValidateServiceName(name); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "systemctl", "enable", name)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("systemctl enable %s: %s: %w", name, strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
+// DisableService disables a systemd service unit using systemctl.
+func DisableService(name string) error {
+	if err := ValidateServiceName(name); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "systemctl", "disable", name)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("systemctl disable %s: %s: %w", name, strings.TrimSpace(string(out)), err)
 	}
 	return nil
 }

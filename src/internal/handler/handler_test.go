@@ -20,14 +20,18 @@ import (
 // ============================================================
 
 type mockSystemd struct {
-	services    []systemd.Service
-	listErr     error
-	startErr    error
-	stopErr     error
-	restartErr  error
-	startCalled []string
-	stopCalled  []string
+	services      []systemd.Service
+	listErr       error
+	startErr      error
+	stopErr       error
+	restartErr    error
+	enableErr     error
+	disableErr    error
+	startCalled   []string
+	stopCalled    []string
 	restartCalled []string
+	enableCalled  []string
+	disableCalled []string
 }
 
 func (m *mockSystemd) ListServices() ([]systemd.Service, error) {
@@ -52,16 +56,26 @@ func (m *mockSystemd) RestartService(name string) error {
 	return m.restartErr
 }
 
+func (m *mockSystemd) EnableService(name string) error {
+	m.enableCalled = append(m.enableCalled, name)
+	return m.enableErr
+}
+
+func (m *mockSystemd) DisableService(name string) error {
+	m.disableCalled = append(m.disableCalled, name)
+	return m.disableErr
+}
+
 // ============================================================
 //  Test fixtures
 // ============================================================
 
 func sampleServices() []systemd.Service {
 	return []systemd.Service{
-		{Name: "nginx.service", Load: "loaded", Active: "active", Sub: "running", Locked: false},
-		{Name: "ssh.service", Load: "loaded", Active: "active", Sub: "running", Locked: true},
-		{Name: "myapp.service", Load: "loaded", Active: "inactive", Sub: "dead", Locked: false},
-		{Name: "docker.service", Load: "loaded", Active: "failed", Sub: "failed", Locked: true},
+		{Name: "nginx.service", Load: "loaded", Active: "active", Sub: "running", Locked: false, UnitFileState: "enabled", FragmentPath: "/etc/systemd/system/nginx.service"},
+		{Name: "ssh.service", Load: "loaded", Active: "active", Sub: "running", Locked: true, UnitFileState: "enabled", FragmentPath: "/usr/lib/systemd/system/ssh.service"},
+		{Name: "myapp.service", Load: "loaded", Active: "inactive", Sub: "dead", Locked: false, UnitFileState: "disabled", FragmentPath: "/etc/systemd/system/myapp.service"},
+		{Name: "docker.service", Load: "loaded", Active: "failed", Sub: "failed", Locked: true, UnitFileState: "static", FragmentPath: "/usr/lib/systemd/system/docker.service"},
 	}
 }
 
@@ -80,6 +94,8 @@ func setupTestRouter(h *Handler) *chi.Mux {
 		r.Post("/api/v1/services/{name}/start", h.HandleStartJSON)
 		r.Post("/api/v1/services/{name}/stop", h.HandleStopJSON)
 		r.Post("/api/v1/services/{name}/restart", h.HandleRestartJSON)
+		r.Post("/api/v1/services/{name}/enable", h.HandleEnableJSON)
+		r.Post("/api/v1/services/{name}/disable", h.HandleDisableJSON)
 	})
 
 	return r
@@ -583,6 +599,232 @@ func TestServiceRestart_Success(t *testing.T) {
 
 	if len(mock.restartCalled) != 1 || mock.restartCalled[0] != "nginx.service" {
 		t.Errorf("expected RestartService('nginx.service') to be called, got %v", mock.restartCalled)
+	}
+}
+
+// ============================================================
+//  TEST: POST /api/v1/services/{name}/enable (protected)
+// ============================================================
+
+func TestHandleEnable_Success(t *testing.T) {
+	origUser, origPass := auth.AdminUser, auth.AdminPass
+	auth.AdminUser, auth.AdminPass = "admin", "pass"
+	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
+
+	mock := &mockSystemd{services: sampleServices()}
+	h := New(nil, mock)
+	router := setupTestRouter(h)
+
+	cookie := loginAndGetCookie(t, router, "admin", "pass")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/services/myapp.service/enable", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	body := assertJSON(t, w, http.StatusOK)
+	if body["message"] != "myapp.service enabled" {
+		t.Errorf("expected message 'myapp.service enabled', got %v", body["message"])
+	}
+
+	if len(mock.enableCalled) != 1 || mock.enableCalled[0] != "myapp.service" {
+		t.Errorf("expected EnableService('myapp.service') to be called, got %v", mock.enableCalled)
+	}
+}
+
+func TestHandleEnable_Error(t *testing.T) {
+	origUser, origPass := auth.AdminUser, auth.AdminPass
+	auth.AdminUser, auth.AdminPass = "admin", "pass"
+	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
+
+	mock := &mockSystemd{enableErr: fmt.Errorf("operation not permitted")}
+	h := New(nil, mock)
+	router := setupTestRouter(h)
+
+	cookie := loginAndGetCookie(t, router, "admin", "pass")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/services/nginx.service/enable", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	body := assertJSON(t, w, http.StatusInternalServerError)
+	if body["error"] == nil {
+		t.Error("expected error message for enable failure")
+	}
+}
+
+func TestHandleEnable_Unauthorized(t *testing.T) {
+	mock := &mockSystemd{}
+	h := New(nil, mock)
+	router := setupTestRouter(h)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/services/nginx.service/enable", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assertJSON(t, w, http.StatusUnauthorized)
+}
+
+// ============================================================
+//  TEST: POST /api/v1/services/{name}/disable (protected)
+// ============================================================
+
+func TestHandleDisable_Success(t *testing.T) {
+	origUser, origPass := auth.AdminUser, auth.AdminPass
+	auth.AdminUser, auth.AdminPass = "admin", "pass"
+	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
+
+	mock := &mockSystemd{services: sampleServices()}
+	h := New(nil, mock)
+	router := setupTestRouter(h)
+
+	cookie := loginAndGetCookie(t, router, "admin", "pass")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/services/nginx.service/disable", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	body := assertJSON(t, w, http.StatusOK)
+	if body["message"] != "nginx.service disabled" {
+		t.Errorf("expected message 'nginx.service disabled', got %v", body["message"])
+	}
+
+	if len(mock.disableCalled) != 1 || mock.disableCalled[0] != "nginx.service" {
+		t.Errorf("expected DisableService('nginx.service') to be called, got %v", mock.disableCalled)
+	}
+}
+
+func TestHandleDisable_Error(t *testing.T) {
+	origUser, origPass := auth.AdminUser, auth.AdminPass
+	auth.AdminUser, auth.AdminPass = "admin", "pass"
+	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
+
+	mock := &mockSystemd{disableErr: fmt.Errorf("service not found")}
+	h := New(nil, mock)
+	router := setupTestRouter(h)
+
+	cookie := loginAndGetCookie(t, router, "admin", "pass")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/services/missing.service/disable", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	body := assertJSON(t, w, http.StatusInternalServerError)
+	if body["error"] == nil {
+		t.Error("expected error message for disable failure")
+	}
+}
+
+func TestHandleDisable_Unauthorized(t *testing.T) {
+	mock := &mockSystemd{}
+	h := New(nil, mock)
+	router := setupTestRouter(h)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/services/nginx.service/disable", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assertJSON(t, w, http.StatusUnauthorized)
+}
+
+// ============================================================
+//  TEST: GET /api/v1/services — unitFileState and fragmentPath fields
+// ============================================================
+
+func TestHandleServices_IncludesUnitFileState(t *testing.T) {
+	origUser, origPass := auth.AdminUser, auth.AdminPass
+	auth.AdminUser, auth.AdminPass = "admin", "pass"
+	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
+
+	mock := &mockSystemd{services: sampleServices()}
+	h := New(nil, mock)
+	router := setupTestRouter(h)
+
+	cookie := loginAndGetCookie(t, router, "admin", "pass")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/services", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	services := assertJSONArray(t, w, http.StatusOK)
+
+	// nginx.service: enabled, /etc/systemd/system/nginx.service
+	if services[0]["unitFileState"] != "enabled" {
+		t.Errorf("expected unitFileState 'enabled' for nginx, got %v", services[0]["unitFileState"])
+	}
+	if services[0]["fragmentPath"] != "/etc/systemd/system/nginx.service" {
+		t.Errorf("expected fragmentPath '/etc/systemd/system/nginx.service' for nginx, got %v", services[0]["fragmentPath"])
+	}
+
+	// myapp.service: disabled, /etc/systemd/system/myapp.service
+	if services[2]["unitFileState"] != "disabled" {
+		t.Errorf("expected unitFileState 'disabled' for myapp, got %v", services[2]["unitFileState"])
+	}
+	if services[2]["fragmentPath"] != "/etc/systemd/system/myapp.service" {
+		t.Errorf("expected fragmentPath '/etc/systemd/system/myapp.service' for myapp, got %v", services[2]["fragmentPath"])
+	}
+}
+
+func TestHandleServices_LockedService(t *testing.T) {
+	origUser, origPass := auth.AdminUser, auth.AdminPass
+	auth.AdminUser, auth.AdminPass = "admin", "pass"
+	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
+
+	mock := &mockSystemd{services: sampleServices()}
+	h := New(nil, mock)
+	router := setupTestRouter(h)
+
+	cookie := loginAndGetCookie(t, router, "admin", "pass")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/services", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	services := assertJSONArray(t, w, http.StatusOK)
+
+	// ssh.service: locked=true, unitFileState="enabled", fragmentPath="/usr/lib/systemd/system/ssh.service"
+	ssh := services[1]
+	if ssh["locked"] != true {
+		t.Error("expected ssh.service to be locked")
+	}
+	if ssh["unitFileState"] != "enabled" {
+		t.Errorf("expected unitFileState 'enabled' for ssh, got %v", ssh["unitFileState"])
+	}
+	if ssh["fragmentPath"] != "/usr/lib/systemd/system/ssh.service" {
+		t.Errorf("expected fragmentPath '/usr/lib/systemd/system/ssh.service' for ssh, got %v", ssh["fragmentPath"])
+	}
+}
+
+func TestHandleServices_StaticService(t *testing.T) {
+	origUser, origPass := auth.AdminUser, auth.AdminPass
+	auth.AdminUser, auth.AdminPass = "admin", "pass"
+	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
+
+	mock := &mockSystemd{services: sampleServices()}
+	h := New(nil, mock)
+	router := setupTestRouter(h)
+
+	cookie := loginAndGetCookie(t, router, "admin", "pass")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/services", nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	services := assertJSONArray(t, w, http.StatusOK)
+
+	// docker.service: locked=true, unitFileState="static"
+	docker := services[3]
+	if docker["locked"] != true {
+		t.Error("expected docker.service (UnitFileState=static) to be locked")
+	}
+	if docker["unitFileState"] != "static" {
+		t.Errorf("expected unitFileState 'static' for docker, got %v", docker["unitFileState"])
 	}
 }
 

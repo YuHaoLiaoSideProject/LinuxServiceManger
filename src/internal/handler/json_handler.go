@@ -15,11 +15,13 @@ import (
 // ============================================================
 
 type serviceJSON struct {
-	Name   string `json:"name"`
-	Load   string `json:"load"`
-	Active string `json:"active"`
-	Sub    string `json:"sub"`
-	Locked bool   `json:"locked"`
+	Name          string `json:"name"`
+	Load          string `json:"load"`
+	Active        string `json:"active"`
+	Sub           string `json:"sub"`
+	Locked        bool   `json:"locked"`
+	UnitFileState string `json:"unitFileState"`
+	FragmentPath  string `json:"fragmentPath"`
 }
 
 type messageJSON struct {
@@ -115,11 +117,13 @@ func (h *Handler) HandleServicesJSON(w http.ResponseWriter, r *http.Request) {
 	result := make([]serviceJSON, 0, len(services))
 	for _, svc := range services {
 		result = append(result, serviceJSON{
-			Name:   svc.Name,
-			Load:   svc.Load,
-			Active: svc.Active,
-			Sub:    svc.Sub,
-			Locked: svc.Locked,
+			Name:          svc.Name,
+			Load:          svc.Load,
+			Active:        svc.Active,
+			Sub:           svc.Sub,
+			Locked:        svc.Locked,
+			UnitFileState: svc.UnitFileState,
+			FragmentPath:  svc.FragmentPath,
 		})
 	}
 
@@ -169,4 +173,34 @@ func (h *Handler) HandleRestartJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, messageJSON{Message: name + " restarted"})
+}
+
+// ============================================================
+//  POST /api/v1/services/{name}/enable
+// ============================================================
+
+func (h *Handler) HandleEnableJSON(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	if err := h.systemd.EnableService(name); err != nil {
+		log.Printf("ERROR enabling %s: %v", name, err)
+		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "failed to enable " + name})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, messageJSON{Message: name + " enabled"})
+}
+
+// ============================================================
+//  POST /api/v1/services/{name}/disable
+// ============================================================
+
+func (h *Handler) HandleDisableJSON(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	if err := h.systemd.DisableService(name); err != nil {
+		log.Printf("ERROR disabling %s: %v", name, err)
+		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "failed to disable " + name})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, messageJSON{Message: name + " disabled"})
 }

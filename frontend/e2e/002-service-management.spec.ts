@@ -193,8 +193,8 @@ test.describe('Scenario 5: 鎖定服務', () => {
 
     const sshdRow = getServiceRow(page, 'sshd.service')
     await expect(sshdRow).toBeVisible()
-    await expect(sshdRow.locator('.locked-badge')).toBeVisible()
-    await expect(sshdRow.locator('.locked-badge')).toContainText('🔒')
+    await expect(sshdRow.locator('.locked-badge').first()).toBeVisible()
+    await expect(sshdRow.locator('.locked-badge').first()).toContainText('🔒')
 
     // No action buttons at all
     await expect(sshdRow.locator('button')).toHaveCount(0)

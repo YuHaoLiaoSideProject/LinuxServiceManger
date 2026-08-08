@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import TabsBar from '../components/TabsBar.vue'
@@ -26,14 +26,14 @@ describe('分頁切換 — 使用者點擊 tab', () => {
 
   it('3 個自訂服務 + 2 個系統服務，tab 上的數字應正確', () => {
     const services: Service[] = [
-      { name: 'a.service', load: 'loaded', active: 'active', sub: 'running', locked: false },
-      { name: 'b.service', load: 'loaded', active: 'inactive', sub: 'dead', locked: false },
-      { name: 'c.service', load: 'loaded', active: 'active', sub: 'running', locked: false },
-      { name: 'd.service', load: 'loaded', active: 'active', sub: 'running', locked: true },
-      { name: 'e.service', load: 'loaded', active: 'failed', sub: 'failed', locked: true },
+      { name: 'a.service', load: 'loaded', active: 'active', sub: 'running', locked: false, unitFileState: 'enabled', fragmentPath: '/etc/systemd/system/a.service' },
+      { name: 'b.service', load: 'loaded', active: 'inactive', sub: 'dead', locked: false, unitFileState: 'disabled', fragmentPath: '/etc/systemd/system/b.service' },
+      { name: 'c.service', load: 'loaded', active: 'active', sub: 'running', locked: false, unitFileState: 'enabled', fragmentPath: '/etc/systemd/system/c.service' },
+      { name: 'd.service', load: 'loaded', active: 'active', sub: 'running', locked: true, unitFileState: 'static', fragmentPath: '/lib/systemd/system/d.service' },
+      { name: 'e.service', load: 'loaded', active: 'failed', sub: 'failed', locked: true, unitFileState: 'masked', fragmentPath: '/lib/systemd/system/e.service' },
     ]
 
-    const wrapper = mount(TabsBar, { props: { services } })
+    const wrapper = mount(TabsBar, { props: { services, tab: 'my' } })
 
     const counts = wrapper.findAll('.tab-count')
     expect(counts[0].text()).toBe('3')  // 我的服務
@@ -42,10 +42,10 @@ describe('分頁切換 — 使用者點擊 tab', () => {
 
   it('點擊「系統服務」tab，emit setTab("system")', async () => {
     const services: Service[] = [
-      { name: 'a.service', load: 'loaded', active: 'active', sub: 'running', locked: false },
+      { name: 'a.service', load: 'loaded', active: 'active', sub: 'running', locked: false, unitFileState: 'enabled', fragmentPath: '/etc/systemd/system/a.service' },
     ]
 
-    const wrapper = mount(TabsBar, { props: { services } })
+    const wrapper = mount(TabsBar, { props: { services, tab: 'my' } })
 
     await wrapper.find('#tab-system').trigger('click')
     expect(wrapper.emitted('setTab')?.[0]).toEqual(['system'])

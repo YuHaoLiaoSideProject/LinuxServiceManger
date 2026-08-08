@@ -49,7 +49,7 @@ async function handleAction(action: ServiceAction, name: string) {
   }
 }
 
-const togglingService = ref<string | null>(null)
+const togglingService = ref<string>()
 
 async function handleToggle(action: 'enable' | 'disable', name: string) {
   if (action === 'disable') {
@@ -76,25 +76,25 @@ async function executeToggle(action: 'enable' | 'disable', name: string) {
     showToast(errMsg, 'error')
     await loadServices()
   } finally {
-    togglingService.value = null
+    togglingService.value = undefined
   }
 }
 
 // Disable confirm state
 const showDisableConfirm = ref(false)
-const pendingDisableService = ref<string | null>(null)
+const pendingDisableService = ref<string>()
 
 function confirmDisable() {
   if (pendingDisableService.value) {
     executeToggle('disable', pendingDisableService.value)
   }
   showDisableConfirm.value = false
-  pendingDisableService.value = null
+  pendingDisableService.value = undefined
 }
 
 function cancelDisable() {
   showDisableConfirm.value = false
-  pendingDisableService.value = null
+  pendingDisableService.value = undefined
   loadServices()
 }
 
@@ -118,7 +118,7 @@ onMounted(loadServices)
 <template>
   <main class="app-container">
     <AppHeader :username="auth.username" @refresh="loadServices" @logout="handleLogout" />
-    <TabsBar :services="services" @set-tab="setTab" />
+    <TabsBar :services="services" :tab="tab" @set-tab="setTab" />
     <StatsBar :services="services" />
     <Toolbar @search="(s: string) => search = s" />
     <ServiceTable

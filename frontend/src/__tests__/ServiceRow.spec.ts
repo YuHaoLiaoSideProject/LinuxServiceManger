@@ -40,6 +40,8 @@ function makeService(overrides: Partial<Service> = {}): Service {
     active: 'active',
     sub: 'running',
     locked: false,
+    unitFileState: 'enabled',
+    fragmentPath: '/etc/systemd/system/nginx.service',
     ...overrides,
   }
 }
@@ -96,8 +98,8 @@ describe('ServiceRow — 服務列表列', () => {
     const service = makeService({ active: 'inactive', sub: 'dead' })
     const wrapper = mount(ServiceRow, { props: { service } })
 
-    // Find the Start button
-    const startBtn = wrapper.find('button')
+    // Find the Start button within actions
+    const startBtn = wrapper.find('.actions button')
     expect(startBtn.text()).toContain('Start')
 
     await startBtn.trigger('click')
@@ -178,5 +180,143 @@ describe('ServiceRow — 服務列表列', () => {
 
     expect(wrapper.find('.status-failed').exists()).toBe(true)
     expect(wrapper.find('.dot-failed').exists()).toBe(true)
+  })
+
+  // --- Auto-start 欄位 ---
+
+  describe('Auto-start 欄位', () => {
+    it('解鎖服務 → Auto-start 欄位存在，顯示 Toggle ON (UnitFileState=enabled)', () => {
+      const service = makeService({ unitFileState: 'enabled', locked: false })
+      const wrapper = mount(ServiceRow, { props: { service } })
+
+      const td = wrapper.find('td[data-label="Auto-start"]')
+      expect(td.exists()).toBe(true)
+      expect(td.find('.toggle-switch').exists()).toBe(true)
+      expect(td.find('.toggle-on').exists()).toBe(true)
+      expect(td.text()).not.toContain('🔒')
+      expect(td.text()).not.toContain('不適用')
+    })
+
+    it('UnitFileState=disabled → Toggle OFF', () => {
+      const service = makeService({ unitFileState: 'disabled', active: 'inactive', sub: 'dead', locked: false })
+      const wrapper = mount(ServiceRow, { props: { service } })
+
+      expect(wrapper.find('.toggle-off').exists()).toBe(true)
+      expect(wrapper.find('.toggle-on').exists()).toBe(false)
+    })
+
+    it('UnitFileState=enabled-runtime → Toggle ON', () => {
+      const service = makeService({ unitFileState: 'enabled-runtime', locked: false })
+      const wrapper = mount(ServiceRow, { props: { service } })
+
+      expect(wrapper.find('.toggle-on').exists()).toBe(true)
+    })
+
+    it('UnitFileState=indirect → Toggle OFF', () => {
+      const service = makeService({ unitFileState: 'indirect', locked: false })
+      const wrapper = mount(ServiceRow, { props: { service } })
+
+      expect(wrapper.find('.toggle-off').exists()).toBe(true)
+    })
+
+    it('鎖定服務 → Auto-start 欄位顯示 🔒 不可操作', () => {
+      const service = makeService({ locked: true })
+      const wrapper = mount(ServiceRow, { props: { service } })
+
+      const td = wrapper.find('td[data-label="Auto-start"]')
+      expect(td.text()).toContain('🔒')
+      expect(td.find('.toggle-switch').exists()).toBe(false)
+    })
+
+    it('locked 但 fragmentPath 非 /etc/systemd/system/ 仍顯示 🔒', () => {
+      const service = makeService({ locked: true, fragmentPath: '/lib/systemd/system/nginx.service' })
+      const wrapper = mount(ServiceRow, { props: { service } })
+
+      const td = wrapper.find('td[data-label="Auto-start"]')
+      expect(td.text()).toContain('🔒')
+      expect(td.find('.toggle-switch').exists()).toBe(false)
+    })
+
+    it('UnitFileState=static → 顯示「不適用」', () => {
+      const service = makeService({ unitFileState: 'static', locked: false })
+      const wrapper = mount(ServiceRow, { props: { service } })
+
+      const td = wrapper.find('td[data-label="Auto-start"]')
+      expect(td.text()).toContain('不適用')
+      expect(td.find('.toggle-switch').exists()).toBe(false)
+    })
+
+    it('UnitFileState=masked → 顯示「不適用」', () => {
+      const service = makeService({ unitFileState: 'masked', locked: false })
+      const wrapper = mount(ServiceRow, { props: { service } })
+
+      expect(wrapper.find('td[data-label="Auto-start"]').text()).toContain('不適用')
+    })
+
+    it('UnitFileState=alias → 顯示「不適用」', () => {
+      const service = makeService({ unitFileState: 'alias', locked: false })
+      const wrapper = mount(ServiceRow, { props: { service } })
+
+      expect(wrapper.find('td[data-label="Auto-start"]').text()).toContain('不適用')
+    })
+
+    it('FragmentPath 非 /etc/systemd/system/ 時不顯示 Toggle', () => {
+      const service = makeService({
+        unitFileState: 'enabled',
+        locked: false,
+        fragmentPath: '/lib/systemd/system/nginx.service',
+      })
+      const wrapper = mount(ServiceRow, { props: { service } })
+
+      const td = wrapper.find('td[data-label="Auto-start"]')
+      expect(td.find('.toggle-switch').exists()).toBe(false)
+      expect(td.text()).toContain('🔒')
+    })
+
+    it('點擊 Toggle OFF→ON 時 emit toggle enable event', async () => {
+      const service = makeService({ unitFileState: 'disabled', active: 'inactive', sub: 'dead', locked: false })
+      const wrapper = mount(ServiceRow, { props: { service } })
+
+      await wrapper.find('.toggle-switch').trigger('click')
+
+      expect(wrapper.emitted('toggle')).toBeTruthy()
+      expect(wrapper.emitted('toggle')![0]).toEqual(['enable', 'nginx.service'])
+    })
+
+    it('點擊 Toggle ON→OFF 時 emit toggle disable event', async () => {
+      const service = makeService({ unitFileState: 'enabled', locked: false })
+      const wrapper = mount(ServiceRow, { props: { service } })
+
+      await wrapper.find('.toggle-switch').trigger('click')
+
+      expect(wrapper.emitted('toggle')![0]).toEqual(['disable', 'nginx.service'])
+    })
+
+    it('Toggle loading 狀態時不可點擊', async () => {
+      const service = makeService({ unitFileState: 'disabled', active: 'inactive', sub: 'dead', locked: false })
+      const wrapper = mount(ServiceRow, { props: { service, togglingService: 'nginx.service' } })
+
+      const toggle = wrapper.find('.toggle-switch')
+      // button should be disabled
+      expect(toggle.attributes('disabled')).toBeDefined()
+
+      await toggle.trigger('click')
+      expect(wrapper.emitted('toggle')).toBeFalsy()
+    })
+
+    it('Toggle loading 狀態顯示 loading class', () => {
+      const service = makeService({ unitFileState: 'enabled', locked: false })
+      const wrapper = mount(ServiceRow, { props: { service, togglingService: 'nginx.service' } })
+
+      expect(wrapper.find('.toggle-loading').exists()).toBe(true)
+    })
+
+    it('非該服務的 togglingService 不影響其他服務的 toggle', () => {
+      const service = makeService({ unitFileState: 'enabled', locked: false })
+      const wrapper = mount(ServiceRow, { props: { service, togglingService: 'other.service' } })
+
+      expect(wrapper.find('.toggle-loading').exists()).toBe(false)
+      expect(wrapper.find('.toggle-switch').attributes('disabled')).toBeUndefined()
+    })
   })
 })

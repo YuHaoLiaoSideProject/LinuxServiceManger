@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import type { Service, ServiceAction } from '../types/service'
-import { listServices, startService, stopService, restartService } from '../api/client'
+import { listServices, startService, stopService, restartService, enableService, disableService } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 import { useToast } from '../composables/useToast'
 import { useI18n } from '../composables/useI18n'
@@ -10,6 +10,7 @@ import StatsBar from '../components/StatsBar.vue'
 import TabsBar from '../components/TabsBar.vue'
 import Toolbar from '../components/Toolbar.vue'
 import ServiceTable from '../components/ServiceTable.vue'
+import ConfirmModal from '../components/ConfirmModal.vue'
 import ToastContainer from '../components/ToastContainer.vue'
 
 const { t } = useI18n()
@@ -48,6 +49,60 @@ async function handleAction(action: ServiceAction, name: string) {
   }
 }
 
+const togglingService = ref<string | null>(null)
+
+async function handleToggle(action: 'enable' | 'disable', name: string) {
+  if (action === 'disable') {
+    showDisableConfirm.value = true
+    pendingDisableService.value = name
+    return
+  }
+  await executeToggle(action, name)
+}
+
+async function executeToggle(action: 'enable' | 'disable', name: string) {
+  togglingService.value = name
+  try {
+    if (action === 'enable') {
+      await enableService(name)
+      showToast(t('toast.enabled', { name }), 'success')
+    } else {
+      await disableService(name)
+      showToast(t('toast.disabled', { name }), 'success')
+    }
+    await loadServices()
+  } catch (err: any) {
+    const errMsg = err.response?.data?.error || t('toast.error', { name })
+    showToast(errMsg, 'error')
+    await loadServices()
+  } finally {
+    togglingService.value = null
+  }
+}
+
+// Disable confirm state
+const showDisableConfirm = ref(false)
+const pendingDisableService = ref<string | null>(null)
+
+function confirmDisable() {
+  if (pendingDisableService.value) {
+    executeToggle('disable', pendingDisableService.value)
+  }
+  showDisableConfirm.value = false
+  pendingDisableService.value = null
+}
+
+function cancelDisable() {
+  showDisableConfirm.value = false
+  pendingDisableService.value = null
+  loadServices()
+}
+
+const disableConfirmMessage = computed(() => {
+  if (!pendingDisableService.value) return ''
+  return t('modal.disable', { name: pendingDisableService.value })
+})
+
 function setTab(t: string) {
   tab.value = t
   localStorage.setItem('lms-tab', t)
@@ -71,8 +126,16 @@ onMounted(loadServices)
       :tab="tab"
       :search="search"
       :loading="loading"
+      :togglingService="togglingService"
       @action="handleAction"
       @refresh="loadServices"
+      @toggle="handleToggle"
+    />
+    <ConfirmModal
+      :show="showDisableConfirm"
+      :message="disableConfirmMessage"
+      @confirm="confirmDisable"
+      @cancel="cancelDisable"
     />
     <ToastContainer />
   </main>

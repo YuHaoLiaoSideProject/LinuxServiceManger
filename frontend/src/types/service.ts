@@ -4,6 +4,8 @@ export interface Service {
   active: string
   sub: string
   locked: boolean
+  unitFileState: string
+  fragmentPath: string
 }
 
 export type ServiceAction = 'start' | 'stop' | 'restart'

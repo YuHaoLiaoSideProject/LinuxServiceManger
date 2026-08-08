@@ -4,8 +4,14 @@ import type { Service, ServiceAction } from '../types/service'
 import { useI18n } from '../composables/useI18n'
 
 const { t } = useI18n()
-const props = defineProps<{ service: Service }>()
-const emit = defineEmits<{ action: [action: ServiceAction, name: string] }>()
+const props = defineProps<{
+  service: Service
+  togglingService?: string
+}>()
+const emit = defineEmits<{
+  action: [action: ServiceAction, name: string]
+  toggle: [action: 'enable' | 'disable', name: string]
+}>()
 
 const statusClass = computed(() => {
   const a = props.service.active
@@ -37,6 +43,36 @@ function doAction(action: ServiceAction) {
   }
   emit('action', action, props.service.name)
 }
+
+// ── Auto-start toggle ──
+
+const canToggleAutoStart = computed(() => {
+  if (props.service.locked) return false
+  const state = props.service.unitFileState
+  if (['static', 'masked', 'alias', 'unknown'].includes(state)) return false
+  if (!props.service.fragmentPath?.startsWith('/etc/systemd/system/')) return false
+  return true
+})
+
+const toggleOn = computed(() => {
+  return ['enabled', 'enabled-runtime'].includes(props.service.unitFileState)
+})
+
+const showNotApplicable = computed(() => {
+  return ['static', 'masked', 'alias'].includes(props.service.unitFileState)
+})
+
+const isLoading = computed(() => props.togglingService === props.service.name)
+
+function doToggle() {
+  if (isLoading.value) return
+  if (!canToggleAutoStart.value) return
+  if (toggleOn.value) {
+    emit('toggle', 'disable', props.service.name)
+  } else {
+    emit('toggle', 'enable', props.service.name)
+  }
+}
 </script>
 
 <template>
@@ -48,6 +84,23 @@ function doAction(action: ServiceAction) {
       <span :class="statusClass">{{ service.active }}</span>
     </td>
     <td data-label="Sub">{{ service.sub }}</td>
+    <td data-label="Auto-start" class="auto-start-cell">
+      <span v-if="showNotApplicable" class="na-badge">不適用</span>
+      <span v-else-if="!canToggleAutoStart" class="locked-badge" :title="t('locked.tooltip')">🔒</span>
+      <button
+        v-else
+        class="toggle-switch"
+        :class="{ 'toggle-on': toggleOn, 'toggle-off': !toggleOn, 'toggle-loading': isLoading }"
+        :disabled="isLoading"
+        :aria-label="toggleOn ? `關閉 ${service.name} 的自動啟動` : `開啟 ${service.name} 的自動啟動`"
+        @click="doToggle"
+      >
+        <span class="toggle-track">
+          <span class="toggle-thumb"></span>
+        </span>
+        <span class="toggle-label">{{ isLoading ? '...' : (toggleOn ? 'ON' : 'OFF') }}</span>
+      </button>
+    </td>
     <td data-label="Actions" class="actions">
       <span v-if="service.locked" class="locked-badge" :title="t('locked.tooltip')">{{ t('locked.badge') }}</span>
       <template v-else>

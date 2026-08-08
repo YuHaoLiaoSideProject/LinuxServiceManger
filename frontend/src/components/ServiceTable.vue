@@ -11,8 +11,13 @@ const props = defineProps<{
   tab: string
   search: string
   loading: boolean
+  togglingService?: string
 }>()
-const emit = defineEmits<{ action: [action: ServiceAction, name: string]; refresh: [] }>()
+const emit = defineEmits<{
+  action: [action: ServiceAction, name: string]
+  refresh: []
+  toggle: [action: 'enable' | 'disable', name: string]
+}>()
 
 // Sort
 const sortCol = ref<string | null>(null)
@@ -106,16 +111,17 @@ const confirmMessage = computed(() => {
           <th class="sortable" @click="toggleSort('sub')">
             Sub <span class="sort-icon" :class="{ active: sortCol === 'sub' }">{{ sortCol === 'sub' ? (sortAsc ? '▲' : '▼') : '' }}</span>
           </th>
+          <th>Auto-start</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody id="service-table-body">
         <template v-if="loading">
-          <tr><td colspan="5"><div class="empty-state"><div class="spinner-sm"></div></div></td></tr>
+          <tr><td colspan="6"><div class="empty-state"><div class="spinner-sm"></div></div></td></tr>
         </template>
         <template v-else-if="filtered.length === 0">
           <tr>
-            <td colspan="5">
+            <td colspan="6">
               <div class="empty-state">
                 <div class="empty-icon">{{ search ? '🔍' : '📭' }}</div>
                 <em>{{ search ? t('search.empty', { term: search }) : t('empty.state') }}</em>
@@ -124,7 +130,14 @@ const confirmMessage = computed(() => {
           </tr>
         </template>
         <template v-else>
-          <ServiceRow v-for="svc in filtered" :key="svc.name" :service="svc" @action="onAction" />
+          <ServiceRow
+            v-for="svc in filtered"
+            :key="svc.name"
+            :service="svc"
+            :togglingService="togglingService"
+            @action="onAction"
+            @toggle="(action, name) => emit('toggle', action, name)"
+          />
         </template>
       </tbody>
     </table>

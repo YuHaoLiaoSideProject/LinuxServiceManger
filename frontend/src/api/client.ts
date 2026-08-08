@@ -44,3 +44,13 @@ export async function restartService(name: string): Promise<MessageResponse> {
   const { data } = await api.post<MessageResponse>(`/services/${encodeURIComponent(name)}/restart`)
   return data
 }
+
+export async function enableService(name: string): Promise<MessageResponse> {
+  const { data } = await api.post<MessageResponse>(`/services/${encodeURIComponent(name)}/enable`)
+  return data
+}
+
+export async function disableService(name: string): Promise<MessageResponse> {
+  const { data } = await api.post<MessageResponse>(`/services/${encodeURIComponent(name)}/disable`)
+  return data
+}

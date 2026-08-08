@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { readFileSync } from 'fs'
+import { fileURLToPath } from 'url'
+import { dirname, resolve } from 'path'
 import LogDrawer from '../components/LogDrawer.vue'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
 // ── Mock WebSocket with tracking ──
 
@@ -673,10 +679,8 @@ describe('LogDrawer — 日誌檢視器', () => {
   it('F-LD-RWD-01: 窄螢幕時 CSS 包含 media query 將 .log-drawer width 設為 100vw', () => {
     // Read the source .vue file to verify CSS media query exists
     // (Vue scoped styles are not injected as <style> tags in happy-dom)
-    const fs = require('fs')
-    const path = require('path')
-    const sourcePath = path.resolve(__dirname, '../components/LogDrawer.vue')
-    const source = fs.readFileSync(sourcePath, 'utf-8')
+    const sourcePath = resolve(__dirname, '../components/LogDrawer.vue')
+    const source = readFileSync(sourcePath, 'utf-8')
 
     // Verify media query exists with 100vw rule in the component source
     expect(source).toContain('@media (max-width: 768px)')
@@ -801,7 +805,7 @@ describe('LogDrawer — 日誌檢視器', () => {
   // ── F-LD-FT-04: Edge — no focusable elements ──
   it('F-LD-FT-04: 沒有可聚焦元素時 Tab 不拋出錯誤', async () => {
     // Mount with visible=false then test that onKeydown handles gracefully
-    const wrapper = mount(LogDrawer, {
+    mount(LogDrawer, {
       props: { serviceName: 'test.service', visible: false },
     })
 

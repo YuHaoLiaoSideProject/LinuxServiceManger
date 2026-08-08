@@ -47,10 +47,11 @@ test.describe('Scenario 1: 載入服務列表', () => {
 
     await expect(page.locator('.stats-bar')).toBeVisible()
 
-    // Total: 7 services
-    await expect(page.locator('.stat-total .stat-value')).toHaveText('7')
-    // Running: nginx, sshd, bus-name@, static-svc = 4
-    await expect(page.locator('.stat-active .stat-value')).toHaveText('4')
+    // Default tab is "My Services" → only unlocked services
+    // Total: 6 unlocked (nginx, myapp, crash, bus-name@, static-svc, masked-svc)
+    await expect(page.locator('.stat-total .stat-value')).toHaveText('6')
+    // Running: nginx, bus-name@, static-svc = 3
+    await expect(page.locator('.stat-active .stat-value')).toHaveText('3')
     // Failed: crash = 1
     await expect(page.locator('.stat-failed .stat-value')).toHaveText('1')
   })

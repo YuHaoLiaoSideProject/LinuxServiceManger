@@ -40,6 +40,28 @@ describe('分頁切換 — 使用者點擊 tab', () => {
     expect(counts[1].text()).toBe('2')  // 系統服務
   })
 
+  it('預設 tab="my" 時 #tab-my 有 active class，#tab-system 無', () => {
+    const services: Service[] = [
+      { name: 'a.service', load: 'loaded', active: 'active', sub: 'running', locked: false, unitFileState: 'enabled', fragmentPath: '/etc/systemd/system/a.service' },
+    ]
+
+    const wrapper = mount(TabsBar, { props: { services, tab: 'my' } })
+
+    expect(wrapper.find('#tab-my').classes()).toContain('active')
+    expect(wrapper.find('#tab-system').classes()).not.toContain('active')
+  })
+
+  it('tab="system" 時 #tab-system 有 active class，#tab-my 無', () => {
+    const services: Service[] = [
+      { name: 'a.service', load: 'loaded', active: 'active', sub: 'running', locked: false, unitFileState: 'enabled', fragmentPath: '/etc/systemd/system/a.service' },
+    ]
+
+    const wrapper = mount(TabsBar, { props: { services, tab: 'system' } })
+
+    expect(wrapper.find('#tab-system').classes()).toContain('active')
+    expect(wrapper.find('#tab-my').classes()).not.toContain('active')
+  })
+
   it('點擊「系統服務」tab，emit setTab("system")', async () => {
     const services: Service[] = [
       { name: 'a.service', load: 'loaded', active: 'active', sub: 'running', locked: false, unitFileState: 'enabled', fragmentPath: '/etc/systemd/system/a.service' },

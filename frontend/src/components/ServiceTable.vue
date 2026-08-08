@@ -100,19 +100,19 @@ const confirmMessage = computed(() => {
       <thead>
         <tr>
           <th class="sortable" @click="toggleSort('name')">
-            Name <span class="sort-icon" :class="{ active: sortCol === 'name' }">{{ sortCol === 'name' ? (sortAsc ? '▲' : '▼') : '' }}</span>
+            {{ t('col.name') }} <span class="sort-icon" :class="{ active: sortCol === 'name' }">{{ sortCol === 'name' ? (sortAsc ? '▲' : '▼') : '' }}</span>
           </th>
           <th class="sortable" @click="toggleSort('load')">
-            Load <span class="sort-icon" :class="{ active: sortCol === 'load' }">{{ sortCol === 'load' ? (sortAsc ? '▲' : '▼') : '' }}</span>
+            {{ t('col.load') }} <span class="sort-icon" :class="{ active: sortCol === 'load' }">{{ sortCol === 'load' ? (sortAsc ? '▲' : '▼') : '' }}</span>
           </th>
           <th class="sortable" @click="toggleSort('active')">
-            Active <span class="sort-icon" :class="{ active: sortCol === 'active' }">{{ sortCol === 'active' ? (sortAsc ? '▲' : '▼') : '' }}</span>
+            {{ t('col.active') }} <span class="sort-icon" :class="{ active: sortCol === 'active' }">{{ sortCol === 'active' ? (sortAsc ? '▲' : '▼') : '' }}</span>
           </th>
           <th class="sortable" @click="toggleSort('sub')">
-            Sub <span class="sort-icon" :class="{ active: sortCol === 'sub' }">{{ sortCol === 'sub' ? (sortAsc ? '▲' : '▼') : '' }}</span>
+            {{ t('col.sub') }} <span class="sort-icon" :class="{ active: sortCol === 'sub' }">{{ sortCol === 'sub' ? (sortAsc ? '▲' : '▼') : '' }}</span>
           </th>
-          <th>Auto-start</th>
-          <th>Actions</th>
+          <th>{{ t('col.autoStart') }}</th>
+          <th>{{ t('col.actions') }}</th>
         </tr>
       </thead>
       <tbody id="service-table-body">

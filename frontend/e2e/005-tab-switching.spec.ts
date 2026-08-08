@@ -293,14 +293,42 @@ test.describe('Scenario 4: Tab 切換 + 搜尋組合', () => {
 })
 
 
-// ── Scenario 5: Tab 切換不影響 StatsBar ─────────────────────────
+// ── Scenario 5: StatsBar 跟隨 Tab 過濾 ──────────────────────────
 
-test.describe('Scenario 5: StatsBar 不受 Tab 切換影響', () => {
-  test('Tab 切換後統計數字不變（永遠是全部服務統計）', async ({ page }) => {
+test.describe('Scenario 5: StatsBar 跟隨 Tab 過濾', () => {
+  test('「我的服務」tab：總服務數 = unlocked 數量 (6)', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
-    // Record stats on My Services tab
+    const unlockedCount = MOCK_SERVICES.filter(s => !s.locked).length // 6
+    const unlockedRunning = MOCK_SERVICES.filter(s => !s.locked && ['active', 'running'].includes(s.active)).length // 3
+    const unlockedFailed = MOCK_SERVICES.filter(s => !s.locked && s.active === 'failed').length // 1
+
+    await expect(page.locator('.stat-total .stat-value')).toHaveText(String(unlockedCount))
+    await expect(page.locator('.stat-active .stat-value')).toHaveText(String(unlockedRunning))
+    await expect(page.locator('.stat-failed .stat-value')).toHaveText(String(unlockedFailed))
+  })
+
+  test('「系統服務」tab：總服務數 = locked 數量 (1)', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    await getSystemTab(page).click()
+
+    const lockedCount = MOCK_SERVICES.filter(s => s.locked).length // 1
+    const lockedRunning = MOCK_SERVICES.filter(s => s.locked && ['active', 'running'].includes(s.active)).length // 1
+    const lockedFailed = MOCK_SERVICES.filter(s => s.locked && s.active === 'failed').length // 0
+
+    await expect(page.locator('.stat-total .stat-value')).toHaveText(String(lockedCount))
+    await expect(page.locator('.stat-active .stat-value')).toHaveText(String(lockedRunning))
+    await expect(page.locator('.stat-failed .stat-value')).toHaveText(String(lockedFailed))
+  })
+
+  test('切換 tab 時三個統計數字（總數/Running/Failed）都跟著變', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    // My Services tab
     const totalMy = await page.locator('.stat-total .stat-value').textContent()
     const runningMy = await page.locator('.stat-active .stat-value').textContent()
     const failedMy = await page.locator('.stat-failed .stat-value').textContent()
@@ -312,20 +340,126 @@ test.describe('Scenario 5: StatsBar 不受 Tab 切換影響', () => {
     const runningSys = await page.locator('.stat-active .stat-value').textContent()
     const failedSys = await page.locator('.stat-failed .stat-value').textContent()
 
-    // Stats should be identical regardless of tab
-    expect(totalMy).toBe(totalSys)
-    expect(runningMy).toBe(runningSys)
-    expect(failedMy).toBe(failedSys)
+    // System tab has fewer services → totals should differ
+    expect(totalMy).not.toBe(totalSys)
+    expect(Number(totalMy)).toBeGreaterThan(Number(totalSys))
   })
 
-  test('統計總數為 7，不受 tab 影響', async ({ page }) => {
+  test('搜尋 filter 不影響 StatsBar（只受 tab 影響）', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
-    await expect(page.locator('.stat-total .stat-value')).toHaveText('7')
+    // On My Services tab: total = 6
+    await expect(page.locator('.stat-total .stat-value')).toHaveText('6')
+
+    // Search narrows table but stats stay for current tab
+    await page.locator('.search-wrap input[type="search"]').fill('nginx')
+
+    // Stats unchanged — still based on tab, not search
+    await expect(page.locator('.stat-total .stat-value')).toHaveText('6')
+  })
+
+  test('切到系統服務 tab + 搜尋 → StatsBar 仍顯示系統服務統計', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
 
     await getSystemTab(page).click()
+
+    // System tab: total = 1
+    await expect(page.locator('.stat-total .stat-value')).toHaveText('1')
+
+    // Search for something not in system tab
+    await page.locator('.search-wrap input[type="search"]').fill('nginx')
+
+    // Stats still show system tab total (1), even though table is empty
+    await expect(page.locator('.stat-total .stat-value')).toHaveText('1')
+  })
+
+  test('來回切換 tab，StatsBar 數值正確跟隨', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    // My → 6
+    await expect(page.locator('.stat-total .stat-value')).toHaveText('6')
+
+    // System → 1
+    await getSystemTab(page).click()
+    await expect(page.locator('.stat-total .stat-value')).toHaveText('1')
+
+    // My → 6 again
+    await getMyTab(page).click()
+    await expect(page.locator('.stat-total .stat-value')).toHaveText('6')
+  })
+
+  test('重整後 StatsBar 維持當前 tab 的統計', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    await getSystemTab(page).click()
+    await expect(page.locator('.stat-total .stat-value')).toHaveText('1')
+
+    await page.reload()
+    await page.waitForURL((url) => url.pathname === '/')
+    await page.waitForSelector('.app-header')
+
+    // Still on system tab after reload → stats still 1
+    await expect(page.locator('.stat-total .stat-value')).toHaveText('1')
+  })
+
+  test('操作服務後重整，StatsBar 仍對應當前 tab', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    // On My Services, start myapp
+    const myappRow = getServiceRow(page, 'myapp.service')
+    await myappRow.locator('button').filter({ hasText: '▶' }).click()
+    await page.waitForTimeout(500)
+
+    // Still on My Services tab
+    await assertTabActive(page, getMyTab(page))
+    // Total should still be 6 for My Services
+    await expect(page.locator('.stat-total .stat-value')).toHaveText('6')
+  })
+
+  test('全部 unlocked：系統服務 tab StatsBar total = 0', async ({ page }) => {
+    const allUnlocked = MOCK_SERVICES.map(s => ({ ...s, locked: false }))
+    await setupApiMocks(page, { authenticated: false, includeActions: true, services: allUnlocked })
+    await loginViaUI(page)
+
+    // My tab: all 7 services
     await expect(page.locator('.stat-total .stat-value')).toHaveText('7')
+
+    // Switch to system tab → 0
+    await getSystemTab(page).click()
+    await expect(page.locator('.stat-total .stat-value')).toHaveText('0')
+    await expect(page.locator('.stat-active .stat-value')).toHaveText('0')
+    await expect(page.locator('.stat-failed .stat-value')).toHaveText('0')
+  })
+
+  test('全部 locked：我的服務 tab StatsBar total = 0', async ({ page }) => {
+    const allLocked = MOCK_SERVICES.map(s => ({ ...s, locked: true }))
+    await setupApiMocks(page, { authenticated: false, includeActions: true, services: allLocked })
+    await loginViaUI(page)
+
+    // My tab: 0 (all locked)
+    await expect(page.locator('.stat-total .stat-value')).toHaveText('0')
+
+    // Switch to system tab: all 7
+    await getSystemTab(page).click()
+    await expect(page.locator('.stat-total .stat-value')).toHaveText('7')
+  })
+
+  test('快速連續切換 tab，StatsBar 數值不閃爍不錯亂', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    await getSystemTab(page).click()
+    await getMyTab(page).click()
+    await getSystemTab(page).click()
+
+    // Final state: system tab → total=1, running=1
+    await expect(page.locator('.stat-total .stat-value')).toHaveText('1')
+    await expect(page.locator('.stat-active .stat-value')).toHaveText('1')
   })
 })
 

@@ -77,31 +77,31 @@ function doToggle() {
 
 <template>
   <tr>
-    <td data-label="Name">{{ service.name }}</td>
-    <td data-label="Load">{{ service.load }}</td>
-    <td data-label="Active">
+    <td :data-label="t('col.name')">{{ service.name }}</td>
+    <td :data-label="t('col.load')">{{ t('status.load.' + service.load) }}</td>
+    <td :data-label="t('col.active')">
       <span class="status-dot" :class="dotClass"></span>
-      <span :class="statusClass">{{ service.active }}</span>
+      <span :class="statusClass">{{ t('status.active.' + service.active) }}</span>
     </td>
-    <td data-label="Sub">{{ service.sub }}</td>
-    <td data-label="Auto-start" class="auto-start-cell">
-      <span v-if="showNotApplicable" class="na-badge">不適用</span>
+    <td :data-label="t('col.sub')">{{ t('status.sub.' + service.sub) }}</td>
+    <td :data-label="t('col.autoStart')" class="auto-start-cell">
+      <span v-if="showNotApplicable" class="na-badge">{{ t('autoStart.na') }}</span>
       <span v-else-if="!canToggleAutoStart" class="locked-badge" :title="t('locked.tooltip')">🔒</span>
       <button
         v-else
         class="toggle-switch"
         :class="{ 'toggle-on': toggleOn, 'toggle-off': !toggleOn, 'toggle-loading': isLoading }"
         :disabled="isLoading"
-        :aria-label="toggleOn ? `關閉 ${service.name} 的自動啟動` : `開啟 ${service.name} 的自動啟動`"
+        :aria-label="toggleOn ? t('autoStart.disableAria', { name: service.name }) : t('autoStart.enableAria', { name: service.name })"
         @click="doToggle"
       >
         <span class="toggle-track">
           <span class="toggle-thumb"></span>
         </span>
-        <span class="toggle-label">{{ isLoading ? '...' : (toggleOn ? 'ON' : 'OFF') }}</span>
+        <span class="toggle-label">{{ isLoading ? '...' : (toggleOn ? t('autoStart.on') : t('autoStart.off')) }}</span>
       </button>
     </td>
-    <td data-label="Actions" class="actions">
+    <td :data-label="t('col.actions')" class="actions">
       <span v-if="service.locked" class="locked-badge" :title="t('locked.tooltip')">{{ t('locked.badge') }}</span>
       <template v-else>
         <button v-if="showStart" class="outline secondary" @click="doAction('start')" :aria-label="t('action.start.aria', { name: service.name })">

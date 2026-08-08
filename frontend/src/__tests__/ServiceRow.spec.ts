@@ -14,6 +14,35 @@ const tMap: Record<string, string> = {
   'action.start.aria': '啟動 {name}',
   'action.stop.aria': '停止 {name}',
   'action.restart.aria': '重啟 {name}',
+  'modal.title': '⚠️ 確認操作',
+  'modal.cancel': '取消',
+  'modal.confirm': '確認',
+  'modal.stop': '確定要停止 {name} 嗎？',
+  'modal.restart': '確定要重啟 {name} 嗎？',
+  'col.name': '名稱',
+  'col.load': '載入狀態',
+  'col.active': '啟用狀態',
+  'col.sub': '執行狀態',
+  'col.autoStart': '開機啟動',
+  'col.actions': '操作',
+  'status.load.loaded': '已載入',
+  'status.load.not-found': '未找到',
+  'status.load.error': '錯誤',
+  'status.load.masked': '已遮蔽',
+  'status.active.active': '啟用中',
+  'status.active.inactive': '未啟用',
+  'status.active.failed': '失敗',
+  'status.active.activating': '啟用中',
+  'status.sub.running': '執行中',
+  'status.sub.dead': '已停止',
+  'status.sub.exited': '已退出',
+  'status.sub.failed': '失敗',
+  'status.sub.auto-restart': '自動重啟',
+  'autoStart.na': '不適用',
+  'autoStart.on': 'ON',
+  'autoStart.off': 'OFF',
+  'autoStart.enableAria': '開啟 {name} 的自動啟動',
+  'autoStart.disableAria': '關閉 {name} 的自動啟動',
 }
 
 vi.mock('../composables/useI18n', () => ({
@@ -146,14 +175,56 @@ describe('ServiceRow — 服務列表列', () => {
     const service = makeService({ name: 'myapp@.service' })
     const wrapper = mount(ServiceRow, { props: { service } })
 
-    expect(wrapper.find('td[data-label="Name"]').text()).toBe('myapp@.service')
+    expect(wrapper.find('td[data-label="名稱"]').text()).toBe('myapp@.service')
   })
 
   it('特殊字元服務名稱正確顯示 -', () => {
     const service = makeService({ name: 'my-app.service' })
     const wrapper = mount(ServiceRow, { props: { service } })
 
-    expect(wrapper.find('td[data-label="Name"]').text()).toBe('my-app.service')
+    expect(wrapper.find('td[data-label="名稱"]').text()).toBe('my-app.service')
+  })
+
+  // --- 所有欄位 ---
+
+  it('六個欄位皆存在', () => {
+    const service = makeService()
+    const wrapper = mount(ServiceRow, { props: { service } })
+
+    expect(wrapper.find('td[data-label="名稱"]').exists()).toBe(true)
+    expect(wrapper.find('td[data-label="載入狀態"]').exists()).toBe(true)
+    expect(wrapper.find('td[data-label="啟用狀態"]').exists()).toBe(true)
+    expect(wrapper.find('td[data-label="執行狀態"]').exists()).toBe(true)
+    expect(wrapper.find('td[data-label="開機啟動"]').exists()).toBe(true)
+    expect(wrapper.find('td[data-label="操作"]').exists()).toBe(true)
+  })
+
+  it('Load 欄位顯示正確值', () => {
+    const service = makeService({ load: 'loaded' })
+    const wrapper = mount(ServiceRow, { props: { service } })
+
+    expect(wrapper.find('td[data-label="載入狀態"]').text()).toBe('已載入')
+  })
+
+  it('Load 欄位顯示 not-found', () => {
+    const service = makeService({ load: 'not-found' })
+    const wrapper = mount(ServiceRow, { props: { service } })
+
+    expect(wrapper.find('td[data-label="載入狀態"]').text()).toBe('未找到')
+  })
+
+  it('Sub 欄位顯示正確值', () => {
+    const service = makeService({ sub: 'running' })
+    const wrapper = mount(ServiceRow, { props: { service } })
+
+    expect(wrapper.find('td[data-label="執行狀態"]').text()).toBe('執行中')
+  })
+
+  it('Sub 欄位顯示 dead', () => {
+    const service = makeService({ sub: 'dead' })
+    const wrapper = mount(ServiceRow, { props: { service } })
+
+    expect(wrapper.find('td[data-label="執行狀態"]').text()).toBe('已停止')
   })
 
   // --- 狀態 class ---
@@ -189,7 +260,7 @@ describe('ServiceRow — 服務列表列', () => {
       const service = makeService({ unitFileState: 'enabled', locked: false })
       const wrapper = mount(ServiceRow, { props: { service } })
 
-      const td = wrapper.find('td[data-label="Auto-start"]')
+      const td = wrapper.find('td[data-label="開機啟動"]')
       expect(td.exists()).toBe(true)
       expect(td.find('.toggle-switch').exists()).toBe(true)
       expect(td.find('.toggle-on').exists()).toBe(true)
@@ -223,7 +294,7 @@ describe('ServiceRow — 服務列表列', () => {
       const service = makeService({ locked: true })
       const wrapper = mount(ServiceRow, { props: { service } })
 
-      const td = wrapper.find('td[data-label="Auto-start"]')
+      const td = wrapper.find('td[data-label="開機啟動"]')
       expect(td.text()).toContain('🔒')
       expect(td.find('.toggle-switch').exists()).toBe(false)
     })
@@ -232,7 +303,7 @@ describe('ServiceRow — 服務列表列', () => {
       const service = makeService({ locked: true, fragmentPath: '/lib/systemd/system/nginx.service' })
       const wrapper = mount(ServiceRow, { props: { service } })
 
-      const td = wrapper.find('td[data-label="Auto-start"]')
+      const td = wrapper.find('td[data-label="開機啟動"]')
       expect(td.text()).toContain('🔒')
       expect(td.find('.toggle-switch').exists()).toBe(false)
     })
@@ -241,7 +312,7 @@ describe('ServiceRow — 服務列表列', () => {
       const service = makeService({ unitFileState: 'static', locked: false })
       const wrapper = mount(ServiceRow, { props: { service } })
 
-      const td = wrapper.find('td[data-label="Auto-start"]')
+      const td = wrapper.find('td[data-label="開機啟動"]')
       expect(td.text()).toContain('不適用')
       expect(td.find('.toggle-switch').exists()).toBe(false)
     })
@@ -250,14 +321,14 @@ describe('ServiceRow — 服務列表列', () => {
       const service = makeService({ unitFileState: 'masked', locked: false })
       const wrapper = mount(ServiceRow, { props: { service } })
 
-      expect(wrapper.find('td[data-label="Auto-start"]').text()).toContain('不適用')
+      expect(wrapper.find('td[data-label="開機啟動"]').text()).toContain('不適用')
     })
 
     it('UnitFileState=alias → 顯示「不適用」', () => {
       const service = makeService({ unitFileState: 'alias', locked: false })
       const wrapper = mount(ServiceRow, { props: { service } })
 
-      expect(wrapper.find('td[data-label="Auto-start"]').text()).toContain('不適用')
+      expect(wrapper.find('td[data-label="開機啟動"]').text()).toContain('不適用')
     })
 
     it('FragmentPath 非 /etc/systemd/system/ 時不顯示 Toggle', () => {
@@ -268,7 +339,7 @@ describe('ServiceRow — 服務列表列', () => {
       })
       const wrapper = mount(ServiceRow, { props: { service } })
 
-      const td = wrapper.find('td[data-label="Auto-start"]')
+      const td = wrapper.find('td[data-label="開機啟動"]')
       expect(td.find('.toggle-switch').exists()).toBe(false)
       expect(td.text()).toContain('🔒')
     })
@@ -318,5 +389,35 @@ describe('ServiceRow — 服務列表列', () => {
       expect(wrapper.find('.toggle-loading').exists()).toBe(false)
       expect(wrapper.find('.toggle-switch').attributes('disabled')).toBeUndefined()
     })
+  })
+})
+
+describe('RWD 手機版 data-label 語系', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('繁體中文模式下 data-label 應為中文', () => {
+    const service = makeService()
+    const wrapper = mount(ServiceRow, { props: { service } })
+
+    expect(wrapper.find('td[data-label="名稱"]').exists()).toBe(true)
+    expect(wrapper.find('td[data-label="載入狀態"]').exists()).toBe(true)
+    expect(wrapper.find('td[data-label="啟用狀態"]').exists()).toBe(true)
+    expect(wrapper.find('td[data-label="執行狀態"]').exists()).toBe(true)
+    expect(wrapper.find('td[data-label="開機啟動"]').exists()).toBe(true)
+    expect(wrapper.find('td[data-label="操作"]').exists()).toBe(true)
+  })
+
+  it('data-label 不應出現英文', () => {
+    const service = makeService()
+    const wrapper = mount(ServiceRow, { props: { service } })
+
+    expect(wrapper.find('td[data-label="Name"]').exists()).toBe(false)
+    expect(wrapper.find('td[data-label="Load"]').exists()).toBe(false)
+    expect(wrapper.find('td[data-label="Active"]').exists()).toBe(false)
+    expect(wrapper.find('td[data-label="Sub"]').exists()).toBe(false)
+    expect(wrapper.find('td[data-label="Auto-start"]').exists()).toBe(false)
+    expect(wrapper.find('td[data-label="Actions"]').exists()).toBe(false)
   })
 })

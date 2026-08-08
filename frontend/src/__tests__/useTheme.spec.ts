@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 function createMockLocalStorage() {
   const store: Record<string, string> = {}
   return {
-    getItem: vi.fn((key: string) => store[key] ?? null),
+    getItem: vi.fn((key: string): string | null => store[key] ?? null),
     setItem: vi.fn((key: string, value: string) => { store[key] = value }),
     removeItem: vi.fn((key: string) => { delete store[key] }),
   }
@@ -96,7 +96,7 @@ describe('useTheme — 主題切換', () => {
   it('有 localStorage 時優先使用 localStorage', async () => {
     // localStorage says 'dark', but system prefers light
     const ls = createMockLocalStorage()
-    ls.getItem = vi.fn((key: string) => key === 'lms-theme' ? 'dark' : null)
+    ls.getItem = vi.fn((key: string): string | null => key === 'lms-theme' ? 'dark' : null)
     vi.stubGlobal('localStorage', ls)
     window.matchMedia = createMockMatchMedia(false) // system prefers light
 

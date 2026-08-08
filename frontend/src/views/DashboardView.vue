@@ -98,6 +98,10 @@ function cancelDisable() {
   loadServices()
 }
 
+const statsServices = computed(() =>
+  services.value.filter(s => tab.value === 'my' ? !s.locked : s.locked)
+)
+
 const disableConfirmMessage = computed(() => {
   if (!pendingDisableService.value) return ''
   return t('modal.disable', { name: pendingDisableService.value })
@@ -119,7 +123,7 @@ onMounted(loadServices)
   <main class="app-container">
     <AppHeader :username="auth.username" @refresh="loadServices" @logout="handleLogout" />
     <TabsBar :services="services" :tab="tab" @set-tab="setTab" />
-    <StatsBar :services="services" />
+    <StatsBar :services="statsServices" />
     <Toolbar @search="(s: string) => search = s" />
     <ServiceTable
       :services="services"

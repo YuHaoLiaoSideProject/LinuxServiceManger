@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import StatsBar from '../components/StatsBar.vue'
@@ -39,11 +39,11 @@ describe('統計列 — 使用者看到的數字', () => {
 
   it('有 3 個執行中、1 個失敗、0 個停止的服務，數字應正確', () => {
     const services: Service[] = [
-      { name: 'a.service', load: 'loaded', active: 'active', sub: 'running', locked: false },
-      { name: 'b.service', load: 'loaded', active: 'running', sub: 'running', locked: false },
-      { name: 'c.service', load: 'loaded', active: 'activating', sub: 'auto-restart', locked: false },
-      { name: 'd.service', load: 'loaded', active: 'failed', sub: 'failed', locked: true },
-      { name: 'e.service', load: 'loaded', active: 'inactive', sub: 'dead', locked: false },
+      { name: 'a.service', load: 'loaded', active: 'active', sub: 'running', locked: false, unitFileState: 'enabled', fragmentPath: '/etc/systemd/system/a.service' },
+      { name: 'b.service', load: 'loaded', active: 'running', sub: 'running', locked: false, unitFileState: 'enabled', fragmentPath: '/etc/systemd/system/b.service' },
+      { name: 'c.service', load: 'loaded', active: 'activating', sub: 'auto-restart', locked: false, unitFileState: 'disabled', fragmentPath: '/etc/systemd/system/c.service' },
+      { name: 'd.service', load: 'loaded', active: 'failed', sub: 'failed', locked: true, unitFileState: 'static', fragmentPath: '/lib/systemd/system/d.service' },
+      { name: 'e.service', load: 'loaded', active: 'inactive', sub: 'dead', locked: false, unitFileState: 'disabled', fragmentPath: '/etc/systemd/system/e.service' },
     ]
 
     const wrapper = mount(StatsBar, { props: { services } })
@@ -56,8 +56,8 @@ describe('統計列 — 使用者看到的數字', () => {
 
   it('全部服務都失敗時，執行中為 0，失敗等於總數', () => {
     const services: Service[] = [
-      { name: 'x.service', load: 'loaded', active: 'failed', sub: 'failed', locked: false },
-      { name: 'y.service', load: 'loaded', active: 'failed', sub: 'failed', locked: false },
+      { name: 'x.service', load: 'loaded', active: 'failed', sub: 'failed', locked: false, unitFileState: 'enabled', fragmentPath: '/etc/systemd/system/x.service' },
+      { name: 'y.service', load: 'loaded', active: 'failed', sub: 'failed', locked: false, unitFileState: 'enabled', fragmentPath: '/etc/systemd/system/y.service' },
     ]
 
     const wrapper = mount(StatsBar, { props: { services } })

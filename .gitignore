@@ -35,3 +35,6 @@ Thumbs.db
 src/static/
 frontend/dist/
 frontend/node_modules/
+frontend/playwright-report/
+frontend/test-results/
+frontend/e2e/screenshots/

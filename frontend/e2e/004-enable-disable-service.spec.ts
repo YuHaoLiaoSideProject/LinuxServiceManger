@@ -76,23 +76,23 @@ test.describe('Scenario 1: 檢視 Auto-start 欄位', () => {
     await expect(cell.locator('button.toggle-switch')).toHaveCount(0)
   })
 
-  test('static 服務 → Auto-start 顯示「不適用」', async ({ page }) => {
+  test('static 服務 → Auto-start 顯示「N/A」', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
     const staticRow = getServiceRow(page, 'static-svc.service')
     const cell = getAutoStartCell(staticRow)
-    await expect(cell).toContainText('不適用')
+    await expect(cell).toContainText('N/A')
     await expect(cell.locator('button.toggle-switch')).toHaveCount(0)
   })
 
-  test('masked 服務 → Auto-start 顯示「不適用」', async ({ page }) => {
+  test('masked 服務 → Auto-start 顯示「N/A」', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
     const maskedRow = getServiceRow(page, 'masked-svc.service')
     const cell = getAutoStartCell(maskedRow)
-    await expect(cell).toContainText('不適用')
+    await expect(cell).toContainText('N/A')
     await expect(cell.locator('button.toggle-switch')).toHaveCount(0)
   })
 
@@ -298,7 +298,8 @@ test.describe('Scenario 5: Loading 狀態', () => {
 
 test.describe('Scenario 6: 錯誤處理', () => {
   test('網路錯誤 → Toast error + Toggle 恢復原狀態', async ({ page }) => {
-    // Override enable for crash.service to return 500
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    // Override enable for crash.service to return 500 (must be after setupApiMocks for LIFO priority)
     await page.route('**/api/v1/services/crash.service/enable', async (route) => {
       await route.fulfill({
         status: 500,
@@ -306,8 +307,6 @@ test.describe('Scenario 6: 錯誤處理', () => {
         body: JSON.stringify({ error: 'failed to enable crash.service' }),
       })
     })
-
-    await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
     const crashRow = getServiceRow(page, 'crash.service')
@@ -323,12 +322,11 @@ test.describe('Scenario 6: 錯誤處理', () => {
   })
 
   test('網路中斷 → Toast 錯誤通知', async ({ page }) => {
-    // Make enable fail with network error
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    // Make enable fail with network error (must be after setupApiMocks for LIFO priority)
     await page.route('**/api/v1/services/myapp.service/enable', async (route) => {
       await route.abort('connectionrefused')
     })
-
-    await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
     const myappRow = getServiceRow(page, 'myapp.service')
@@ -340,6 +338,8 @@ test.describe('Scenario 6: 錯誤處理', () => {
   })
 
   test('Disable 失敗 → Toast error', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    // Override disable to return 500 (must be after setupApiMocks for LIFO priority)
     await page.route('**/api/v1/services/nginx.service/disable', async (route) => {
       await route.fulfill({
         status: 500,
@@ -347,8 +347,6 @@ test.describe('Scenario 6: 錯誤處理', () => {
         body: JSON.stringify({ error: 'failed to disable nginx.service' }),
       })
     })
-
-    await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
     const nginxRow = getServiceRow(page, 'nginx.service')
@@ -424,7 +422,8 @@ test.describe('Scenario 8: RWD 手機卡片佈局', () => {
 
 test.describe('Scenario 9: 重整後狀態一致', () => {
   test('Enable 操作後重整列表，Toggle 保持 ON', async ({ page }) => {
-    // First return disabled, then after enable return enabled
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    // Override services to return updated state after enable (must be after setupApiMocks for LIFO priority)
     let callCount = 0
     await page.route('**/api/v1/services', async (route) => {
       callCount++
@@ -448,8 +447,6 @@ test.describe('Scenario 9: 重整後狀態一致', () => {
         })
       }
     })
-
-    await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
     // myapp initially OFF

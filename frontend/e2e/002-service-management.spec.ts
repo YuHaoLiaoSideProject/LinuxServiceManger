@@ -36,9 +36,9 @@ test.describe('Scenario 1: 載入服務列表', () => {
     // sshd is locked, should NOT be visible in "My Services"
     await expect(tbody).not.toContainText('sshd.service')
 
-    await expect(tbody).toContainText('running')
-    await expect(tbody).toContainText('dead')
-    await expect(tbody).toContainText('failed')
+    await expect(tbody).toContainText('Running')
+    await expect(tbody).toContainText('Dead')
+    await expect(tbody).toContainText('Failed')
   })
 
   test('統計欄應顯示正確的服務數量', async ({ page }) => {

@@ -47,10 +47,10 @@ test.describe('Scenario 1: 載入服務列表', () => {
 
     await expect(page.locator('.stats-bar')).toBeVisible()
 
-    // Total: 5 services
-    await expect(page.locator('.stat-total .stat-value')).toHaveText('5')
-    // Running: nginx, sshd, bus-name@ = 3
-    await expect(page.locator('.stat-active .stat-value')).toHaveText('3')
+    // Total: 7 services
+    await expect(page.locator('.stat-total .stat-value')).toHaveText('7')
+    // Running: nginx, sshd, bus-name@, static-svc = 4
+    await expect(page.locator('.stat-active .stat-value')).toHaveText('4')
     // Failed: crash = 1
     await expect(page.locator('.stat-failed .stat-value')).toHaveText('1')
   })
@@ -245,8 +245,8 @@ test.describe('Scenario 7: 分頁切換', () => {
 
     await expect(page.locator('#tab-my')).toHaveClass(/active/)
 
-    // Only unlocked services (4 of 5)
-    await expect(page.locator('#service-table-body tr')).toHaveCount(4)
+    // Only unlocked services (6 of 7)
+    await expect(page.locator('#service-table-body tr')).toHaveCount(6)
     await expect(page.locator('#service-table-body')).not.toContainText('sshd.service')
   })
 

@@ -16,11 +16,13 @@ export const VALID_PASS = 'admin123'
 // ── Mock Data ─────────────────────────────────────────────────────
 
 export const MOCK_SERVICES = [
-  { name: 'nginx.service', load: 'loaded', active: 'active', sub: 'running', locked: false },
-  { name: 'myapp.service', load: 'loaded', active: 'inactive', sub: 'dead', locked: false },
-  { name: 'crash.service', load: 'loaded', active: 'failed', sub: 'failed', locked: false },
-  { name: 'sshd.service', load: 'loaded', active: 'active', sub: 'running', locked: true },
-  { name: 'bus-name@.service', load: 'loaded', active: 'active', sub: 'running', locked: false },
+  { name: 'nginx.service', load: 'loaded', active: 'active', sub: 'running', locked: false, unitFileState: 'enabled', fragmentPath: '/etc/systemd/system/nginx.service' },
+  { name: 'myapp.service', load: 'loaded', active: 'inactive', sub: 'dead', locked: false, unitFileState: 'disabled', fragmentPath: '/etc/systemd/system/myapp.service' },
+  { name: 'crash.service', load: 'loaded', active: 'failed', sub: 'failed', locked: false, unitFileState: 'disabled', fragmentPath: '/etc/systemd/system/crash.service' },
+  { name: 'sshd.service', load: 'loaded', active: 'active', sub: 'running', locked: true, unitFileState: 'enabled', fragmentPath: '/usr/lib/systemd/system/sshd.service' },
+  { name: 'bus-name@.service', load: 'loaded', active: 'active', sub: 'running', locked: false, unitFileState: 'enabled-runtime', fragmentPath: '/etc/systemd/system/bus-name@.service' },
+  { name: 'static-svc.service', load: 'loaded', active: 'active', sub: 'running', locked: false, unitFileState: 'static', fragmentPath: '/etc/systemd/system/static-svc.service' },
+  { name: 'masked-svc.service', load: 'masked', active: 'inactive', sub: 'dead', locked: false, unitFileState: 'masked', fragmentPath: '/etc/systemd/system/masked-svc.service' },
 ]
 
 // ── API Mock Setup ────────────────────────────────────────────────
@@ -125,6 +127,25 @@ export async function setupApiMocks(page: Page, options: MockOptions = {}) {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ message: `${name} restarted` }),
+      })
+    })
+
+    // Auto-start enable/disable
+    await page.route('**/api/v1/services/*/enable', async (route) => {
+      const name = route.request().url().match(/\/services\/(.+?)\/enable/)?.[1] || 'unknown'
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: `${name} enabled` }),
+      })
+    })
+
+    await page.route('**/api/v1/services/*/disable', async (route) => {
+      const name = route.request().url().match(/\/services\/(.+?)\/disable/)?.[1] || 'unknown'
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: `${name} disabled` }),
       })
     })
   }

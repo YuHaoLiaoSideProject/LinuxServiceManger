@@ -77,14 +77,25 @@ func main() {
 		staticHandler.ServeHTTP(w, r)
 	})
 
-	// SPA fallback: serve index.html for all non-API routes
+	// SPA fallback: try static file first, then serve index.html
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 		// Skip API routes (already handled above)
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			http.NotFound(w, r)
 			return
 		}
-		// Serve Vue SPA index.html
+		// Try to serve as static file first (for PWA sw.js, manifest.json, etc.)
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" {
+			path = "index.html"
+		}
+		f, err := staticSub.Open(path)
+		if err == nil {
+			f.Close()
+			staticHandler.ServeHTTP(w, r)
+			return
+		}
+		// Fall back to SPA index.html
 		indexContent, err := staticFS.ReadFile("static/index.html")
 		if err != nil {
 			http.Error(w, "SPA not built — run: cd frontend && npm run build", http.StatusNotFound)

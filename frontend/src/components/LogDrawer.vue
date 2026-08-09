@@ -33,10 +33,12 @@ const filteredLines = computed(() => {
   if (!searchQuery.value) {
     return logLines.value.map(line => ({ text: line.text, match: false }))
   }
-  const q = searchQuery.value.toLowerCase()
+  const escaped = searchQuery.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  // Unicode-aware word boundary: supports CJK, Latin, numbers, underscore
+  const regex = new RegExp(`(?<!\\p{L}|\\p{N}|_)${escaped}(?!\\p{L}|\\p{N}|_)`, 'iu')
   return logLines.value.map(line => ({
     text: line.text,
-    match: line.text.toLowerCase().includes(q),
+    match: regex.test(line.text),
   }))
 })
 
@@ -53,6 +55,7 @@ function connect() {
   isLoading.value = true
   error.value = ''
   logLines.value = []
+  searchQuery.value = ''
   isConnected.value = false
   reconnecting.value = false
   intentionalClose = false
@@ -503,10 +506,6 @@ onUnmounted(() => {
   display: block;
 }
 
-.log-content code span.highlight {
-  background: rgba(255, 235, 59, 0.4);
-}
-
 .log-content code span {
   display: block;
   padding: 1px 4px;
@@ -515,6 +514,10 @@ onUnmounted(() => {
 
 .log-content code span:nth-child(even) {
   background: rgba(255, 255, 255, 0.06);
+}
+
+.log-content code span.highlight {
+  background: rgba(255, 235, 59, 0.4);
 }
 
 .log-content code span.dim {

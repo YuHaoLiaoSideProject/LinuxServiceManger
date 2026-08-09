@@ -62,6 +62,49 @@ Feature: journalctl 日誌檢視器
     And 搜尋框右側顯示匹配行數統計，如「3 / 100 行」
     And 此搜尋僅在已載入的日誌中篩選，不觸發後端請求
 
+  @happy-path @p1
+  Scenario: 清除搜尋關鍵字恢復完整日誌
+    Given Log Drawer 已開啟且顯示日誌內容
+    And 我已在搜尋框輸入關鍵字，部分日誌行被 highlight 與 dim
+    When 我清空搜尋框內容
+    Then 所有日誌行恢復正常顯示，無 highlight 也無 dim
+    And 搜尋框右側的匹配行數統計消失
+    And 日誌行總數恢復為過濾前的完整數量
+
+  @happy-path @p1
+  Scenario: 搜尋無匹配結果
+    Given Log Drawer 已開啟且顯示日誌內容
+    When 我在搜尋框輸入不存在於任何日誌行的關鍵字「xyz_not_found_123」
+    Then 所有日誌行降低透明度（dim）
+    And 無任何行以黃色背景 highlight
+    And 搜尋框右側顯示匹配行數統計為「0 / N 行」（N 為當前總行數）
+
+  @happy-path @p2
+  Scenario: 搜尋大小寫不敏感
+    Given Log Drawer 已開啟且顯示日誌內容
+    And 日誌中存在包含「error」的行（小寫）
+    When 我在搜尋框輸入大寫關鍵字「ERROR」
+    Then 包含「error」（不分大小寫）的日誌行皆以黃色背景 highlight
+    And 搜尋框右側顯示的匹配行數與輸入小寫「error」時相同
+
+  @happy-path @p1
+  Scenario: 搜尋僅匹配獨立單詞而非子字串（word-boundary）
+    Given Log Drawer 已開啟且顯示 simpleddns 服務的日誌
+    And 日誌中多行包含「simpleddns」「dns_udp」「dns_tcp」等字串
+    When 我在搜尋框輸入關鍵字「DNS」
+    Then 僅有包含獨立單詞「DNS」的行以黃色背景 highlight
+    And 僅含「simpleddns」「dns_udp」「dns_tcp」但無獨立「DNS」的行降低透明度
+    And 搜尋框右側顯示的匹配行數正確區分獨立單詞與子字串
+
+  @happy-path @p2
+  Scenario: 搜尋 CJK 字詞正確使用詞邊界
+    Given Log Drawer 已開啟且顯示日誌內容
+    And 日誌中多行包含「服務」一詞
+    When 我在搜尋框輸入關鍵字「服務」
+    Then 包含獨立「服務」的行以黃色背景 highlight
+    And 不含「服務」的行降低透明度
+    And 搜尋框右側顯示正確的匹配行數統計
+
   @happy-path @p0
   Scenario Outline: 關閉日誌 Drawer
     Given Log Drawer 已開啟且顯示日誌內容
@@ -197,6 +240,14 @@ Feature: journalctl 日誌檢視器
     When 我在搜尋框輸入任意關鍵字
     Then 不觸發任何後端 API 請求
     And 僅在當前已載入的 100 行中進行比對與 highlight
+
+  @business-rules @p2
+  Scenario: 搜尋框僅在有日誌內容時顯示
+    Given Log Drawer 已開啟
+    When 日誌內容為空（尚無任何日誌行載入）
+    Then 搜尋框不顯示
+    When 日誌內容載入完成且有至少一行日誌
+    Then 搜尋框出現，placeholder 顯示「搜尋日誌...」
 
   @business-rules @p2
   Scenario: 第一版不支援時間範圍篩選

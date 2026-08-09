@@ -1,6 +1,6 @@
 # PWA 支援 — 開發實作方案
 
-> **對應技術決策**：[tech-decision-006-pwa-support-2025-08-09.md](../tech-decisions/tech-decision-006-pwa-support-2025-08-09.md)
+> **對應技術決策**：[006-pwa-support.md](../tech-decisions/006-pwa-support.md)
 > **對應 BDD**：[006-pwa-support.feature](../bdds/006-pwa-support.feature)
 > **對應操作流程**：[006-pwa-support.md](../interaction-flows/006-pwa-support.md)
 > **狀態**：設計完成，待實作

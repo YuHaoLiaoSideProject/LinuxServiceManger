@@ -411,7 +411,7 @@ r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 
 ## 📝 決策後續
 
-- 本文件已存至 `docs/tech-decisions/tech-decision-006-pwa-support-2025-08-09.md`，應納入版本控制
+- 本文件已存至 `docs/tech-decisions/006-pwa-support.md`，應納入版本控制
 - 開發方案細節請參考 `docs/development/006-pwa-support.md`
 - 測試計畫請參考 `docs/test-plans/006-pwa-support測試計畫.md`
 - 建議 PWA 上線後 2 週回顧：檢查 SW 註冊成功率、快取命中率、安裝轉換率

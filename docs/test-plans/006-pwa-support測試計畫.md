@@ -1,6 +1,6 @@
 # PWA 支援測試計畫
 
-> **對應技術決策**：[tech-decision-006-pwa-support-2025-08-09.md](../tech-decisions/tech-decision-006-pwa-support-2025-08-09.md)
+> **對應技術決策**：[006-pwa-support.md](../tech-decisions/006-pwa-support.md)
 > **對應 BDD**：[006-pwa-support.feature](../bdds/006-pwa-support.feature)
 > **測試日期**：2025-08-09
 > **測試狀態**：待執行

@@ -371,7 +371,7 @@ server {
 | 003 | 部署安全性 | [📄](docs/user-stories/003-部署安全性.md) | [📄](docs/bdds/003-部署安全性.feature) | — | [📄](docs/test-plans/003-部署安全性測試計畫.md) | — | — |
 | 004 | Enable / Disable 服務 | — | [📄](docs/bdds/004-enable-disable-service.feature) | [📄](docs/development/004-enable-disable-service.md) | [📄](docs/test-plans/004-enable-disable-service測試計畫.md) | [📄](docs/interaction-flows/004-enable-disable-service.md) | — |
 | 005 | journalctl 日誌檢視器 | — | [📄](docs/bdds/005-journalctl-log-viewer.feature) | [📄](docs/development/005-journalctl-log-viewer.md) | [📄](docs/test-plans/005-journalctl-log-viewer測試計畫.md) | [📄](docs/interaction-flows/005-journalctl-log-viewer.md) | [📄](docs/tech-decisions/005-journalctl-log-viewer.md) |
-| 006 | PWA 支援 | — | — | — | — | [📄](docs/interaction-flows/006-pwa-support.md) | — |
+| 006 | PWA 支援 | — | [📄](docs/bdds/006-pwa-support.feature) | [📄](docs/development/006-pwa-support.md) | [📄](docs/test-plans/006-pwa-support測試計畫.md) | [📄](docs/interaction-flows/006-pwa-support.md) | [📄](docs/tech-decisions/006-pwa-support.md) |
 
 ### 綜合文件
 

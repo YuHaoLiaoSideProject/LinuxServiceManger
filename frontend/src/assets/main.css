@@ -334,6 +334,7 @@ body {
 }
 table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   margin: 0;
   font-size: 0.9rem;
@@ -364,6 +365,14 @@ thead th {
   color: var(--lms-muted);
   white-space: nowrap;
 }
+
+/* ── Fixed column widths ── */
+th:nth-child(1) { width: 20%; }  /* Name */
+th:nth-child(2) { width: 10%; }  /* Load */
+th:nth-child(3) { width: 12%; }  /* Active */
+th:nth-child(4) { width: 10%; }  /* Sub */
+th:nth-child(5) { width: 16%; }  /* AutoStart */
+th:nth-child(6) { width: 32%; }  /* Actions */
 
 /* ── Sortable headers ── */
 th.sortable {

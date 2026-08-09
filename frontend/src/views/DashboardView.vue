@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import type { Service, ServiceAction } from '../types/service'
 import { listServices, startService, stopService, restartService, enableService, disableService } from '../api/client'
 import { useAuthStore } from '../stores/auth'
@@ -75,7 +76,11 @@ async function executeToggle(action: 'enable' | 'disable', name: string) {
       await disableService(name)
       showToast(t('toast.disabled', { name }), 'success')
     }
-    await loadServices()
+    // Update local state directly to avoid full page refresh
+    const svc = services.value.find(s => s.name === name)
+    if (svc) {
+      svc.unitFileState = action === 'enable' ? 'enabled' : 'disabled'
+    }
   } catch (err: any) {
     const errMsg = err.response?.data?.error || t('toast.error', { name })
     showToast(errMsg, 'error')
@@ -100,7 +105,6 @@ function confirmDisable() {
 function cancelDisable() {
   showDisableConfirm.value = false
   pendingDisableService.value = undefined
-  loadServices()
 }
 
 const statsServices = computed(() =>
@@ -117,8 +121,11 @@ function setTab(t: string) {
   localStorage.setItem('lms-tab', t)
 }
 
+const router = useRouter()
+
 async function handleLogout() {
   await auth.logout()
+  router.replace('/login')
 }
 
 function openLogDrawer(name: string) {

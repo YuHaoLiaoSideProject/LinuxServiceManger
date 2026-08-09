@@ -32,6 +32,11 @@ Thumbs.db
 
 # Pi
 .pi-web
+
+# Deploy scripts (copy from .example and customize)
+scripts/deploy.sh
+scripts/deploy-test.sh
+scripts/*.conf
 src/static/
 frontend/dist/
 frontend/node_modules/

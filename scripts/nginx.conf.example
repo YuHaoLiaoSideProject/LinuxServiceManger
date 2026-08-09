@@ -1,0 +1,68 @@
+# ============================================================
+#  Linux Service Manager — Nginx Reverse Proxy 設定範本
+#
+#  使用前請修改：
+#    - server_name: 你的網域名稱
+#    - ssl_certificate / ssl_certificate_key: 你的 SSL 憑證路徑
+#    - proxy_pass: 你的 upstream port
+#
+#  從 scripts/nginx.conf.example 複製為你的設定檔再使用
+# ============================================================
+
+server {
+    listen 80;
+    server_name your-domain.example.com;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name your-domain.example.com;
+
+    ssl_certificate     /etc/ssl/certs/your-domain.crt;
+    ssl_certificate_key /etc/ssl/private/your-domain.key;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+
+    # Security headers
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # PWA / static assets cache
+    location /assets/ {
+        proxy_pass http://127.0.0.1:8080;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location /icon- {
+        proxy_pass http://127.0.0.1:8080;
+        expires 30d;
+        add_header Cache-Control "public";
+    }
+
+    location /manifest.json {
+        proxy_pass http://127.0.0.1:8080;
+        expires 1d;
+        add_header Cache-Control "public";
+    }
+
+    location /sw.js {
+        proxy_pass http://127.0.0.1:8080;
+        expires 1d;
+        add_header Cache-Control "public";
+    }
+}

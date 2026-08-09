@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ============================================================
+#  Linux Service Manager — Test Site Deploy Script
+#
+#  使用前請修改下方變數以符合你的環境：
+#    - INSTALL_DIR: 測試站安裝目錄（需與正式站隔離）
+#    - SERVICE_NAME: systemd service 名稱
+#    - TEST_DOMAIN: 測試站網域名稱
+#    - TEST_PORT: 測試站 port
+#
+#  從 scripts/deploy-test.sh.example 複製為 scripts/deploy-test.sh 再修改
+# ============================================================
+
+APP_NAME="linux-service-manager"
+INSTALL_DIR="/opt/linux-service-manager-test"
+SERVICE_NAME="linux-service-manager-test"
+TEST_DOMAIN="${TEST_DOMAIN:-test.your-domain.example.com}"
+TEST_PORT="${TEST_PORT:-8082}"
+SRC_DIR="$(cd "$(dirname "$0")/../src" && pwd)"
+
+# Colors
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log()  { echo -e "${GREEN}[DEPLOY:TEST]${NC} $*"; }
+warn() { echo -e "${YELLOW}[WARN]${NC}       $*"; }
+err()  { echo -e "${RED}[ERROR]${NC}      $*"; exit 1; }
+info() { echo -e "${CYAN}[INFO]${NC}       $*"; }
+
+# ── Check root / sudo ──
+if [[ $EUID -ne 0 ]]; then
+  err "請用 sudo 執行：sudo ./deploy-test.sh"
+fi
+
+FRONTEND_DIR="$(cd "$(dirname "$0")/../frontend" && pwd)"
+
+# ── Build frontend ──
+log "建置前端 (Vue SPA + PWA)..."
+cd "$FRONTEND_DIR"
+npm ci --silent
+npm run build
+log "前端建置完成 → ${SRC_DIR}/static/"
+
+# ── Verify PWA assets ──
+if [[ -f "${SRC_DIR}/static/sw.js" ]] && [[ -f "${SRC_DIR}/static/manifest.json" ]]; then
+  log "✅ PWA assets found: sw.js, manifest.json"
+else
+  err "❌ PWA assets missing! 請檢查 vite.config.ts 中的 VitePWA 設定"
+fi
+
+# ── Build backend ──
+log "編譯 Go 二進位檔 (static)..."
+cd "$SRC_DIR"
+CGO_ENABLED=0 go build -ldflags="-s -w" -o "/tmp/${APP_NAME}-test" main.go
+log "編譯完成 → /tmp/${APP_NAME}-test"
+
+# ── Stop service ──
+log "停止 ${SERVICE_NAME} 服務..."
+systemctl stop "${SERVICE_NAME}" 2>/dev/null || warn "服務可能未在執行中"
+
+# ── Install binary ──
+log "複製二進位檔至 ${INSTALL_DIR}/"
+mkdir -p "${INSTALL_DIR}"
+cp "/tmp/${APP_NAME}-test" "${INSTALL_DIR}/${APP_NAME}"
+chmod +x "${INSTALL_DIR}/${APP_NAME}"
+
+# ── Generate test credentials ──
+ADMIN_USER="${ADMIN_USER:-admin}"
+ADMIN_PASS="${ADMIN_PASS:-test-admin-pass}"
+SESSION_KEY="${SESSION_KEY:-$(openssl rand -hex 32)}"
+
+# ── systemd service ──
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+log "建立 systemd service: ${SERVICE_NAME}"
+
+tee "${SERVICE_FILE}" > /dev/null <<SYSTEMDEOF
+[Unit]
+Description=Linux Service Manager — Test Site (${TEST_DOMAIN})
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Environment="ADMIN_USER=${ADMIN_USER}"
+Environment="ADMIN_PASS=${ADMIN_PASS}"
+Environment="SESSION_KEY=${SESSION_KEY}"
+Environment="PORT=${TEST_PORT}"
+ExecStart=${INSTALL_DIR}/${APP_NAME}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SYSTEMDEOF
+
+systemctl daemon-reload
+
+# ── Start service ──
+log "啟動 ${SERVICE_NAME} 服務 (Port ${TEST_PORT})..."
+systemctl enable --now "${SERVICE_NAME}"
+
+# ── Health check ──
+sleep 1
+if systemctl is-active --quiet "${SERVICE_NAME}"; then
+  log "✅ 測試站台部署成功！"
+  log "   http://localhost:${TEST_PORT}"
+  log "   https://${TEST_DOMAIN} (需設定 Nginx + SSL)"
+else
+  err "❌ 服務啟動失敗，請檢查：journalctl -u ${SERVICE_NAME} -n 30"
+fi
+
+# ── Show status ──
+systemctl status "${SERVICE_NAME}" --no-pager -l || true
+
+echo ""
+info "測試站台部署完成！"
+echo ""
+echo -e "  ${CYAN}Port:${NC}        ${TEST_PORT}"
+echo -e "  ${CYAN}Domain:${NC}      ${TEST_DOMAIN}"
+echo -e "  ${CYAN}Install dir:${NC} ${INSTALL_DIR}"
+echo -e "  ${CYAN}Service:${NC}     ${SERVICE_NAME}"
+echo ""
+info "Nginx + SSL 設定範本請參考：scripts/nginx.conf.example"

@@ -83,10 +83,10 @@ curl -fsSL https://raw.githubusercontent.com/YuHaoLiaoSideProject/LinuxServiceMa
 
 會自動下載最新版 binary，並可選擇安裝 systemd service 自動啟動。
 
-指定版本：
+指定版本（tag 格式為日期版本號）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YuHaoLiaoSideProject/LinuxServiceManger/main/install.sh | bash -s -- --tag v1.0.0
+curl -fsSL https://raw.githubusercontent.com/YuHaoLiaoSideProject/LinuxServiceManger/main/install.sh | bash -s -- --tag 20260809.02
 ```
 
 僅下載 binary，不安裝 service：

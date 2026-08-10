@@ -65,18 +65,37 @@ else
 fi
 
 # ── Install ──
-log "下載 ${APP_NAME} ..."
-log "   ${DOWNLOAD_URL}"
+TMP_FILE="${HOME}/.cache/${APP_NAME}-$$"
+mkdir -p "${HOME}/.cache"
 
-TMP_FILE="/tmp/${APP_NAME}-$$"
+# Download to home dir first (avoids tmpfs issues), then move
+MAX_RETRIES=3
+RETRY_DELAY=2
+download_ok=false
 
-# Download to /tmp first (no sudo), then move
-if command -v curl &>/dev/null; then
-  curl -fsSL -o "${TMP_FILE}" "${DOWNLOAD_URL}" || err "下載失敗，請確認版本是否存在"
-elif command -v wget &>/dev/null; then
-  wget -q -O "${TMP_FILE}" "${DOWNLOAD_URL}" || err "下載失敗，請確認版本是否存在"
-else
-  err "需要 curl 或 wget，請先安裝"
+for i in $(seq 1 $MAX_RETRIES); do
+  log "下載 ${APP_NAME} ... (第 ${i}/${MAX_RETRIES} 次嘗試)"
+  log "   ${DOWNLOAD_URL}"
+
+  if command -v curl &>/dev/null; then
+    curl -fsSL --connect-timeout 15 --max-time 120 \
+      -o "${TMP_FILE}" "${DOWNLOAD_URL}" && download_ok=true && break
+    rc=$?
+    warn "curl 下載失敗 (exit code: ${rc})，稍後重試..."
+  elif command -v wget &>/dev/null; then
+    wget -q --timeout=120 -O "${TMP_FILE}" "${DOWNLOAD_URL}" && download_ok=true && break
+    rc=$?
+    warn "wget 下載失敗 (exit code: ${rc})，稍後重試..."
+  else
+    err "需要 curl 或 wget，請先安裝"
+  fi
+
+  rm -f "${TMP_FILE}"
+  sleep "${RETRY_DELAY}"
+done
+
+if [[ "$download_ok" != true ]]; then
+  err "下載失敗（已重試 ${MAX_RETRIES} 次），請確認版本 ${TAG:-latest} 是否存在，或檢查網路連線"
 fi
 
 sudo mkdir -p "${INSTALL_DIR}"

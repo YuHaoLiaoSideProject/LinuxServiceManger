@@ -122,6 +122,44 @@ if [[ "$NO_SERVICE" == false ]]; then
   if [[ "$answer" =~ ^[Yy]$ ]]; then
     SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
 
+    # ── 保留舊設定 ──
+    if [[ -f "${SERVICE_FILE}" ]]; then
+      EXISTING_PORT=$(grep -oP 'Environment="PORT=\K[^"]+' "${SERVICE_FILE}" 2>/dev/null || true)
+      EXISTING_USER=$(grep -oP 'Environment="ADMIN_USER=\K[^"]+' "${SERVICE_FILE}" 2>/dev/null || true)
+      EXISTING_PASS=$(grep -oP 'Environment="ADMIN_PASS=\K[^"]+' "${SERVICE_FILE}" 2>/dev/null || true)
+      EXISTING_SESSION=$(grep -oP 'Environment="SESSION_KEY=\K[^"]+' "${SERVICE_FILE}" 2>/dev/null || true)
+
+      if [[ -n "${EXISTING_PORT}" ]]; then
+        info "偵測到現有設定，保留：PORT=${EXISTING_PORT}, ADMIN_USER=${EXISTING_USER:-admin}"
+        PORT="${EXISTING_PORT}"
+        ADMIN_USER="${EXISTING_USER:-admin}"
+        ADMIN_PASS="${EXISTING_PASS:-change_me}"
+        SESSION_KEY="${EXISTING_SESSION:-$(openssl rand -hex 32)}"
+      else
+        PORT="8080"
+        ADMIN_USER="admin"
+        ADMIN_PASS="change_me"
+        SESSION_KEY="$(openssl rand -hex 32)"
+      fi
+    else
+      PORT="8080"
+      ADMIN_USER="admin"
+      ADMIN_PASS="change_me"
+      SESSION_KEY="$(openssl rand -hex 32)"
+    fi
+
+    # ── 檢查 PORT 是否可用 ──
+    if ss -tlnp | grep -q ":${PORT} "; then
+      warn "Port ${PORT} 已被佔用！服務可能無法啟動"
+      warn "佔用資訊："
+      ss -tlnp | grep ":${PORT} " | head -3
+      echo ""
+      read -r -p "$(echo -e "${CYAN}[INSTALL]${NC} 是否仍要繼續？[y/N] ")" force
+      if [[ ! "$force" =~ ^[Yy]$ ]]; then
+        err "安裝取消，請手動修改 PORT 後再試"
+      fi
+    fi
+
     sudo tee "${SERVICE_FILE}" > /dev/null <<EOF
 [Unit]
 Description=Linux Service Manager — Web systemd management panel
@@ -130,10 +168,10 @@ After=network.target
 [Service]
 Type=simple
 User=root
-Environment="ADMIN_USER=admin"
-Environment="ADMIN_PASS=change_me"
-Environment="SESSION_KEY=$(openssl rand -hex 32)"
-Environment="PORT=8080"
+Environment="ADMIN_USER=${ADMIN_USER}"
+Environment="ADMIN_PASS=${ADMIN_PASS}"
+Environment="SESSION_KEY=${SESSION_KEY}"
+Environment="PORT=${PORT}"
 ExecStart=${INSTALL_DIR}/${APP_NAME}
 Restart=on-failure
 RestartSec=5
@@ -148,7 +186,7 @@ EOF
     sleep 1
     if systemctl is-active --quiet "${APP_NAME}"; then
       log "✅ ${APP_NAME} 已啟動"
-      log "   開啟 http://localhost:8080"
+      log "   開啟 http://localhost:${PORT}"
     else
       warn "服務啟動失敗，請檢查：journalctl -u ${APP_NAME} -n 30"
     fi

@@ -72,7 +72,10 @@ export function useAuditLog() {
       total.value = data.total
       page.value = data.page
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '載入稽核紀錄時發生錯誤'
+      let msg = '載入稽核紀錄時發生錯誤'
+      if (err instanceof Error) {
+        msg = (err as any).response?.data?.error || err.message
+      }
       error.value = msg
       entries.value = []
       total.value = 0
@@ -138,6 +141,11 @@ export function useAuditLog() {
   function onDateRangeChange(from: string, to: string): void {
     dateFrom.value = from
     dateTo.value = to
+    // Validate: start date must not be after end date
+    if (from && to && from > to) {
+      error.value = '開始日期不能晚於結束日期'
+      return
+    }
     page.value = 1
     fetchAuditLog(1)
   }

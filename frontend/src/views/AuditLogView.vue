@@ -1,9 +1,18 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuditLog } from '../composables/useAuditLog'
 import { useToast } from '../composables/useToast'
+import { useI18n } from '../composables/useI18n'
+import { useAuthStore } from '../stores/auth'
+import AppHeader from '../components/AppHeader.vue'
 import AuditTable from '../components/AuditTable.vue'
 import EmptyState from '../components/EmptyState.vue'
+
+const { t } = useI18n()
+const auth = useAuthStore()
+const router = useRouter()
+const { showToast } = useToast()
 
 const {
   entries,
@@ -23,7 +32,7 @@ const {
   onDateRangeChange,
 } = useAuditLog()
 
-const { showToast } = useToast()
+const exporting = ref(false)
 
 onMounted(() => {
   fetchAuditLog(1)
@@ -35,21 +44,38 @@ function handleSearchInput(e: Event): void {
 }
 
 function handleDateChange(): void {
+  // Pre-validate: don't call composable with invalid range
+  if (dateFrom.value && dateTo.value && dateFrom.value > dateTo.value) {
+    return
+  }
   onDateRangeChange(dateFrom.value, dateTo.value)
 }
 
 async function handleExport(): Promise<void> {
+  if (exporting.value) return
+  exporting.value = true
   try {
     await exportCSV()
-    showToast('稽核紀錄已匯出')
+    showToast(t('audit.exportSuccess'))
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : '匯出失敗'
+    const msg = err instanceof Error ? err.message : t('audit.exportFailed')
     showToast(msg, 'error')
+  } finally {
+    exporting.value = false
   }
 }
 
 function handleRetry(): void {
   fetchAuditLog(page.value)
+}
+
+function handleRefresh(): void {
+  fetchAuditLog(page.value)
+}
+
+async function handleLogout(): Promise<void> {
+  await auth.logout()
+  router.replace('/login')
 }
 
 function hasActiveFilters(): boolean {
@@ -85,39 +111,54 @@ function pageNumbers(): number[] {
 </script>
 
 <template>
-  <div class="audit-page">
-    <h2>Audit Log</h2>
+  <main class="app-container">
+    <AppHeader
+      :username="auth.username"
+      @refresh="handleRefresh"
+      @logout="handleLogout"
+    />
+
+    <h2>{{ t('audit.title') }}</h2>
 
     <!-- Toolbar -->
     <div class="audit-toolbar">
       <div class="search-box">
         <input
           type="text"
-          placeholder="搜尋使用者、動作、目標服務..."
+          :placeholder="t('audit.searchPlaceholder')"
           :value="search"
+          :aria-label="t('audit.searchPlaceholder')"
           @input="handleSearchInput"
         />
       </div>
 
-      <span v-if="search" class="search-result-count">找到 {{ total }} 筆紀錄</span>
+      <span v-if="search" class="search-result-count">{{ t('audit.searchResultCount', { count: String(total) }) }}</span>
 
       <div class="date-range">
         <input
           type="date"
           v-model="dateFrom"
+          :aria-label="t('audit.dateFrom')"
           @change="handleDateChange"
-          title="開始日期"
         />
         <span class="date-separator">–</span>
         <input
           type="date"
           v-model="dateTo"
+          :aria-label="t('audit.dateTo')"
           @change="handleDateChange"
-          title="結束日期"
         />
       </div>
 
-      <button class="btn-export" @click="handleExport">匯出 CSV</button>
+      <button
+        class="btn-export"
+        :disabled="exporting"
+        :aria-label="t('audit.exportCsv')"
+        @click="handleExport"
+      >
+        <span v-if="exporting" class="spinner-sm"></span>
+        {{ exporting ? '...' : t('audit.exportCsv') }}
+      </button>
     </div>
 
     <!-- Loading -->
@@ -129,20 +170,19 @@ function pageNumbers(): number[] {
     <div v-else-if="error" class="empty-state">
       <div class="empty-icon">⚠️</div>
       <p>{{ error }}</p>
-      <button class="btn btn-secondary" @click="handleRetry">重試</button>
+      <button class="btn btn-secondary" @click="handleRetry">{{ t('audit.retry') }}</button>
     </div>
 
     <!-- Empty: no records at all -->
     <div v-else-if="total === 0 && !hasActiveFilters()">
-      <EmptyState />
-      <p class="empty-hint">尚無操作紀錄</p>
+      <EmptyState :message="t('audit.noRecords')" :showButton="false" />
     </div>
 
     <!-- No match with active filters -->
     <div v-else-if="entries.length === 0 && hasActiveFilters()" class="empty-state">
       <div class="empty-icon">🔍</div>
-      <p>沒有符合條件的紀錄</p>
-      <a href="#" class="clear-link" @click.prevent="clearFilters">清除過濾</a>
+      <p>{{ t('audit.noMatch') }}</p>
+      <a href="#" class="clear-link" @click.prevent="clearFilters">{{ t('audit.clearFilters') }}</a>
     </div>
 
     <!-- Records -->
@@ -154,9 +194,10 @@ function pageNumbers(): number[] {
         <button
           class="page-btn"
           :disabled="page <= 1"
+          :aria-label="t('audit.pagination.prev')"
           @click="goToPage(page - 1)"
         >
-          上一頁
+          {{ t('audit.pagination.prev') }}
         </button>
 
         <template v-for="p in pageNumbers()" :key="p">
@@ -165,6 +206,7 @@ function pageNumbers(): number[] {
             v-else
             class="page-btn"
             :class="{ active: p === page }"
+            :aria-label="`${t('audit.pagination.info', { page: String(p), total: String(totalPages), count: String(total) })}`"
             @click="goToPage(p)"
           >
             {{ p }}
@@ -174,31 +216,21 @@ function pageNumbers(): number[] {
         <button
           class="page-btn"
           :disabled="page >= totalPages"
+          :aria-label="t('audit.pagination.next')"
           @click="goToPage(page + 1)"
         >
-          下一頁
+          {{ t('audit.pagination.next') }}
         </button>
 
         <span class="page-info">
-          第 {{ page }} / {{ totalPages }} 頁，共 {{ total }} 筆
+          {{ t('audit.pagination.info', { page: String(page), total: String(totalPages), count: String(total) }) }}
         </span>
       </div>
     </div>
-  </div>
+  </main>
 </template>
 
 <style scoped>
-.audit-page {
-  padding: 24px;
-  max-width: 1400px;
-  margin: 0 auto;
-}
-
-.audit-page h2 {
-  margin: 0 0 16px;
-  font-size: 1.35rem;
-}
-
 .audit-toolbar {
   display: flex;
   gap: 16px;
@@ -250,6 +282,9 @@ function pageNumbers(): number[] {
 }
 
 .btn-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 16px;
   background: var(--lms-accent);
   color: #fff;
@@ -261,14 +296,13 @@ function pageNumbers(): number[] {
   white-space: nowrap;
 }
 
-.btn-export:hover {
+.btn-export:hover:not(:disabled) {
   background: var(--lms-accent-hover);
 }
 
-.empty-hint {
-  text-align: center;
-  color: var(--lms-muted);
-  margin-top: -2rem;
+.btn-export:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .clear-link {

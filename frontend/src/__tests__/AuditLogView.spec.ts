@@ -1,7 +1,93 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import type { AuditEntry } from '../composables/useAuditLog'
+
+// ---------------------------------------------------------------------------
+// Mock auth store (Pinia)
+// ---------------------------------------------------------------------------
+
+const mockAuthLogout = vi.fn()
+
+vi.mock('../stores/auth', () => ({
+  useAuthStore: () => ({
+    username: 'admin',
+    isLoggedIn: true,
+    loading: false,
+    logout: mockAuthLogout,
+    init: vi.fn(),
+  }),
+}))
+
+// ---------------------------------------------------------------------------
+// Mock vue-router
+// ---------------------------------------------------------------------------
+
+const mockRouterReplace = vi.fn()
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({
+    replace: mockRouterReplace,
+  }),
+  createRouter: vi.fn(),
+  createWebHistory: vi.fn(),
+}))
+
+// ---------------------------------------------------------------------------
+// Mock i18n
+// ---------------------------------------------------------------------------
+
+const { mockT } = vi.hoisted(() => ({
+  mockT: vi.fn((key: string, params?: Record<string, string>) => {
+    const map: Record<string, string> = {
+      'audit.title': '稽核紀錄',
+      'audit.searchPlaceholder': '搜尋使用者、動作、目標服務...',
+      'audit.exportCsv': '匯出 CSV',
+      'audit.exportSuccess': '稽核紀錄已匯出',
+      'audit.exportFailed': '匯出失敗',
+      'audit.pagination.prev': '上一頁',
+      'audit.pagination.next': '下一頁',
+      'audit.pagination.info': '第 {page} / {total} 頁，共 {count} 筆',
+      'audit.searchResultCount': '找到 {count} 筆紀錄',
+      'audit.noRecords': '尚無操作紀錄',
+      'audit.noMatch': '沒有符合條件的紀錄',
+      'audit.clearFilters': '清除過濾',
+      'audit.retry': '重試',
+      'audit.dateFrom': '開始日期',
+      'audit.dateTo': '結束日期',
+      'audit.dateError': '開始日期不能晚於結束日期',
+      'audit.col.time': '時間',
+      'audit.col.user': '使用者',
+      'audit.col.sourceIp': '來源 IP',
+      'audit.col.action': '動作',
+      'audit.col.target': '目標服務',
+      'audit.col.result': '結果',
+      'audit.col.detail': '詳細資訊',
+      'audit.action.login': '登入',
+      'audit.action.logout': '登出',
+      'audit.action.start': '啟動',
+      'audit.action.stop': '停止',
+      'audit.action.restart': '重啟',
+      'audit.action.enable': '啟用',
+      'audit.action.disable': '停用',
+      'audit.result.success': '成功',
+      'audit.result.failure': '失敗',
+    }
+    let text = map[key] || key
+    if (params) {
+      text = text.replace(/\{(\w+)\}/g, (_, k) => params[k] || '')
+    }
+    return text
+  }),
+}))
+
+vi.mock('../composables/useI18n', () => ({
+  useI18n: () => ({
+    t: mockT,
+    toggleLang: vi.fn(),
+    locale: ref('zh-TW'),
+  }),
+}))
 
 // ---------------------------------------------------------------------------
 // Shared reactive state — mutated by tests, referenced by composable mock
@@ -324,6 +410,94 @@ describe('AuditLogView — 稽核紀錄頁面', () => {
     const activeBtn = pageButtons.find(b => b.classes().includes('active'))
     expect(activeBtn).toBeDefined()
     expect(activeBtn!.text().trim()).toBe('2')
+  })
+
+  // -- i18n: User-facing strings should not be hardcoded -----------------
+
+  it('F-AV-I18N-01: 頁面標題應使用 i18n 而非硬編碼', () => {
+    mockT.mockClear()
+    mount(AuditLogView)
+    expect(mockT).toHaveBeenCalledWith('audit.title')
+  })
+
+  it('F-AV-I18N-02: 匯出按鈕應使用 i18n 而非硬編碼', () => {
+    mockT.mockClear()
+    total.value = 1
+    entries.value = [makeEntry()]
+    mount(AuditLogView)
+    expect(mockT).toHaveBeenCalledWith('audit.exportCsv')
+  })
+
+  it('F-AV-I18N-03: 搜尋 placeholder 應使用 i18n 而非硬編碼', () => {
+    mockT.mockClear()
+    mount(AuditLogView)
+    expect(mockT).toHaveBeenCalledWith('audit.searchPlaceholder')
+  })
+
+  it('F-AV-I18N-04: 分頁按鈕應使用 i18n 而非硬編碼', () => {
+    mockT.mockClear()
+    total.value = 120
+    entries.value = [makeEntry()]
+    mount(AuditLogView)
+    expect(mockT).toHaveBeenCalledWith('audit.pagination.prev')
+    expect(mockT).toHaveBeenCalledWith('audit.pagination.next')
+  })
+
+  // -- Date Validation: Reject invalid ranges ----------------------------
+
+  it('F-AV-DATE-01: dateFrom > dateTo 時不應觸發查詢', async () => {
+    const wrapper = mount(AuditLogView)
+    mockOnDateRangeChange.mockClear()
+
+    // 先設定正常的開始日期（會觸發一次呼叫，合法）
+    const dateInputs = wrapper.findAll('input[type="date"]')
+    await dateInputs[0].setValue('2025-08-01')
+    // Clear: 這步驟會因 dateTo 仍為空而觸發一次呼叫，這是預期行為
+    mockOnDateRangeChange.mockClear()
+
+    // 再設定結束日早於開始日
+    await dateInputs[1].setValue('2025-07-01')
+    await dateInputs[1].trigger('change')
+
+    // 此時 dateFrom > dateTo，不應觸發 onDateRangeChange
+    expect(mockOnDateRangeChange).not.toHaveBeenCalled()
+  })
+
+  // -- Export Loading State -----------------------------------------------
+
+  it('F-AV-EXPORT-01: 匯出進行中時按鈕應顯示 disabled/loading 狀態', async () => {
+    let resolveExport!: (v: unknown) => void
+    mockExportCSV.mockReturnValueOnce(new Promise(r => { resolveExport = r }))
+
+    const wrapper = mount(AuditLogView)
+    await wrapper.find('.btn-export').trigger('click')
+    await nextTick()
+
+    const btn = wrapper.find('.btn-export')
+    // 匯出中應 disabled 或顯示 loading 文字
+    const isDisabled = btn.attributes('disabled') !== undefined
+    const textChanged = btn.text().trim() !== '匯出 CSV'
+    expect(isDisabled || textChanged).toBe(true)
+
+    // 清理
+    resolveExport!(undefined)
+    await nextTick()
+  })
+
+  // -- Accessibility: Interactive elements --------------------------------
+
+  it('F-AV-A11Y-01: 搜尋框應有 aria-label', () => {
+    const wrapper = mount(AuditLogView)
+    const input = wrapper.find('.search-box input')
+    expect(input.attributes('aria-label')).toBeTruthy()
+  })
+
+  it('F-AV-A11Y-02: 日期輸入框應有 aria-label（非僅 title）', () => {
+    const wrapper = mount(AuditLogView)
+    const dateInputs = wrapper.findAll('input[type="date"]')
+    dateInputs.forEach((input) => {
+      expect(input.attributes('aria-label')).toBeTruthy()
+    })
   })
 
   it('F-AV-24: 分頁資訊顯示「第 N / M 頁，共 T 筆」', () => {

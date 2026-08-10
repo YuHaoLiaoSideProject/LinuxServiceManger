@@ -1,7 +1,45 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { ref } from 'vue'
 import AuditTable from '../components/AuditTable.vue'
 import type { AuditEntry } from '../composables/useAuditLog'
+
+// ---------------------------------------------------------------------------
+// Mock i18n — return Chinese translations (match existing test expectations)
+// ---------------------------------------------------------------------------
+
+const { mockT } = vi.hoisted(() => ({
+  mockT: vi.fn((key: string) => {
+    const map: Record<string, string> = {
+      'audit.col.time': '時間',
+      'audit.col.user': '使用者',
+      'audit.col.sourceIp': '來源 IP',
+      'audit.col.action': '動作',
+      'audit.col.target': '目標服務',
+      'audit.col.result': '結果',
+      'audit.col.detail': '詳細資訊',
+      'audit.action.login': '登入',
+      'audit.action.logout': '登出',
+      'audit.action.start': '啟動',
+      'audit.action.stop': '停止',
+      'audit.action.restart': '重啟',
+      'audit.action.enable': '啟用',
+      'audit.action.disable': '停用',
+      'audit.result.success': '成功',
+      'audit.result.failure': '失敗',
+      'audit.noRecords': '尚無操作紀錄',
+    }
+    return map[key] || key
+  }),
+}))
+
+vi.mock('../composables/useI18n', () => ({
+  useI18n: () => ({
+    t: mockT,
+    toggleLang: vi.fn(),
+    locale: ref('zh-TW'),
+  }),
+}))
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -247,5 +285,87 @@ describe('AuditTable — 稽核紀錄表格', () => {
     expect(tds[4].text()).toBe('ssh.service')
     expect(tds[5].text()).toBe('失敗')
     expect(tds[6].text()).toBe('permission denied')
+  })
+
+  // -- RWD: Mobile data-label attributes ----------------------------------
+
+  it('F-AT-RWD-01: 每個 <td> 必須有 data-label 屬性（行動版卡片佈局）', () => {
+    const wrapper = mount(AuditTable, {
+      props: { entries: [makeEntry()] },
+    })
+
+    const tds = wrapper.findAll('tbody td')
+    expect(tds.length).toBeGreaterThan(0)
+
+    tds.forEach((td, i) => {
+      const label = td.attributes('data-label')
+      expect(label, `td[${i}] 缺少 data-label 屬性`).toBeDefined()
+      expect(label?.trim(), `td[${i}] data-label 為空字串`).not.toBe('')
+    })
+  })
+
+  // -- Empty State: Context-appropriate text ------------------------------
+
+  it('F-AT-EMPTY-02: entries 為空時不應顯示「服務」相關文字', () => {
+    const wrapper = mount(AuditTable, {
+      props: { entries: [] },
+    })
+
+    // EmptyState 組件目前寫死「沒有符合條件的服務」，對稽核頁面不適用
+    expect(wrapper.text()).not.toContain('服務')
+  })
+
+  // -- i18n: Column headers should not be hardcoded ----------------------
+
+  it('F-AT-I18N-01: 欄位標頭應使用 useI18n 的 t() 而非硬編碼中文', () => {
+    mockT.mockClear()
+    mount(AuditTable, {
+      props: { entries: [makeEntry()] },
+    })
+
+    // t() should have been called for each column header (7 calls minimum)
+    expect(mockT).toHaveBeenCalled()
+    const headerKeys = [
+      'audit.col.time',
+      'audit.col.user',
+      'audit.col.sourceIp',
+      'audit.col.action',
+      'audit.col.target',
+      'audit.col.result',
+      'audit.col.detail',
+    ]
+    headerKeys.forEach(key => {
+      expect(mockT).toHaveBeenCalledWith(key)
+    })
+  })
+
+  // -- Accessibility: Table semantics ------------------------------------
+
+  it('F-AT-A11Y-01: 表格應有 caption 或 aria-label 輔助描述', () => {
+    const wrapper = mount(AuditTable, {
+      props: { entries: [makeEntry()] },
+    })
+
+    const table = wrapper.find('table')
+    const hasCaption = table.find('caption').exists()
+    const hasAriaLabel = table.attributes('aria-label') !== undefined
+
+    expect(hasCaption || hasAriaLabel).toBe(true)
+  })
+
+  it('F-AT-A11Y-02: 結果 badge 應有 aria 標記供螢幕閱讀器辨識', () => {
+    const wrapper = mount(AuditTable, {
+      props: { entries: [makeEntry({ result: 'success' }), makeEntry({ result: 'failure' })] },
+    })
+
+    const badges = wrapper.findAll('.badge')
+    expect(badges).toHaveLength(2)
+
+    badges.forEach((badge) => {
+      // badge 應有 role="status" 或 aria-label
+      const role = badge.attributes('role')
+      const ariaLabel = badge.attributes('aria-label')
+      expect(role || ariaLabel, 'badge 缺少 role 或 aria-label').toBeTruthy()
+    })
   })
 })

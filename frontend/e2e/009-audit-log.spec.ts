@@ -108,8 +108,8 @@ async function setupAuditMocks(page: any, auditData = AUDIT_ENTRIES) {
 }
 
 function auditLink(page: any) { return page.locator('a.nav-link[href="/audit"]') }
-function auditTable(page: any) { return page.locator('.audit-page table') }
-function auditRows(page: any) { return page.locator('.audit-page tbody tr') }
+function auditTable(page: any) { return page.locator('main.app-container .table-wrapper table') }
+function auditRows(page: any) { return page.locator('main.app-container tbody tr') }
 function searchInput(page: any) { return page.locator('.search-box input') }
 function dateInputs(page: any) { return page.locator('.date-range input[type="date"]') }
 function exportBtn(page: any) { return page.locator('.btn-export') }
@@ -135,21 +135,21 @@ test.describe('E2E-01~03: 進入 Audit Log 頁面', () => {
     await page.waitForURL('**/audit')
 
     // Should see the audit page
-    await expect(page.locator('.audit-page h2')).toContainText('Audit Log')
+    await expect(page.locator('main.app-container h2')).toContainText('Audit Log')
 
     // Table should render with data
     await expect(auditTable(page)).toBeVisible()
     await expect(auditRows(page)).toHaveCount(5)
 
     // Check column headers
-    const headers = page.locator('.audit-page th')
-    await expect(headers.nth(0)).toContainText('時間')
-    await expect(headers.nth(1)).toContainText('使用者')
-    await expect(headers.nth(2)).toContainText('來源 IP')
-    await expect(headers.nth(3)).toContainText('動作')
-    await expect(headers.nth(4)).toContainText('目標服務')
-    await expect(headers.nth(5)).toContainText('結果')
-    await expect(headers.nth(6)).toContainText('詳細資訊')
+    const headers = page.locator('main.app-container th')
+    await expect(headers.nth(0)).toContainText('Time')
+    await expect(headers.nth(1)).toContainText('User')
+    await expect(headers.nth(2)).toContainText('Source IP')
+    await expect(headers.nth(3)).toContainText('Action')
+    await expect(headers.nth(4)).toContainText('Target')
+    await expect(headers.nth(5)).toContainText('Result')
+    await expect(headers.nth(6)).toContainText('Detail')
   })
 
   test('成功紀錄綠色背景、失敗紀錄紅色背景', async ({ page }) => {
@@ -183,7 +183,7 @@ test.describe('E2E-02: 無任何操作紀錄', () => {
     await auditLink(page).click()
     await page.waitForURL('**/audit')
 
-    await expect(page.locator('.audit-page')).toContainText('尚無操作紀錄')
+    await expect(page.locator('main.app-container')).toContainText('No audit records')
     await expect(auditTable(page)).not.toBeVisible()
   })
 })
@@ -224,9 +224,9 @@ test.describe('E2E-04: 搜尋稽核紀錄', () => {
     await searchInput(page).fill('nonexistent123')
     await page.waitForTimeout(500)
 
-    await expect(page.locator('.audit-page')).toContainText('沒有符合條件的紀錄')
+    await expect(page.locator('main.app-container')).toContainText('No matching records')
     await expect(clearLink(page)).toBeVisible()
-    await expect(clearLink(page)).toContainText('清除過濾')
+    await expect(clearLink(page)).toContainText('Clear filters')
   })
 
   test('點擊清除過濾 → 恢復全部紀錄', async ({ page }) => {
@@ -289,7 +289,7 @@ test.describe('E2E-06: 翻頁瀏覽', () => {
 
     // Pagination should be visible (totalPages > 1)
     await expect(pagination(page)).toBeVisible()
-    await expect(pageInfo(page)).toContainText('共 120 筆')
+    await expect(pageInfo(page)).toContainText('120 records')
 
     // Click page 2
     const page2Btn = pagination(page).locator('button.page-btn').filter({ hasText: '2' })
@@ -297,7 +297,7 @@ test.describe('E2E-06: 翻頁瀏覽', () => {
     await page.waitForTimeout(300)
 
     // Page info should update
-    await expect(pageInfo(page)).toContainText('第 2')
+    await expect(pageInfo(page)).toContainText('Page 2')
   })
 
   test('第一頁 → 上一頁 disabled', async ({ page }) => {
@@ -359,12 +359,12 @@ test.describe('E2E-18: API 錯誤', () => {
 
     // Should show error state
     await expect(errorState(page)).toBeVisible()
-    await expect(page.locator('.audit-page')).toContainText('internal server error')
+    await expect(page.locator('main.app-container')).toContainText('internal server error')
 
     // Should have retry button
     const retryBtn = page.locator('.empty-state button')
     await expect(retryBtn).toBeVisible()
-    await expect(retryBtn).toContainText('重試')
+    await expect(retryBtn).toContainText('Retry')
   })
 })
 
@@ -394,6 +394,79 @@ test.describe('E2E-19: 組合過濾', () => {
 })
 
 // ===================================================================
+// UI/UX Audit: C1 — AppHeader 應在 Audit Log 頁面保持可見
+// ===================================================================
+
+test.describe('UI/UX Audit: 導航一致性', () => {
+  test('C1: 從 Dashboard 導航至 /audit 後 AppHeader 仍應可見', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: true })
+    await setupAuditMocks(page)
+    await gotoDashboard(page)
+
+    // Verify AppHeader is on dashboard first
+    await expect(page.locator('.app-header')).toBeVisible()
+
+    await auditLink(page).click()
+    await page.waitForURL('**/audit')
+
+    // C1 RED: AppHeader should still be visible after navigating to /audit
+    // Currently AuditLogView does not include AppHeader → will FAIL
+    await expect(page.locator('.app-header')).toBeVisible({ timeout: 3000 })
+    await expect(page.locator('.app-header .user-badge')).toBeVisible()
+    // Should have a way to navigate back
+    await expect(page.locator('.app-header-left h1')).toBeVisible()
+  })
+})
+
+// ===================================================================
+// UI/UX Audit: C2 — Mobile RWD 資料標籤
+// ===================================================================
+
+test.describe('UI/UX Audit: 行動版響應式設計', () => {
+  test('C2: 375px viewport → <td> 必須有 data-label 屬性', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 })
+
+    await setupApiMocks(page, { authenticated: true })
+    await setupAuditMocks(page)
+    await gotoDashboard(page)
+
+    await auditLink(page).click()
+    await page.waitForURL('**/audit')
+
+    // Wait for table to render
+    await expect(auditTable(page)).toBeVisible()
+
+    // C2 RED: data-label 是 mobile card layout 的關鍵屬性
+    // 目前 AuditTable 沒有 data-label → 第一個 td 的 data-label 為 null
+    const firstTd = page.locator('main.app-container tbody tr td').first()
+    const label = await firstTd.getAttribute('data-label')
+    expect(label).toBeTruthy()
+  })
+
+  test('C2: 375px viewport → 所有 td 都應有 data-label', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 })
+
+    await setupApiMocks(page, { authenticated: true })
+    await setupAuditMocks(page)
+    await gotoDashboard(page)
+
+    await auditLink(page).click()
+    await page.waitForURL('**/audit')
+    await expect(auditTable(page)).toBeVisible()
+
+    // All td elements in the first row should have data-label
+    const tds = page.locator('main.app-container tbody tr:first-child td')
+    const count = await tds.count()
+    expect(count).toBe(7)
+
+    for (let i = 0; i < count; i++) {
+      const label = await tds.nth(i).getAttribute('data-label')
+      expect(label, `td[${i}] 缺少 data-label`).toBeTruthy()
+    }
+  })
+})
+
+// ===================================================================
 // F-HD-03: 未登入時不顯示 Audit Log 連結
 // ===================================================================
 
@@ -401,7 +474,9 @@ test.describe('F-HD-03: 未登入隱藏 Audit Log', () => {
   test('未登入狀態 → Header 不顯示 Audit Log 連結', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false })
 
-    await page.goto('/login')
+    // NOTE: 不能直接 goto('/login')，因為 Vite proxy 會把 /login 轉發到 Pi agent
+    // 必須先載入 SPA (/)，讓 client-side router 重導向到 /login
+    await page.goto('/')
     await page.waitForURL('**/login')
     await page.waitForSelector('.login-form')
 

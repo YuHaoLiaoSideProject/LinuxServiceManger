@@ -247,6 +247,35 @@ describe('useAuditLog', () => {
     expect(mockGet.mock.calls[0][1].params.to).toBe('2025-08-09')
   })
 
+  it('F-AV-DATE-02: onDateRangeChange 應拒絕 from > to 的無效日期範圍', async () => {
+    mockGet.mockResolvedValueOnce({ data: makeQueryResult({ total: 0 }) })
+
+    const { onDateRangeChange, error } = useAuditLog()
+
+    // 開始日大於結束日為無效範圍
+    onDateRangeChange('2025-08-09', '2025-08-01')
+    await nextTick()
+
+    // 不應發送 API 請求
+    expect(mockGet).not.toHaveBeenCalled()
+    // 應設定驗證錯誤訊息
+    expect(error.value).toBeTruthy()
+  })
+
+  it('F-AV-DATE-03: onDateRangeChange 允許 from === to 的同一天範圍', async () => {
+    mockGet.mockResolvedValueOnce({ data: makeQueryResult({ total: 1 }) })
+
+    const { dateFrom, dateTo, onDateRangeChange } = useAuditLog()
+
+    onDateRangeChange('2025-08-09', '2025-08-09')
+    await nextTick()
+
+    expect(dateFrom.value).toBe('2025-08-09')
+    expect(dateTo.value).toBe('2025-08-09')
+    // 合法範圍應正常發送 API
+    expect(mockGet).toHaveBeenCalledTimes(1)
+  })
+
   // -- Clear Filters ------------------------------------------------------
 
   it('F-AV-CLR-01: clearFilters → 清空 search/dateFrom/dateTo 重設 page=1', async () => {
@@ -376,7 +405,7 @@ describe('useAuditLog', () => {
   it('F-AV-PARAMS-01: buildParams 合併搜尋和日期參數', async () => {
     mockGet.mockResolvedValueOnce({ data: makeQueryResult({ total: 2 }) })
 
-    const { search, dateFrom, dateTo, onSearchInput, onDateRangeChange } = useAuditLog()
+    const { onSearchInput, onDateRangeChange } = useAuditLog()
 
     onSearchInput('nginx')
     vi.advanceTimersByTime(300)

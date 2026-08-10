@@ -27,7 +27,7 @@ const connectionClass = computed(() => ({
 <template>
   <header class="app-header">
     <div class="app-header-left">
-      <h1><span class="header-icon">🖥</span> Linux Service Manager</h1>
+      <h1><router-link to="/" class="home-link"><span class="header-icon">🖥</span> Linux Service Manager</router-link></h1>
       <span class="user-badge">👤 {{ username }}</span>
     </div>
     <div class="app-header-right">
@@ -56,3 +56,17 @@ const connectionClass = computed(() => ({
     </div>
   </header>
 </template>
+
+<style scoped>
+.home-link {
+  color: inherit;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.home-link:hover {
+  color: var(--lms-accent);
+}
+</style>

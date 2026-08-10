@@ -1,20 +1,13 @@
 <script setup lang="ts">
 import type { AuditEntry } from '../composables/useAuditLog'
+import { useI18n } from '../composables/useI18n'
 import EmptyState from './EmptyState.vue'
 
 defineProps<{
   entries: AuditEntry[]
 }>()
 
-const ACTION_LABELS: Record<string, string> = {
-  login: '登入',
-  logout: '登出',
-  start: '啟動',
-  stop: '停止',
-  restart: '重啟',
-  enable: '啟用',
-  disable: '停用',
-}
+const { t } = useI18n()
 
 function formatTime(iso: string): string {
   if (!iso) return '-'
@@ -22,7 +15,9 @@ function formatTime(iso: string): string {
 }
 
 function actionLabel(action: string): string {
-  return ACTION_LABELS[action] || action
+  const key = `audit.action.${action}`
+  const translated = t(key)
+  return translated !== key ? translated : action
 }
 
 function displayTarget(target: string): string {
@@ -36,19 +31,20 @@ function displayDetail(detail: string): string {
 
 <template>
   <div v-if="entries.length === 0">
-    <EmptyState />
+    <EmptyState :message="t('audit.noRecords')" :showButton="false" />
   </div>
   <div v-else class="table-wrapper">
-    <table>
+    <table aria-label="稽核操作紀錄">
+      <caption class="sr-only">{{ t('audit.title') }}</caption>
       <thead>
         <tr>
-          <th>時間</th>
-          <th>使用者</th>
-          <th>來源 IP</th>
-          <th>動作</th>
-          <th>目標服務</th>
-          <th>結果</th>
-          <th>詳細資訊</th>
+          <th>{{ t('audit.col.time') }}</th>
+          <th>{{ t('audit.col.user') }}</th>
+          <th>{{ t('audit.col.sourceIp') }}</th>
+          <th>{{ t('audit.col.action') }}</th>
+          <th>{{ t('audit.col.target') }}</th>
+          <th>{{ t('audit.col.result') }}</th>
+          <th>{{ t('audit.col.detail') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -57,20 +53,22 @@ function displayDetail(detail: string): string {
           :key="i"
           :class="entry.result === 'success' ? 'row-success' : 'row-failure'"
         >
-          <td>{{ formatTime(entry.timestamp) }}</td>
-          <td>{{ entry.username }}</td>
-          <td>{{ entry.source_ip }}</td>
-          <td>{{ actionLabel(entry.action) }}</td>
-          <td>{{ displayTarget(entry.target) }}</td>
-          <td>
+          <td :data-label="t('audit.col.time')">{{ formatTime(entry.timestamp) }}</td>
+          <td :data-label="t('audit.col.user')">{{ entry.username }}</td>
+          <td :data-label="t('audit.col.sourceIp')">{{ entry.source_ip }}</td>
+          <td :data-label="t('audit.col.action')">{{ actionLabel(entry.action) }}</td>
+          <td :data-label="t('audit.col.target')">{{ displayTarget(entry.target) }}</td>
+          <td :data-label="t('audit.col.result')">
             <span
               class="badge"
               :class="entry.result === 'success' ? 'badge-success' : 'badge-failure'"
+              role="status"
+              :aria-label="entry.result === 'success' ? t('audit.result.success') : t('audit.result.failure')"
             >
-              {{ entry.result === 'success' ? '成功' : '失敗' }}
+              {{ entry.result === 'success' ? t('audit.result.success') : t('audit.result.failure') }}
             </span>
           </td>
-          <td>{{ displayDetail(entry.detail) }}</td>
+          <td :data-label="t('audit.col.detail')">{{ displayDetail(entry.detail) }}</td>
         </tr>
       </tbody>
     </table>
@@ -78,6 +76,18 @@ function displayDetail(detail: string): string {
 </template>
 
 <style scoped>
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .row-success {
   background: rgba(0, 200, 0, 0.05);
 }
@@ -96,12 +106,12 @@ function displayDetail(detail: string): string {
 }
 
 .badge-success {
-  background: #188038;
+  background: var(--lms-success);
   color: #fff;
 }
 
 .badge-failure {
-  background: #c5221f;
+  background: var(--lms-danger);
   color: #fff;
 }
 </style>

@@ -1,8 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ref, nextTick } from 'vue'
 import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import type { Service } from '../../types/service'
-import type { StatusFilter } from '../useServiceFilter'
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -337,7 +336,7 @@ describe('useServiceFilter', () => {
     it('regex mode with valid regex but no matches returns empty array', async () => {
       vi.useFakeTimers()
       const services = ref<Service[]>([...fixtureServices])
-      const { searchText, regexMode, filteredServices, toggleRegex } = useServiceFilter(services)
+      const { searchText, filteredServices, toggleRegex } = useServiceFilter(services)
 
       toggleRegex()
       searchText.value = 'zzz-nonexistent-.*'
@@ -353,7 +352,7 @@ describe('useServiceFilter', () => {
     it('regex with case-insensitive flag (i) works', async () => {
       vi.useFakeTimers()
       const services = ref<Service[]>([...fixtureServices])
-      const { searchText, regexMode, filteredServices, toggleRegex } = useServiceFilter(services)
+      const { searchText, filteredServices, toggleRegex } = useServiceFilter(services)
 
       toggleRegex()
       searchText.value = 'NGINX'
@@ -750,7 +749,7 @@ describe('useServiceFilter', () => {
     it('clearSearch in regex mode also clears regexError', async () => {
       vi.useFakeTimers()
       const services = ref<Service[]>([...fixtureServices])
-      const { searchText, regexMode, regexError, filteredServices, toggleRegex, clearSearch } = useServiceFilter(services)
+      const { searchText, regexError, filteredServices, toggleRegex, clearSearch } = useServiceFilter(services)
 
       toggleRegex()
       searchText.value = '[invalid(regex'

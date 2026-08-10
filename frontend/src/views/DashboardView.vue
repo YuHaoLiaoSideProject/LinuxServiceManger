@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { Service, ServiceAction } from '../types/service'
 import { listServices, startService, stopService, restartService, enableService, disableService } from '../api/client'
 import { useAuthStore } from '../stores/auth'
+import { useServiceStore } from '../stores/service'
 import { useToast } from '../composables/useToast'
 import { useI18n } from '../composables/useI18n'
 import { useServiceFilter } from '../composables/useServiceFilter'
+import { useWebSocket } from '../composables/useWebSocket'
 import AppHeader from '../components/AppHeader.vue'
 import StatsBar from '../components/StatsBar.vue'
 import TabsBar from '../components/TabsBar.vue'
@@ -18,11 +20,58 @@ import LogDrawer from '../components/LogDrawer.vue'
 
 const { t } = useI18n()
 const auth = useAuthStore()
+const serviceStore = useServiceStore()
 const { showToast } = useToast()
 
 const services = ref<Service[]>([])
 const loading = ref(true)
 const tab = ref(localStorage.getItem('lms-tab') || 'my')
+
+// ── WebSocket connection ──
+const { status: wsStatus, on, disconnect } = useWebSocket()
+
+on('status_change', (msg: any) => {
+  serviceStore.updateService(msg.name, {
+    active: msg.active,
+    sub: msg.sub,
+    unitFileState: msg.unitFileState,
+  })
+  // Sync local ref for useServiceFilter
+  const idx = services.value.findIndex(s => s.name === msg.name)
+  if (idx !== -1) {
+    const svc = services.value[idx]
+    services.value[idx] = { ...svc, active: msg.active, sub: msg.sub, unitFileState: msg.unitFileState }
+  }
+})
+
+on('service_added', (msg: any) => {
+  const newService: Service = {
+    name: msg.name,
+    active: msg.active,
+    sub: msg.sub,
+    unitFileState: msg.unitFileState,
+    load: 'loaded',
+    locked: false,
+    fragmentPath: '',
+  }
+  serviceStore.addService(newService)
+  if (!services.value.find(s => s.name === msg.name)) {
+    services.value.push(newService)
+  }
+  showToast(`偵測到新服務：${msg.name}`)
+})
+
+on('service_removed', (msg: any) => {
+  serviceStore.removeService(msg.name)
+  services.value = services.value.filter(s => s.name !== msg.name)
+  showToast(`服務已移除：${msg.name}`)
+})
+
+on('snapshot', (msg: any) => {
+  serviceStore.applySnapshot(msg.services)
+  // Sync local ref from store
+  services.value = [...serviceStore.services]
+})
 
 // Log drawer state
 const logDrawerVisible = ref(false)
@@ -32,6 +81,7 @@ async function loadServices() {
   loading.value = true
   try {
     services.value = await listServices()
+    serviceStore.setServices(services.value)
   } catch (err) {
     showToast('Failed to load services', 'error')
   } finally {
@@ -48,7 +98,7 @@ async function handleAction(action: ServiceAction, name: string) {
     }
     await actionMap[action].fn(name)
     showToast(t(actionMap[action].key, { name }), 'success')
-    await loadServices()
+    // WebSocket will push status change; no need to reload
   } catch (err: any) {
     showToast(err.response?.data?.error || t('toast.error', { name }), 'error')
     await loadServices()
@@ -76,11 +126,7 @@ async function executeToggle(action: 'enable' | 'disable', name: string) {
       await disableService(name)
       showToast(t('toast.disabled', { name }), 'success')
     }
-    // Update local state directly to avoid full page refresh
-    const svc = services.value.find(s => s.name === name)
-    if (svc) {
-      svc.unitFileState = action === 'enable' ? 'enabled' : 'disabled'
-    }
+    // WebSocket will push unitFileState change; no need to reload
   } catch (err: any) {
     const errMsg = err.response?.data?.error || t('toast.error', { name })
     showToast(errMsg, 'error')
@@ -138,6 +184,7 @@ function setTab(t: string) {
 }
 
 async function handleLogout() {
+  disconnect()
   await auth.logout()
   router.replace('/login')
 }
@@ -156,11 +203,15 @@ onMounted(() => {
   loadServices()
   initFromQuery()
 })
+
+onUnmounted(() => {
+  disconnect()
+})
 </script>
 
 <template>
   <main class="app-container">
-    <AppHeader :username="auth.username" @refresh="loadServices" @logout="handleLogout" />
+    <AppHeader :username="auth.username" :wsStatus="wsStatus" @refresh="loadServices" @logout="handleLogout" />
     <TabsBar :services="services" :tab="tab" @set-tab="setTab" />
     <StatsBar :services="statsServices" />
     <Toolbar

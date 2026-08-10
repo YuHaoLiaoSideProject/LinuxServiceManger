@@ -1,11 +1,25 @@
 import axios from 'axios'
 import type { Service, LoginResponse, SessionInfo, MessageResponse } from '../types/service'
+import { useAuthStore } from '../stores/auth'
 
 const api = axios.create({
   baseURL: '/api/v1',
   withCredentials: true,
   headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 })
+
+// Intercept 401 responses to reset auth state (session expired)
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      const auth = useAuthStore()
+      auth.authenticated = false
+      auth.username = ''
+    }
+    return Promise.reject(error)
+  },
+)
 
 // Auth
 export async function login(username: string, password: string): Promise<LoginResponse> {

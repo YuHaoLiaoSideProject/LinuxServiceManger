@@ -1,4 +1,4 @@
-import { ref, computed, watch, type Ref, type ComputedRef } from 'vue'
+import { ref, computed, watch, type Ref } from 'vue'
 import type { Router } from 'vue-router'
 import type { Service } from '../types/service'
 

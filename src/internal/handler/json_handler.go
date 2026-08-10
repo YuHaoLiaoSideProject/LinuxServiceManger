@@ -304,7 +304,6 @@ func (h *Handler) HandleServiceLogsWS(w http.ResponseWriter, r *http.Request) {
 		line := scanner.Bytes()
 		if err := conn.WriteMessage(websocket.TextMessage, line); err != nil {
 			// Client disconnected → break loop → cancel ctx → kill journalctl
-			log.Printf("INFO WebSocket write error for %s (client disconnected): %v", name, err)
 			break
 		}
 	}

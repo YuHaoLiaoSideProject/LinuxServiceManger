@@ -11,7 +11,9 @@ import (
 	"linux-service-manager/internal/auth"
 	"linux-service-manager/internal/handler"
 	"linux-service-manager/internal/middleware"
+	"linux-service-manager/internal/monitor"
 	"linux-service-manager/internal/systemd"
+	"linux-service-manager/internal/websocket"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
@@ -32,6 +34,32 @@ func main() {
 
 	h := handler.New(templates, &systemd.DefaultManager{})
 
+	// Initialize WebSocket Hub for real-time status push
+	hub := websocket.NewHub()
+	hub.OnSnapshot = func() []websocket.ServiceSnapshot {
+		services, err := (&systemd.DefaultManager{}).ListServices()
+		if err != nil {
+			return nil
+		}
+		snapshots := make([]websocket.ServiceSnapshot, len(services))
+		for i, s := range services {
+			snapshots[i] = websocket.ServiceSnapshot{
+				Name:          s.Name,
+				Active:        s.Active,
+				Sub:           s.Sub,
+				UnitFileState: s.UnitFileState,
+			}
+		}
+		return snapshots
+	}
+	go hub.Run()
+
+	// Start service status monitor (D-Bus or polling fallback)
+	go monitor.StartMonitor(hub, &systemd.DefaultManager{})
+
+	// Attach hub to handler
+	h.Hub = hub
+
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
@@ -51,6 +79,7 @@ func main() {
 		r.Post("/api/v1/services/{name}/enable", h.HandleEnableJSON)
 		r.Post("/api/v1/services/{name}/disable", h.HandleDisableJSON)
 		r.Get("/api/v1/services/{name}/logs/ws", h.HandleServiceLogsWS)
+		r.Get("/api/v1/ws", h.HandleStatusWS)
 	})
 
 	// HTML routes (legacy htmx) — protected

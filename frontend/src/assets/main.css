@@ -716,24 +716,198 @@ td[data-label="Name"] {
 }
 
 /* ============================================================
-   RWD — Mobile (< 768px) : Card layout
+   RWD — Mobile (< 768px) : Card layout redesign
+   Design tokens: 16px body, 48px touch targets, clear hierarchy
    ============================================================ */
 @media (max-width: 767px) {
-  .app-container { padding: 0.75rem 0.75rem 2rem; }
-  .app-header { flex-direction: column; align-items: flex-start; }
+  /* ── Layout ── */
+  .app-container { padding: 0.75rem 0.75rem 5rem; }
+
+  /* ── Header ── */
+  .app-header { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
   .app-header-left { width: 100%; }
   .app-header-left h1 { font-size: 1.15rem; }
-  .app-header-right { width: 100%; justify-content: flex-start; }
-  .stats-bar { gap: 0.4rem; }
-  .stat-card { padding: 0.45rem 0.75rem; }
-  .stat-card .stat-value { font-size: 1.1rem; }
+  .app-header-right { width: 100%; justify-content: flex-start; gap: 0.5rem; }
+
+  /* ── Stats: horizontal swipe chips ── */
+  .stats-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 0.5rem;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    padding-bottom: 2px;
+  }
+  .stat-card {
+    flex: 0 0 auto;
+    min-width: 110px;
+    padding: 0.6rem 0.9rem;
+    scroll-snap-align: start;
+  }
+  .stat-card .stat-value { font-size: 1.35rem; }
+  .stat-card .stat-icon { font-size: 1.5rem; }
+
+  /* ── Tabs ── */
+  .tab-btn { font-size: 0.9rem; padding: 0.6rem 1rem; }
+
+  /* ── Search ── */
   .toolbar { flex-direction: column; }
   .toolbar .search-wrap { width: 100%; }
-  .toolbar .search-wrap input { min-height: 44px; }
+  .toolbar .search-wrap input {
+    min-height: 48px;
+    font-size: 1rem;
+    border-radius: 24px;
+  }
 
-  table caption { display: block; font-size: 0.75rem; padding: 0.35rem 0.5rem; white-space: normal; line-height: 1.3; }
-  table caption .caption-sub { display: none; }
+  /* ── Table → Card conversion ── */
+  table caption { display: none; }
+  .table-wrapper {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    overflow-x: visible;
+  }
+  .table-wrapper table thead { display: none; }
+  .table-wrapper table,
+  .table-wrapper table tbody,
+  .table-wrapper table tr,
+  .table-wrapper table td { display: block; }
 
+  /* ── Card container ── */
+  .table-wrapper table tr {
+    background: var(--lms-surface);
+    border: 1px solid var(--lms-border);
+    border-radius: var(--lms-radius-lg, 14px);
+    margin-bottom: 1rem;
+    padding: 1rem;
+    box-shadow: var(--lms-shadow);
+    transition: border-color var(--lms-transition), box-shadow var(--lms-transition);
+  }
+  .table-wrapper table tr:hover {
+    background: var(--lms-surface);
+    border-color: var(--lms-accent);
+    box-shadow: 0 4px 20px rgba(26,115,232,0.12);
+  }
+
+  /* ── Card rows ── */
+  .table-wrapper table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.55rem 0;
+    border-bottom: 1px solid var(--lms-border);
+    text-align: right;
+    font-size: 1rem;
+  }
+  .table-wrapper table td:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+  .table-wrapper table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    font-size: 0.8125rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--lms-muted);
+    text-align: left;
+    flex-shrink: 0;
+    margin-right: 0.75rem;
+  }
+
+  /* Name row: prominent, no label */
+  .table-wrapper table td:first-child {
+    font-size: 1.125rem;
+    font-weight: 700;
+    word-break: break-all;
+    padding-top: 0;
+  }
+  .table-wrapper table td:first-child::before {
+    display: none;
+  }
+
+  /* ── Status dot (bigger on mobile) ── */
+  .status-dot {
+    width: 14px;
+    height: 14px;
+    margin-right: 0.5rem;
+  }
+  .status-active, .status-inactive, .status-failed, .status-other {
+    font-size: 1rem;
+  }
+  @keyframes dotPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(24,128,56,0.5); }
+    50%      { box-shadow: 0 0 0 10px rgba(24,128,56,0); }
+  }
+
+  /* ── Auto-start toggle (bigger) ── */
+  .auto-start-cell {
+    justify-content: space-between;
+  }
+  .toggle-switch {
+    min-height: 48px;
+    padding: 4px 8px;
+  }
+  .toggle-track {
+    width: 48px;
+    height: 28px;
+    border-radius: 14px;
+  }
+  .toggle-thumb {
+    width: 22px;
+    height: 22px;
+    top: 3px;
+  }
+  .toggle-on .toggle-thumb { left: 23px; }
+  .toggle-off .toggle-thumb { left: 3px; }
+  .toggle-label { font-size: 0.9rem; min-width: 32px; }
+  .na-badge { font-size: 0.9rem; }
+
+  /* ── Locked badge ── */
+  .locked-badge {
+    font-size: 0.9rem;
+    padding: 0.4rem 0.8rem;
+  }
+
+  /* ── Actions: primary full-width + secondary icon buttons ── */
+  .actions {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  /* Primary action (Start / Stop): full-width, colored, bold */
+  .actions button:first-of-type {
+    flex: 1 1 100%;
+    min-height: 48px;
+    font-size: 1rem;
+    font-weight: 700;
+    justify-content: center;
+    border-radius: var(--lms-radius);
+    border: none;
+    background: var(--lms-accent);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(26,115,232,0.3);
+    transition: background var(--lms-transition), transform 0.1s;
+  }
+  .actions button:first-of-type:active {
+    transform: scale(0.97);
+  }
+  .actions button:first-of-type:hover {
+    background: var(--lms-accent-hover);
+  }
+  /* Secondary actions (Restart / Logs): compact icon buttons */
+  .actions button:not(:first-of-type) {
+    flex: 1 1 auto;
+    min-width: 48px;
+    min-height: 48px;
+    justify-content: center;
+    font-size: 0.875rem;
+    border-radius: var(--lms-radius);
+  }
+  .actions button .btn-label { display: inline; }
+  .actions button .btn-icon { font-size: 1.1rem; }
+
+  /* ── Toast: slide from bottom ── */
   #toast-container {
     top: auto;
     bottom: 1rem;
@@ -743,94 +917,56 @@ td[data-label="Name"] {
     align-items: stretch;
   }
   .toast {
-    font-size: 0.8125rem;
-    padding: 0.65rem 0.85rem;
+    font-size: 0.9rem;
+    padding: 0.75rem 1rem;
   }
   @keyframes toastSlideIn {
     from { opacity: 0; transform: translateY(60px); }
     to   { opacity: 1; transform: translateY(0); }
   }
 
-  .table-wrapper table thead { display: none; }
-  .table-wrapper table,
-  .table-wrapper table tbody,
-  .table-wrapper table tr,
-  .table-wrapper table td { display: block; }
-  .table-wrapper table tr {
-    background: var(--lms-surface);
-    border: 1px solid var(--lms-border);
-    border-radius: var(--lms-radius);
-    margin-bottom: 0.75rem;
-    padding: 0.75rem;
-    box-shadow: var(--lms-shadow);
-  }
-  .table-wrapper table tr:hover {
+  /* ── Dark mode card refinements ── */
+  [data-theme="dark"] .table-wrapper table tr:hover {
     background: var(--lms-surface);
     border-color: var(--lms-accent);
-    box-shadow: 0 2px 16px rgba(26,115,232,0.1);
+    box-shadow: 0 4px 20px rgba(138,180,248,0.15);
   }
-  .table-wrapper table td {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.4rem 0;
-    border-bottom: 1px solid var(--lms-border);
-    text-align: right;
+  [data-theme="dark"] .actions button:first-of-type {
+    background: var(--lms-accent);
+    color: #fff;
   }
-  .table-wrapper table td:last-child { border-bottom: none; }
-  .table-wrapper table td::before {
-    content: attr(data-label);
-    font-weight: 600;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: var(--lms-muted);
-    text-align: left;
-    flex-shrink: 0;
-    margin-right: 0.5rem;
-  }
-  .actions {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.35rem;
-  }
-  .actions button {
-    width: 100%;
-    justify-content: center;
-    font-size: 0.78rem;
-    min-height: 40px;
-  }
-  .actions button .btn-label { display: inline; }
 }
 
 /* ============================================================
    RWD — Small mobile (< 400px)
    ============================================================ */
 @media (max-width: 399px) {
-  .app-container { padding: 0.5rem 0.5rem 2rem; }
+  .app-container { padding: 0.5rem 0.5rem 5rem; }
   .app-header { gap: 0.5rem; margin-bottom: 0.75rem; }
   .app-header-left h1 { font-size: 1rem; }
   .app-header-left h1 .header-icon { font-size: 1.2rem; }
-  .user-badge { font-size: 0.7rem; padding: 0.25rem 0.55rem; }
+  .user-badge { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
   .app-header-right button,
-  .app-header-right a[role="button"] { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
+  .app-header-right a[role="button"] { font-size: 0.8rem; padding: 0.35rem 0.65rem; min-height: 40px; }
 
-  .stats-bar { flex-direction: column; }
-  .stat-card { min-width: auto; padding: 0.4rem 0.75rem; }
-  .stat-card .stat-icon { font-size: 1.1rem; }
-  .stat-card .stat-value { font-size: 1.05rem; }
+  .stats-bar { gap: 0.4rem; }
+  .stat-card { min-width: 100px; padding: 0.5rem 0.75rem; }
+  .stat-card .stat-icon { font-size: 1.3rem; }
+  .stat-card .stat-value { font-size: 1.2rem; }
 
-  .toolbar .search-wrap input { font-size: 0.85rem; }
+  .toolbar .search-wrap input { font-size: 0.9375rem; }
 
-  table caption { font-size: 0.7rem; padding: 0.25rem 0.4rem; }
-  .table-wrapper table tr { padding: 0.6rem; margin-bottom: 0.6rem; }
-  .table-wrapper table td { padding: 0.3rem 0; font-size: 0.82rem; }
-  .table-wrapper table td::before { font-size: 0.7rem; }
-  .actions button { font-size: 0.75rem; min-height: 44px; }
+  .table-wrapper table tr { padding: 0.85rem; margin-bottom: 0.85rem; }
+  .table-wrapper table td { padding: 0.45rem 0; font-size: 0.9375rem; }
+  .table-wrapper table td::before { font-size: 0.75rem; }
+  .table-wrapper table td:first-child { font-size: 1.0625rem; }
+  .actions button:first-of-type { font-size: 0.9375rem; min-height: 48px; }
+  .actions button:not(:first-of-type) { min-height: 48px; min-width: 48px; font-size: 0.8125rem; }
+  .status-dot { width: 12px; height: 12px; }
 
   .lms-modal { padding: 1.25rem; border-radius: 12px; }
   .lms-modal h3 { font-size: 1rem; }
-  .lms-modal p { font-size: 0.825rem; margin-bottom: 1rem; }
+  .lms-modal p { font-size: 0.875rem; margin-bottom: 1rem; }
   .lms-modal-actions { flex-direction: column; }
   .lms-modal-actions button { width: 100%; }
 }

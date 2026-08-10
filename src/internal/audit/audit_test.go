@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -758,6 +760,99 @@ func TestFileSizeWarning(t *testing.T) {
 	}
 	if res.Total != 15 {
 		t.Errorf("expected 15 entries after cleanup (all recent), got %d", res.Total)
+	}
+}
+
+// ============================================================
+//  TestExportCSVTenThousandCap — MAN-01
+// ============================================================
+
+func TestExportCSVTenThousandCap(t *testing.T) {
+	path := tempFilePath(t)
+	// Use buffer large enough for 11k writes
+	m := New(Config{FilePath: path, WriteBufSize: 12000})
+
+	now := time.Now().UTC()
+	for i := 0; i < 11000; i++ {
+		ts := now.Add(-time.Duration(i) * time.Second).Format(time.RFC3339)
+		m.Write(Entry{Timestamp: ts, Username: "admin", SourceIP: "10.0.0.1", Action: ActionLogin, Target: "-", Result: ResultSuccess})
+	}
+	m.Shutdown()
+
+	// Export — should be capped at 10000
+	var buf bytes.Buffer
+	count, err := m.ExportCSV(&buf, QueryParams{})
+	if err != nil {
+		t.Fatalf("export error: %v", err)
+	}
+
+	if count > 10000 {
+		t.Errorf("expected max 10000 rows exported, got %d", count)
+	}
+	if count < 10000 {
+		t.Errorf("expected exactly 10000 rows (cap), got %d", count)
+	}
+
+	// Verify CSV row count
+	r := csv.NewReader(&buf)
+	records, err := r.ReadAll()
+	if err != nil {
+		t.Fatalf("csv parse error: %v", err)
+	}
+	// header + capped data rows
+	if len(records) != 10001 {
+		t.Errorf("expected 10001 CSV lines (1 header + 10000 data), got %d", len(records))
+	}
+}
+
+// ============================================================
+//  TestConcurrentWrites — MAN-06
+// ============================================================
+
+func TestConcurrentWrites(t *testing.T) {
+	path := tempFilePath(t)
+	m := New(Config{FilePath: path, WriteBufSize: 2000})
+
+	var wg sync.WaitGroup
+	writers := 10
+	entriesPerWriter := 100
+
+	now := time.Now().UTC()
+	for w := 0; w < writers; w++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			for i := 0; i < entriesPerWriter; i++ {
+				ts := now.Add(-time.Duration(workerID*entriesPerWriter+i) * time.Second).Format(time.RFC3339)
+				m.Write(Entry{
+					Timestamp: ts,
+					Username:  fmt.Sprintf("user-%d", workerID),
+					SourceIP:  fmt.Sprintf("10.0.%d.%d", workerID, i%255+1),
+					Action:    ActionStart,
+					Target:    fmt.Sprintf("svc-%d.service", workerID),
+					Result:    ResultSuccess,
+				})
+			}
+		}(w)
+	}
+	wg.Wait()
+	m.Shutdown()
+
+	// All entries should be recorded (none lost due to race)
+	res, err := m.Query(QueryParams{Page: 1, Limit: 2000})
+	if err != nil {
+		t.Fatalf("query error: %v", err)
+	}
+	if res.Total != writers*entriesPerWriter {
+		t.Errorf("expected %d entries, got %d", writers*entriesPerWriter, res.Total)
+	}
+
+	// Verify entries are sorted time-descending
+	for i := 0; i < len(res.Entries)-1; i++ {
+		if res.Entries[i].Timestamp < res.Entries[i+1].Timestamp {
+			t.Errorf("concurrent entries not sorted time-descending at index %d", i)
+			break
+		}
 	}
 }
 

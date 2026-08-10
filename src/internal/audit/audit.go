@@ -365,13 +365,13 @@ func (m *Module) ExportCSV(w io.Writer, params QueryParams) (int, error) {
 		return 0, err
 	}
 
-	for _, e := range entries {
+	for i, e := range entries {
+		if i >= maxExportRows {
+			break
+		}
 		row := []string{e.Timestamp, e.Username, e.SourceIP, string(e.Action), e.Target, string(e.Result), e.Detail}
 		if err := cw.Write(row); err != nil {
 			return 0, err
-		}
-		if len(entries) >= maxExportRows {
-			break
 		}
 	}
 
@@ -380,7 +380,11 @@ func (m *Module) ExportCSV(w io.Writer, params QueryParams) (int, error) {
 		return 0, err
 	}
 
-	return len(entries), nil
+	written := len(entries)
+	if written > maxExportRows {
+		written = maxExportRows
+	}
+	return written, nil
 }
 
 // ============================================================

@@ -40,7 +40,11 @@ export function useServiceFilter(services: Ref<Service[]>, router?: Router) {
     let result = services.value
 
     // 1. Status filter
-    if (statusFilter.value !== 'all') {
+    // Note: systemd ActiveState is 'active' (not 'running').
+    // We map the user-facing 'running' filter to s.sub === 'running' for correctness.
+    if (statusFilter.value === 'running') {
+      result = result.filter(s => s.sub === 'running')
+    } else if (statusFilter.value !== 'all') {
       result = result.filter(s => s.active === statusFilter.value)
     }
 

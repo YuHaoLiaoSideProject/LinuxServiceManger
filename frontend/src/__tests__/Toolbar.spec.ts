@@ -12,6 +12,10 @@ vi.mock('../composables/useI18n', () => ({
         'search.aria': '搜尋服務',
         'search.clear.aria': '清除搜尋',
         'search.clear.title': '清除',
+        'filter.all': '全部',
+        'filter.running': '執行中',
+        'filter.failed': '失敗',
+        'filter.inactive': '未啟用',
       }
       return map[key] || key
     },
@@ -86,10 +90,10 @@ describe('Toolbar — 工具列', () => {
 
     const statusBtns = wrapper.findAll('.btn-status')
     expect(statusBtns.length).toBe(4)
-    expect(statusBtns[0].text()).toContain('All')
-    expect(statusBtns[1].text()).toContain('Running')
-    expect(statusBtns[2].text()).toContain('Failed')
-    expect(statusBtns[3].text()).toContain('Inactive')
+    expect(statusBtns[0].text()).toContain('全部')
+    expect(statusBtns[1].text()).toContain('執行中')
+    expect(statusBtns[2].text()).toContain('失敗')
+    expect(statusBtns[3].text()).toContain('未啟用')
   })
 
   it('當前 active 狀態按鈕有 .active class', () => {

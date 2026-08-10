@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	gw "github.com/gorilla/websocket"
@@ -149,10 +150,11 @@ func (h *Handler) HandleStatusWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &websocket.Client{
-		Hub:    h.Hub,
-		Conn:   conn,
-		Send:   make(chan []byte, 256),
-		UserID: userID,
+		Hub:         h.Hub,
+		Conn:        conn,
+		Send:        make(chan []byte, 256),
+		UserID:      userID,
+		ConnectedAt: time.Now(),
 	}
 	h.Hub.Register <- client
 	go client.WritePump()

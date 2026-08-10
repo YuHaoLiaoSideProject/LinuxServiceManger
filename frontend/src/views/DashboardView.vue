@@ -73,6 +73,13 @@ on('snapshot', (msg: any) => {
   services.value = [...serviceStore.services]
 })
 
+on('session_expired', () => {
+  disconnect()
+  showToast('Session 已過期，請重新登入', 'error')
+  auth.logout()
+  router.replace('/login')
+})
+
 // Log drawer state
 const logDrawerVisible = ref(false)
 const logDrawerServiceName = ref('')

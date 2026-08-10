@@ -30,11 +30,15 @@ type ServiceSnapshot struct {
 
 // Client represents a single WebSocket connection.
 type Client struct {
-	Hub    *Hub
-	Conn   *gorilla.Conn
-	Send   chan []byte
-	UserID string
+	Hub         *Hub
+	Conn        *gorilla.Conn
+	Send        chan []byte
+	UserID      string
+	ConnectedAt time.Time
 }
+
+// DefaultSessionTTL is the default session expiry duration for WebSocket connections.
+const DefaultSessionTTL = 30 * time.Minute
 
 // Hub maintains the set of active clients and broadcasts messages to them.
 type Hub struct {
@@ -44,16 +48,26 @@ type Hub struct {
 	Register   chan *Client
 	Unregister chan *Client
 	OnSnapshot func() []ServiceSnapshot
+	SessionTTL time.Duration // 0 means use DefaultSessionTTL
 }
 
-// NewHub creates a new Hub.
+// NewHub creates a new Hub with the default session TTL.
 func NewHub() *Hub {
 	return &Hub{
 		Clients:    make(map[*Client]bool),
 		Broadcast:  make(chan []byte, 256),
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
+		SessionTTL: DefaultSessionTTL,
 	}
+}
+
+// ttl returns the effective session TTL, falling back to DefaultSessionTTL if unset.
+func (h *Hub) ttl() time.Duration {
+	if h.SessionTTL <= 0 {
+		return DefaultSessionTTL
+	}
+	return h.SessionTTL
 }
 
 // Run starts the hub event loop. It should be run in a goroutine.
@@ -91,7 +105,30 @@ func (h *Hub) Run() {
 			}
 			h.mu.RUnlock()
 		case <-heartbeat.C:
-			hb, _ := json.Marshal(Message{Type: "heartbeat", Timestamp: time.Now().UTC().Format(time.RFC3339)})
+			now := time.Now()
+
+			// Expire clients connected longer than session TTL
+			ttl := h.ttl()
+			var expired []*Client
+			h.mu.RLock()
+			for client := range h.Clients {
+				if now.Sub(client.ConnectedAt) > ttl {
+					expired = append(expired, client)
+				}
+			}
+			h.mu.RUnlock()
+
+			for _, client := range expired {
+				exp, _ := json.Marshal(Message{Type: "session_expired", Timestamp: now.UTC().Format(time.RFC3339)})
+				select {
+				case client.Send <- exp:
+				default:
+				}
+				h.Unregister <- client
+			}
+
+			// Send heartbeat to remaining clients
+			hb, _ := json.Marshal(Message{Type: "heartbeat", Timestamp: now.UTC().Format(time.RFC3339)})
 			h.mu.RLock()
 			for client := range h.Clients {
 				select {

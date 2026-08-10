@@ -33,7 +33,12 @@ export interface SnapshotMessage {
   }>
 }
 
-export type WsMessage = StatusChangeMessage | ServiceAddedMessage | ServiceRemovedMessage | SnapshotMessage
+export interface SessionExpiredMessage {
+  type: 'session_expired'
+  timestamp: string
+}
+
+export type WsMessage = StatusChangeMessage | ServiceAddedMessage | ServiceRemovedMessage | SnapshotMessage | SessionExpiredMessage
 
 export function useWebSocket() {
   const status = ref<ConnectionStatus>('connecting')

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"linux-service-manager/internal/auth"
 	"linux-service-manager/internal/handler"
@@ -36,6 +37,14 @@ func main() {
 
 	// Initialize WebSocket Hub for real-time status push
 	hub := websocket.NewHub()
+	if ttlStr := os.Getenv("SESSION_TTL"); ttlStr != "" {
+		if ttl, err := time.ParseDuration(ttlStr); err == nil && ttl > 0 {
+			hub.SessionTTL = ttl
+			log.Printf("WebSocket session TTL set to %v (from SESSION_TTL env)", ttl)
+		} else {
+			log.Printf("WARNING: invalid SESSION_TTL=%q, using default %v", ttlStr, hub.SessionTTL)
+		}
+	}
 	hub.OnSnapshot = func() []websocket.ServiceSnapshot {
 		services, err := (&systemd.DefaultManager{}).ListServices()
 		if err != nil {

@@ -24,11 +24,11 @@ const emit = defineEmits<{
   'clear-search': []
 }>()
 
-const statusOptions: { value: StatusFilter; label: string; icon: string }[] = [
-  { value: 'all', label: 'All', icon: '' },
-  { value: 'running', label: 'Running', icon: '🟢' },
-  { value: 'failed', label: 'Failed', icon: '🔴' },
-  { value: 'inactive', label: 'Inactive', icon: '⚪' },
+const statusOptions: { value: StatusFilter; i18nKey: string; icon: string }[] = [
+  { value: 'all', i18nKey: 'filter.all', icon: '' },
+  { value: 'running', i18nKey: 'filter.running', icon: '🟢' },
+  { value: 'failed', i18nKey: 'filter.failed', icon: '🔴' },
+  { value: 'inactive', i18nKey: 'filter.inactive', icon: '⚪' },
 ]
 
 const placeholderText = computed(() => {
@@ -64,7 +64,7 @@ function onStatusClick(status: StatusFilter) {
         @click="onStatusClick(opt.value)"
       >
         <span v-if="opt.icon" class="status-btn-icon">{{ opt.icon }}</span>
-        {{ opt.label }}
+        {{ t(opt.i18nKey) }}
       </button>
     </div>
     <div class="search-wrap">

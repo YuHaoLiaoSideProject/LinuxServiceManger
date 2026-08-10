@@ -21,11 +21,13 @@ function makeService(overrides: Partial<Service> = {}): Service {
 }
 
 const fixtureServices: Service[] = [
-  makeService({ name: 'nginx.service', active: 'running' }),
-  makeService({ name: 'ssh.service', active: 'running' }),
-  makeService({ name: 'docker.service', active: 'failed' }),
-  makeService({ name: 'cron.service', active: 'inactive' }),
-  makeService({ name: 'nginx-exporter.service', active: 'running' }),
+  // Systemd uses ActiveState='active' (not 'running') for running services.
+  // SubState='running' is what actually indicates a running service.
+  makeService({ name: 'nginx.service', active: 'active', sub: 'running' }),
+  makeService({ name: 'ssh.service', active: 'active', sub: 'running' }),
+  makeService({ name: 'docker.service', active: 'failed', sub: 'failed' }),
+  makeService({ name: 'cron.service', active: 'inactive', sub: 'dead' }),
+  makeService({ name: 'nginx-exporter.service', active: 'active', sub: 'running' }),
 ]
 
 // Helper to create a minimal router with a single route so that
@@ -51,9 +53,6 @@ describe('useServiceFilter', () => {
     useServiceFilter = mod.useServiceFilter
   })
 
-  // ====================================================================
-  // 1. statusFilter
-  // ====================================================================
   describe('statusFilter', () => {
     it('default value is "all"', () => {
       const services = ref<Service[]>([...fixtureServices])
@@ -101,6 +100,25 @@ describe('useServiceFilter', () => {
 
       setStatusFilter('all')
       expect(statusFilter.value).toBe('all')
+    })
+
+    it('running filter matches sub===running, not active===active', async () => {
+      // Systemd uses ActiveState='active' (not 'running') for running services.
+      // A service with active='active' but sub='exited' should NOT match.
+      const svcList: Service[] = [
+        makeService({ name: 'running.service', active: 'active', sub: 'running' }),
+        makeService({ name: 'exited.service', active: 'active', sub: 'exited' }),
+        makeService({ name: 'failed.service', active: 'failed', sub: 'failed' }),
+        makeService({ name: 'dead.service', active: 'inactive', sub: 'dead' }),
+      ]
+      const services = ref<Service[]>([...svcList])
+      const { filteredServices, setStatusFilter } = useServiceFilter(services)
+
+      setStatusFilter('running')
+      await nextTick()
+
+      expect(filteredServices.value).toHaveLength(1)
+      expect(filteredServices.value[0].name).toBe('running.service')
     })
   })
 

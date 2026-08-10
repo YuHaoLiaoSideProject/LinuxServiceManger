@@ -8,6 +8,8 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 })
 
+export default api
+
 // Intercept 401 responses to reset auth state (session expired)
 api.interceptors.response.use(
   (response) => response,

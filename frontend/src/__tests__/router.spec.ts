@@ -13,6 +13,7 @@ vi.mock('../api/client', () => ({
 // Simple stub components for routing
 const LoginStub = { template: '<div class="login-page">Login Page</div>' }
 const DashboardStub = { template: '<div class="dashboard-page">Dashboard</div>' }
+const AuditStub = { template: '<div class="audit-page">Audit Log</div>' }
 
 function createTestRouter() {
   const router = createRouter({
@@ -20,6 +21,7 @@ function createTestRouter() {
     routes: [
       { path: '/login', name: 'login', component: LoginStub, meta: { guest: true } },
       { path: '/', name: 'dashboard', component: DashboardStub, meta: { auth: true } },
+      { path: '/audit', name: 'audit', component: AuditStub, meta: { auth: true } },
     ],
   })
 
@@ -139,5 +141,34 @@ describe('Router 路由守衛', () => {
     await router.isReady()
 
     expect(router.currentRoute.value.path).toBe('/')
+  })
+
+  // -- Audit route guard (009) ----------------------------------------
+
+  it('F-RT-01: 未登入造訪 /audit → 跳轉 /login', async () => {
+    const router = createTestRouter()
+    const auth = useAuthStore()
+
+    auth.loading = false
+    auth.authenticated = false
+
+    await router.push('/audit')
+    await router.isReady()
+
+    expect(router.currentRoute.value.path).toBe('/login')
+  })
+
+  it('F-RT-02: 已登入造訪 /audit → 正常顯示', async () => {
+    const router = createTestRouter()
+    const auth = useAuthStore()
+
+    auth.loading = false
+    auth.authenticated = true
+    auth.username = 'admin'
+
+    await router.push('/audit')
+    await router.isReady()
+
+    expect(router.currentRoute.value.path).toBe('/audit')
   })
 })

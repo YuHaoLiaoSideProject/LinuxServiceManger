@@ -46,6 +46,7 @@ const connectionClass = computed(() => ({
         <span v-if="theme === 'light'">☀️</span>
         <span v-else>🌙</span>
       </button>
+      <router-link to="/audit" class="nav-link">Audit Log</router-link>
       <button class="btn-refresh secondary" @click="emit('refresh')" :aria-label="t('header.refresh.aria')">
         {{ t('header.refresh') }}
       </button>

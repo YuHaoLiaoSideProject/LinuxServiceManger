@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"linux-service-manager/internal/audit"
 	"linux-service-manager/internal/auth"
 	"linux-service-manager/internal/handler"
 	"linux-service-manager/internal/middleware"
@@ -33,7 +34,14 @@ func main() {
 		log.Fatalf("failed to open templates: %v", err)
 	}
 
-	h := handler.New(templates, &systemd.DefaultManager{})
+	auditMod := audit.New(audit.Config{
+		FilePath:      "/var/lib/linux-service-manager/audit.jsonl",
+		MaxFileSizeMB: 100,
+		RetentionDays: 90,
+	})
+	defer auditMod.Shutdown()
+
+	h := handler.New(templates, &systemd.DefaultManager{}, auditMod)
 
 	// Initialize WebSocket Hub for real-time status push
 	hub := websocket.NewHub()
@@ -89,6 +97,8 @@ func main() {
 		r.Post("/api/v1/services/{name}/disable", h.HandleDisableJSON)
 		r.Get("/api/v1/services/{name}/logs/ws", h.HandleServiceLogsWS)
 		r.Get("/api/v1/ws", h.HandleStatusWS)
+		r.Get("/api/v1/audit", h.HandleAuditQuery)
+		r.Get("/api/v1/audit/export", h.HandleAuditExport)
 	})
 
 	// HTML routes (legacy htmx) — protected

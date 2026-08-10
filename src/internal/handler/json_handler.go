@@ -4,15 +4,18 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
 
+	"linux-service-manager/internal/audit"
 	"linux-service-manager/internal/auth"
 	"linux-service-manager/internal/systemd"
 )
@@ -75,6 +78,15 @@ func (h *Handler) HandleLoginJSON(w http.ResponseWriter, r *http.Request) {
 	session.Values["username"] = username
 	auth.SaveSession(w, r, session)
 
+	// Audit log
+	if h.Audit != nil {
+		entry, entryErr := audit.NewEntry(username, audit.ExtractClientIP(r),
+			audit.ActionLogin, "-", audit.ResultSuccess, "")
+		if entryErr == nil {
+			h.Audit.Write(entry)
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"username": username,
 		"message":  "login successful",
@@ -87,9 +99,19 @@ func (h *Handler) HandleLoginJSON(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HandleLogoutJSON(w http.ResponseWriter, r *http.Request) {
 	session := auth.GetSession(r)
+	username, _ := session.Values["username"].(string)
 	session.Values["authenticated"] = false
 	session.Options.MaxAge = -1
 	auth.SaveSession(w, r, session)
+
+	// Audit log
+	if h.Audit != nil {
+		entry, entryErr := audit.NewEntry(username, audit.ExtractClientIP(r),
+			audit.ActionLogout, "-", audit.ResultSuccess, "")
+		if entryErr == nil {
+			h.Audit.Write(entry)
+		}
+	}
 
 	writeJSON(w, http.StatusOK, messageJSON{Message: "logged out"})
 }
@@ -143,7 +165,25 @@ func (h *Handler) HandleServicesJSON(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HandleStartJSON(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	if err := h.systemd.StartService(name); err != nil {
+	err := h.systemd.StartService(name)
+
+	// Audit log
+	if h.Audit != nil {
+		username, _ := auth.GetSession(r).Values["username"].(string)
+		result := audit.ResultSuccess
+		detail := ""
+		if err != nil {
+			result = audit.ResultFailure
+			detail = err.Error()
+		}
+		entry, entryErr := audit.NewEntry(username, audit.ExtractClientIP(r),
+			audit.ActionStart, name, result, detail)
+		if entryErr == nil {
+			h.Audit.Write(entry)
+		}
+	}
+
+	if err != nil {
 		log.Printf("ERROR starting %s: %v", name, err)
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "failed to start " + name})
 		return
@@ -158,7 +198,25 @@ func (h *Handler) HandleStartJSON(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HandleStopJSON(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	if err := h.systemd.StopService(name); err != nil {
+	err := h.systemd.StopService(name)
+
+	// Audit log
+	if h.Audit != nil {
+		username, _ := auth.GetSession(r).Values["username"].(string)
+		result := audit.ResultSuccess
+		detail := ""
+		if err != nil {
+			result = audit.ResultFailure
+			detail = err.Error()
+		}
+		entry, entryErr := audit.NewEntry(username, audit.ExtractClientIP(r),
+			audit.ActionStop, name, result, detail)
+		if entryErr == nil {
+			h.Audit.Write(entry)
+		}
+	}
+
+	if err != nil {
 		log.Printf("ERROR stopping %s: %v", name, err)
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "failed to stop " + name})
 		return
@@ -173,7 +231,25 @@ func (h *Handler) HandleStopJSON(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HandleRestartJSON(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	if err := h.systemd.RestartService(name); err != nil {
+	err := h.systemd.RestartService(name)
+
+	// Audit log
+	if h.Audit != nil {
+		username, _ := auth.GetSession(r).Values["username"].(string)
+		result := audit.ResultSuccess
+		detail := ""
+		if err != nil {
+			result = audit.ResultFailure
+			detail = err.Error()
+		}
+		entry, entryErr := audit.NewEntry(username, audit.ExtractClientIP(r),
+			audit.ActionRestart, name, result, detail)
+		if entryErr == nil {
+			h.Audit.Write(entry)
+		}
+	}
+
+	if err != nil {
 		log.Printf("ERROR restarting %s: %v", name, err)
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "failed to restart " + name})
 		return
@@ -188,7 +264,25 @@ func (h *Handler) HandleRestartJSON(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HandleEnableJSON(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	if err := h.systemd.EnableService(name); err != nil {
+	err := h.systemd.EnableService(name)
+
+	// Audit log
+	if h.Audit != nil {
+		username, _ := auth.GetSession(r).Values["username"].(string)
+		result := audit.ResultSuccess
+		detail := ""
+		if err != nil {
+			result = audit.ResultFailure
+			detail = err.Error()
+		}
+		entry, entryErr := audit.NewEntry(username, audit.ExtractClientIP(r),
+			audit.ActionEnable, name, result, detail)
+		if entryErr == nil {
+			h.Audit.Write(entry)
+		}
+	}
+
+	if err != nil {
 		log.Printf("ERROR enabling %s: %v", name, err)
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "failed to enable " + name})
 		return
@@ -203,13 +297,145 @@ func (h *Handler) HandleEnableJSON(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HandleDisableJSON(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	if err := h.systemd.DisableService(name); err != nil {
+	err := h.systemd.DisableService(name)
+
+	// Audit log
+	if h.Audit != nil {
+		username, _ := auth.GetSession(r).Values["username"].(string)
+		result := audit.ResultSuccess
+		detail := ""
+		if err != nil {
+			result = audit.ResultFailure
+			detail = err.Error()
+		}
+		entry, entryErr := audit.NewEntry(username, audit.ExtractClientIP(r),
+			audit.ActionDisable, name, result, detail)
+		if entryErr == nil {
+			h.Audit.Write(entry)
+		}
+	}
+
+	if err != nil {
 		log.Printf("ERROR disabling %s: %v", name, err)
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "failed to disable " + name})
 		return
 	}
 
 	writeJSON(w, http.StatusOK, messageJSON{Message: name + " disabled"})
+}
+
+// ============================================================
+//  GET /api/v1/audit
+// ============================================================
+
+// HandleAuditQuery returns paginated audit log entries via JSON.
+func (h *Handler) HandleAuditQuery(w http.ResponseWriter, r *http.Request) {
+	if h.Audit == nil {
+		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "audit module not initialized"})
+		return
+	}
+
+	q := r.URL.Query()
+
+	page, _ := strconv.Atoi(q.Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	search := q.Get("search")
+	from := q.Get("from")
+	to := q.Get("to")
+
+	// Validate date format (YYYY-MM-DD)
+	for _, v := range []struct {
+		val, name string
+	}{
+		{from, "from"},
+		{to, "to"},
+	} {
+		if v.val != "" {
+			if _, err := time.Parse("2006-01-02", v.val); err != nil {
+				writeJSON(w, http.StatusBadRequest, messageJSON{
+					Error: fmt.Sprintf("invalid %s date format, expected YYYY-MM-DD", v.name),
+				})
+				return
+			}
+		}
+	}
+
+	params := audit.QueryParams{
+		Page:   page,
+		Limit:  limit,
+		Search: search,
+		From:   from,
+		To:     to,
+	}
+
+	result, err := h.Audit.Query(params)
+	if err != nil {
+		log.Printf("ERROR audit query: %v", err)
+		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "failed to query audit log"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+// ============================================================
+//  GET /api/v1/audit/export
+// ============================================================
+
+// HandleAuditExport exports audit log entries as CSV.
+func (h *Handler) HandleAuditExport(w http.ResponseWriter, r *http.Request) {
+	if h.Audit == nil {
+		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "audit module not initialized"})
+		return
+	}
+
+	q := r.URL.Query()
+	format := q.Get("format")
+	if format != "csv" {
+		writeJSON(w, http.StatusBadRequest, messageJSON{Error: "format parameter must be 'csv'"})
+		return
+	}
+
+	search := q.Get("search")
+	from := q.Get("from")
+	to := q.Get("to")
+
+	// Validate date format (YYYY-MM-DD)
+	for _, v := range []struct {
+		val, name string
+	}{
+		{from, "from"},
+		{to, "to"},
+	} {
+		if v.val != "" {
+			if _, err := time.Parse("2006-01-02", v.val); err != nil {
+				writeJSON(w, http.StatusBadRequest, messageJSON{
+					Error: fmt.Sprintf("invalid %s date format, expected YYYY-MM-DD", v.name),
+				})
+				return
+			}
+		}
+	}
+
+	params := audit.QueryParams{
+		Search: search,
+		From:   from,
+		To:     to,
+	}
+
+	filename := fmt.Sprintf("audit-log-%s.csv", time.Now().UTC().Format("2006-01-02"))
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+
+	count, err := h.Audit.ExportCSV(w, params)
+	if err != nil {
+		log.Printf("ERROR audit export: %v", err)
+		return
+	}
+	log.Printf("AUDIT: exported %d entries to CSV", count)
 }
 
 // ============================================================

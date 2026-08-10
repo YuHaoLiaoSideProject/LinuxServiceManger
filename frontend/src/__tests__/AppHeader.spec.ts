@@ -107,4 +107,25 @@ describe('AppHeader — 頂部導航列', () => {
     // light theme shows sun icon
     expect(themeBtn.text()).toBe('☀️')
   })
+
+  // -- Audit Log link (009) -----------------------------------------
+
+  it('F-HD-01: Header 顯示「Audit Log」導覽連結', () => {
+    const wrapper = mount(AppHeader, {
+      props: { username: 'admin' },
+    })
+
+    const auditLink = wrapper.find('router-link[to="/audit"]')
+    expect(auditLink.exists()).toBe(true)
+    expect(auditLink.text()).toBe('Audit Log')
+  })
+
+  it('F-HD-02: 點擊 Audit Log → 導航至 /audit', () => {
+    const wrapper = mount(AppHeader, {
+      props: { username: 'admin' },
+    })
+
+    const auditLink = wrapper.find('router-link[to="/audit"]')
+    expect(auditLink.attributes('to')).toBe('/audit')
+  })
 })

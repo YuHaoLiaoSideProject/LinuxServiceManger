@@ -271,7 +271,7 @@ func (h *Handler) HandleServiceLogsWS(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	cmd := wsExecCommandContext(ctx,
-		"journalctl", "-u", name,
+		"journalctl", "_SYSTEMD_UNIT="+name,
 		"-n", strconv.Itoa(lines),
 		"-f",
 		"--no-pager",

@@ -68,17 +68,19 @@ fi
 log "下載 ${APP_NAME} ..."
 log "   ${DOWNLOAD_URL}"
 
-sudo mkdir -p "${INSTALL_DIR}"
+TMP_FILE="/tmp/${APP_NAME}-$$"
 
-# Download with fallback
+# Download to /tmp first (no sudo), then move
 if command -v curl &>/dev/null; then
-  sudo curl -fsSL -o "${INSTALL_DIR}/${APP_NAME}" "${DOWNLOAD_URL}" || err "下載失敗，請確認版本是否存在"
+  curl -fsSL -o "${TMP_FILE}" "${DOWNLOAD_URL}" || err "下載失敗，請確認版本是否存在"
 elif command -v wget &>/dev/null; then
-  sudo wget -q -O "${INSTALL_DIR}/${APP_NAME}" "${DOWNLOAD_URL}" || err "下載失敗，請確認版本是否存在"
+  wget -q -O "${TMP_FILE}" "${DOWNLOAD_URL}" || err "下載失敗，請確認版本是否存在"
 else
   err "需要 curl 或 wget，請先安裝"
 fi
 
+sudo mkdir -p "${INSTALL_DIR}"
+sudo mv "${TMP_FILE}" "${INSTALL_DIR}/${APP_NAME}"
 sudo chmod +x "${INSTALL_DIR}/${APP_NAME}"
 
 log "安裝完成 → ${INSTALL_DIR}/${APP_NAME}"

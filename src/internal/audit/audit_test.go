@@ -730,7 +730,39 @@ func TestCleanupAllWithinRetention(t *testing.T) {
 }
 
 // ============================================================
-//  TestExportCSVENOSPC — SYS-03
+//  TestFileSizeWarning — SYS-22
+// ============================================================
+
+func TestFileSizeWarning(t *testing.T) {
+	path := tempFilePath(t)
+	m := New(Config{FilePath: path, WriteBufSize: 20})
+	defer m.Shutdown()
+
+	// Force a very small file-size threshold to trigger cleanup check.
+	// After New(), override the config so maybeCleanup fires on any
+	// non-empty file (file.Size() > 0).
+	m.cfg.MaxFileSizeMB = 0
+
+	now := time.Now().UTC()
+	for i := 0; i < 15; i++ {
+		ts := now.Add(-time.Duration(i) * time.Hour).Format(time.RFC3339)
+		m.Write(Entry{Timestamp: ts, Username: "admin", SourceIP: "10.0.0.1", Action: ActionLogin, Target: "-", Result: ResultSuccess})
+	}
+	// maybeCleanup is called every 10 writes → at least 1 invocation
+	m.Shutdown()
+
+	// All entries are recent — none should be removed after cleanup
+	res, err := m.Query(QueryParams{Page: 1, Limit: 20})
+	if err != nil {
+		t.Fatalf("query error: %v", err)
+	}
+	if res.Total != 15 {
+		t.Errorf("expected 15 entries after cleanup (all recent), got %d", res.Total)
+	}
+}
+
+// ============================================================
+//  TestWriteAuditDiskFull — SYS-03
 // ============================================================
 
 func TestWriteAuditDiskFull(t *testing.T) {

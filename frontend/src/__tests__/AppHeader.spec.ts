@@ -128,4 +128,13 @@ describe('AppHeader — 頂部導航列', () => {
     const auditLink = wrapper.find('router-link[to="/audit"]')
     expect(auditLink.attributes('to')).toBe('/audit')
   })
+
+  it('F-HD-03: 未登入（無 username）→ 不顯示 Audit Log 連結', () => {
+    const wrapper = mount(AppHeader, {
+      props: {},
+    })
+
+    const auditLink = wrapper.find('router-link[to="/audit"]')
+    expect(auditLink.exists()).toBe(false)
+  })
 })

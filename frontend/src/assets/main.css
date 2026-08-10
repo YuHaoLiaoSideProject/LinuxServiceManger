@@ -470,12 +470,12 @@ thead th {
 }
 
 /* ── Fixed column widths ── */
-th:nth-child(1) { width: 20%; }  /* Name */
+th:nth-child(1) { width: 24%; }  /* Name */
 th:nth-child(2) { width: 10%; }  /* Load */
 th:nth-child(3) { width: 12%; }  /* Active */
 th:nth-child(4) { width: 10%; }  /* Sub */
 th:nth-child(5) { width: 16%; }  /* AutoStart */
-th:nth-child(6) { width: 32%; }  /* Actions */
+th:nth-child(6) { width: 28%; }  /* Actions */
 
 /* ── Sortable headers ── */
 th.sortable {
@@ -517,23 +517,41 @@ td[data-label="Name"] {
 }
 
 /* ── Action buttons ── */
+.actions-cell {
+  vertical-align: middle;
+}
 .actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.3rem;
-  white-space: nowrap;
+  align-items: center;
+}
+.actions > * {
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 .actions button {
   font-size: 0.78rem;
   padding: 0.3rem 0.6rem;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.25rem;
+  width: 100%;
   transition: transform var(--lms-transition), opacity var(--lms-transition), box-shadow var(--lms-transition);
   border-radius: var(--lms-radius-sm);
+  white-space: nowrap;
 }
 .actions button:active {
   transform: scale(0.96);
+}
+/* Grid slot wrappers */
+.action-slot {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 32px;
 }
 
 /* ── Locked badge ── */
@@ -813,9 +831,17 @@ td[data-label="Name"] {
 @media (max-width: 1024px) {
   .app-container { padding: 1rem 1rem 2rem; }
   .app-header-left h1 { font-size: 1.15rem; }
-  .actions button .btn-label { display: none; }
+
+  /* Tablet column widths: more room for name, tighter actions */
+  th:nth-child(1) { width: 30%; }  /* Name */
+  th:nth-child(6) { width: 22%; }  /* Actions */
+
+  /* Grid columns equal width, force no content-based sizing */
+  .actions { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
+
   .actions button { padding: 0.35rem 0.5rem; }
   .actions button .btn-icon { margin: 0; }
+  .actions button .btn-label { display: none; }
 }
 
 /* ============================================================
@@ -975,8 +1001,12 @@ td[data-label="Name"] {
 
   /* ── Actions: primary full-width + secondary icon buttons ── */
   .actions {
+    display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+  }
+  .actions .action-slot {
+    display: contents;
   }
   /* Primary action (Start / Stop): full-width, colored, bold */
   .actions button:first-of-type {

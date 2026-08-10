@@ -761,9 +761,155 @@ test.describe('Scenario 10: Loading 結束後無閃爍', () => {
 })
 
 
-// ── Scenario 11: Toggle 狀態與搜尋/分頁互動 ──────────────────────
+// ── Scenario 11: ON→OFF / OFF→ON 畫面狀態即時更新 ─────────────
 
-test.describe('Scenario 11: 搜尋與分頁不影響 Toggle 狀態', () => {
+test.describe('Scenario 11: Toggle 操作後畫面狀態正確更新', () => {
+  test('OFF 操作 → ON：點擊 OFF toggle 後，API 成功返回，畫面顯示 ON', async ({ page }) => {
+    // Simulate: after enable API succeeds, reloadServices returns updated unitFileState
+    let servicesVersion = 0
+    await page.route('**/api/v1/services', async (route) => {
+      servicesVersion++
+      const services = servicesVersion === 1
+        ? MOCK_SERVICES
+        : MOCK_SERVICES.map(s =>
+            s.name === 'myapp.service'
+              ? { ...s, unitFileState: 'enabled' }
+              : s,
+          )
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(services),
+      })
+    })
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const toggle = getToggle(getServiceRow(page, 'myapp.service'))
+
+    // Initial: OFF
+    await expect(toggle).toHaveClass(/toggle-off/)
+    await expect(toggle.locator('.toggle-label')).toHaveText('OFF')
+
+    // Click enable
+    await toggle.click()
+
+    // Wait for loading to finish (API success + reload)
+    await expect(toggle).not.toHaveClass(/toggle-loading/, { timeout: 5000 })
+
+    // Should now show ON
+    await expect(toggle).toHaveClass(/toggle-on/)
+    await expect(toggle.locator('.toggle-label')).toHaveText('ON')
+  })
+
+  test('ON 操作 → OFF：點擊 ON toggle → 確認對話框 → API 成功 → 畫面顯示 OFF', async ({ page }) => {
+    let servicesVersion = 0
+    await page.route('**/api/v1/services', async (route) => {
+      servicesVersion++
+      const services = servicesVersion === 1
+        ? MOCK_SERVICES
+        : MOCK_SERVICES.map(s =>
+            s.name === 'nginx.service'
+              ? { ...s, unitFileState: 'disabled' }
+              : s,
+          )
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(services),
+      })
+    })
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const toggle = getToggle(getServiceRow(page, 'nginx.service'))
+
+    // Initial: ON
+    await expect(toggle).toHaveClass(/toggle-on/)
+    await expect(toggle.locator('.toggle-label')).toHaveText('ON')
+
+    // Click → confirm modal appears
+    await toggle.click()
+    await expect(page.locator('.lms-modal-overlay')).toBeVisible()
+
+    // Confirm disable
+    await page.locator('.lms-modal-actions .btn-danger').click()
+
+    // Wait for loading to finish
+    await expect(toggle).not.toHaveClass(/toggle-loading/, { timeout: 5000 })
+
+    // Should now show OFF
+    await expect(toggle).toHaveClass(/toggle-off/)
+    await expect(toggle.locator('.toggle-label')).toHaveText('OFF')
+  })
+
+  test('取消 Disable 確認 → Toggle 維持 ON，畫面不變', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const toggle = getToggle(getServiceRow(page, 'nginx.service'))
+
+    // Initial: ON
+    await expect(toggle).toHaveClass(/toggle-on/)
+
+    // Click → confirm modal
+    await toggle.click()
+    await expect(page.locator('.lms-modal-overlay')).toBeVisible()
+
+    // Cancel
+    await page.locator('.lms-modal-actions button.secondary').click()
+    await expect(page.locator('.lms-modal-overlay')).not.toBeVisible()
+
+    // Toggle should still be ON
+    await expect(toggle).toHaveClass(/toggle-on/)
+    await expect(toggle.locator('.toggle-label')).toHaveText('ON')
+  })
+
+  test('連續操作：OFF→ON→OFF 完整循環，每次畫面正確更新', async ({ page }) => {
+    let myappEnabled = false
+    await page.route('**/api/v1/services', async (route) => {
+      const services = MOCK_SERVICES.map(s => {
+        if (s.name === 'myapp.service') {
+          return {
+            ...s,
+            unitFileState: myappEnabled ? 'enabled' : 'disabled',
+          }
+        }
+        return s
+      })
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(services),
+      })
+    })
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const toggle = getToggle(getServiceRow(page, 'myapp.service'))
+
+    // OFF → ON
+    await expect(toggle).toHaveClass(/toggle-off/)
+    await toggle.click()
+    myappEnabled = true
+    await expect(toggle).not.toHaveClass(/toggle-loading/, { timeout: 5000 })
+    await expect(toggle).toHaveClass(/toggle-on/)
+    await expect(toggle.locator('.toggle-label')).toHaveText('ON')
+
+    // ON → OFF
+    await toggle.click()
+    await page.locator('.lms-modal-actions .btn-danger').click()
+    myappEnabled = false
+    await expect(toggle).not.toHaveClass(/toggle-loading/, { timeout: 5000 })
+    await expect(toggle).toHaveClass(/toggle-off/)
+    await expect(toggle.locator('.toggle-label')).toHaveText('OFF')
+  })
+})
+
+
+// ── Scenario 12: Toggle 狀態與搜尋/分頁互動 ──────────────────────
+
+test.describe('Scenario 13: 搜尋與分頁不影響 Toggle 狀態', () => {
   test('搜尋過濾後 Toggle 仍可正常操作', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)

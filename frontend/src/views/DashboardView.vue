@@ -133,7 +133,13 @@ async function executeToggle(action: 'enable' | 'disable', name: string) {
       await disableService(name)
       showToast(t('toast.disabled', { name }), 'success')
     }
-    // WebSocket will push unitFileState change; no need to reload
+    // Update local state immediately for the toggled service
+    const newState = action === 'enable' ? 'enabled' : 'disabled'
+    const idx = services.value.findIndex(s => s.name === name)
+    if (idx !== -1) {
+      services.value[idx] = { ...services.value[idx], unitFileState: newState }
+    }
+    serviceStore.updateService(name, { unitFileState: newState })
   } catch (err: any) {
     const errMsg = err.response?.data?.error || t('toast.error', { name })
     showToast(errMsg, 'error')

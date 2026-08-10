@@ -102,23 +102,31 @@ function doToggle() {
         <span class="toggle-label">{{ isLoading ? '...' : (toggleOn ? t('autoStart.on') : t('autoStart.off')) }}</span>
       </button>
     </td>
-    <td :data-label="t('col.actions')" class="actions">
-      <span v-if="service.locked" class="locked-badge" :title="t('locked.tooltip')">{{ t('locked.badge') }}</span>
-      <template v-else>
-        <button v-if="showStart" class="outline secondary" @click="doAction('start')" :aria-label="t('action.start.aria', { name: service.name })">
-          <span class="btn-icon">▶</span><span class="btn-label">{{ t('action.start') }}</span>
-        </button>
-        <button v-if="showStop" class="outline secondary" @click="doAction('stop')" :aria-label="t('action.stop.aria', { name: service.name })">
-          <span class="btn-icon">⏹</span><span class="btn-label">{{ t('action.stop') }}</span>
-        </button>
-        <button v-if="showRestart" class="outline secondary" @click="doAction('restart')" :aria-label="t('action.restart.aria', { name: service.name })">
-          <span class="btn-icon">🔄</span><span class="btn-label">{{ t('action.restart') }}</span>
-        </button>
-      </template>
-      <button class="btn-logs outline secondary" title="查看日誌"
-        @click.stop="$emit('open-logs', service.name)">
-        📋 Logs
-      </button>
+    <td :data-label="t('col.actions')" class="actions-cell">
+      <div class="actions">
+        <!-- Slot 1: Primary action (Start/Stop) or Locked badge -->
+        <span class="action-slot">
+          <span v-if="service.locked" class="locked-badge" :title="t('locked.tooltip')">{{ t('locked.badge') }}</span>
+          <button v-else-if="showStart" class="outline secondary" @click="doAction('start')" :aria-label="t('action.start.aria', { name: service.name })">
+            <span class="btn-icon">▶</span><span class="btn-label">{{ t('action.start') }}</span>
+          </button>
+          <button v-else-if="showStop" class="outline secondary" @click="doAction('stop')" :aria-label="t('action.stop.aria', { name: service.name })">
+            <span class="btn-icon">⏹</span><span class="btn-label">{{ t('action.stop') }}</span>
+          </button>
+        </span>
+        <!-- Slot 2: Restart -->
+        <span class="action-slot">
+          <button v-if="showRestart && !service.locked" class="outline secondary" @click="doAction('restart')" :aria-label="t('action.restart.aria', { name: service.name })">
+            <span class="btn-icon">🔄</span><span class="btn-label">{{ t('action.restart') }}</span>
+          </button>
+        </span>
+        <!-- Slot 3: Logs -->
+        <span class="action-slot">
+          <button class="btn-logs outline secondary" title="查看日誌" @click.stop="$emit('open-logs', service.name)">
+            📋 <span class="btn-label">Logs</span>
+          </button>
+        </span>
+      </div>
     </td>
   </tr>
 </template>

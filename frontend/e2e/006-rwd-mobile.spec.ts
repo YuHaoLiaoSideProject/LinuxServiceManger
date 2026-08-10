@@ -473,6 +473,194 @@ test.describe('Scenario 8: 手機版特殊狀態', () => {
   })
 })
 
+// ── Scenario 11: 平板操作欄排版對齊 ──────────────────────────
+
+test.describe('Scenario 11: 平板操作欄 grid 排版對齊', () => {
+  test.use({ viewport: { width: 900, height: 800 } })
+
+  test('actions 應為 grid 佈局，3 欄', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const actions = page.locator('.actions').first()
+    const display = await actions.evaluate((el: Element) =>
+      window.getComputedStyle(el).display,
+    )
+    expect(display).toBe('grid')
+
+    const cols = await actions.evaluate((el: Element) =>
+      window.getComputedStyle(el).gridTemplateColumns,
+    )
+    expect(cols.split(' ').length).toBe(3)
+  })
+
+  test('每個 row 操作欄都有 3 個 action-slot', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const rows = page.locator('#service-table-body tr')
+    const count = await rows.count()
+
+    for (let i = 0; i < count; i++) {
+      const slots = rows.nth(i).locator('.action-slot')
+      await expect(slots).toHaveCount(3)
+    }
+  })
+
+  test('不同 row 的第一個 slot X 座標一致', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const rows = page.locator('#service-table-body tr')
+    const count = await rows.count()
+    const firstSlotX: number[] = []
+
+    for (let i = 0; i < count; i++) {
+      const slot = rows.nth(i).locator('.action-slot').first()
+      const box = await slot.boundingBox()
+      if (box) firstSlotX.push(box.x)
+    }
+
+    expect(firstSlotX.length).toBeGreaterThan(1)
+    const max = Math.max(...firstSlotX)
+    const min = Math.min(...firstSlotX)
+    expect(max - min).toBeLessThanOrEqual(2)
+  })
+
+  test('名稱欄寬度為 30%', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const nameTh = page.locator('thead th').nth(0)
+    const width = await nameTh.evaluate((el: Element) =>
+      window.getComputedStyle(el).width,
+    )
+    const widthPx = parseFloat(width)
+    expect(widthPx).toBeGreaterThan(240)
+    expect(widthPx).toBeLessThan(300)
+  })
+
+  test('操作欄寬度為 22%', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const actionsTh = page.locator('thead th').nth(5)
+    const width = await actionsTh.evaluate((el: Element) =>
+      window.getComputedStyle(el).width,
+    )
+    const widthPx = parseFloat(width)
+    expect(widthPx).toBeGreaterThan(170)
+    expect(widthPx).toBeLessThan(220)
+  })
+
+  test('鎖定服務的 Logs 按鈕與其他 row 的 Logs 按鈕 X 位置一致', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const nginxRow = getServiceRow(page, 'nginx.service')
+    const nginxLogs = nginxRow.locator('.action-slot').nth(2).locator('button')
+    const nginxBox = await nginxLogs.boundingBox()
+
+    await page.locator('#tab-system').click()
+
+    const sshdRow = getServiceRow(page, 'sshd.service')
+    const sshdLogs = sshdRow.locator('.action-slot').nth(2).locator('button')
+    const sshdBox = await sshdLogs.boundingBox()
+
+    if (nginxBox && sshdBox) {
+      expect(Math.abs(nginxBox.x - sshdBox.x)).toBeLessThanOrEqual(2)
+    }
+  })
+})
+
+
+// ── Scenario 12: 桌面版操作欄排版對齊 ──────────────────────────
+
+test.describe('Scenario 12: 桌面版操作欄 grid 排版對齊', () => {
+  test.use({ viewport: { width: 1280, height: 800 } })
+
+  test('actions 應為 grid 佈局，3 欄', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const actions = page.locator('.actions').first()
+    const display = await actions.evaluate((el: Element) =>
+      window.getComputedStyle(el).display,
+    )
+    expect(display).toBe('grid')
+
+    const cols = await actions.evaluate((el: Element) =>
+      window.getComputedStyle(el).gridTemplateColumns,
+    )
+    expect(cols.split(' ').length).toBe(3)
+  })
+
+  test('每個 row 都有 3 個 action-slot', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const rows = page.locator('#service-table-body tr')
+    const count = await rows.count()
+
+    for (let i = 0; i < count; i++) {
+      await expect(rows.nth(i).locator('.action-slot')).toHaveCount(3)
+    }
+  })
+
+  test('不同 row 的 slot 水平位置一致', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const rows = page.locator('#service-table-body tr')
+    const count = await rows.count()
+    const firstSlotX: number[] = []
+    const lastSlotX: number[] = []
+
+    for (let i = 0; i < count; i++) {
+      const slots = rows.nth(i).locator('.action-slot')
+      const first = await slots.first().boundingBox()
+      const last = await slots.nth(2).boundingBox()
+      if (first) firstSlotX.push(first.x)
+      if (last) lastSlotX.push(last.x + last.width)
+    }
+
+    // All first slots at same X
+    expect(Math.max(...firstSlotX) - Math.min(...firstSlotX)).toBeLessThanOrEqual(2)
+    // All last slots (right edge) at same X
+    expect(Math.max(...lastSlotX) - Math.min(...lastSlotX)).toBeLessThanOrEqual(2)
+  })
+
+  test('桌面板按鈕 label 應可見', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const btnLabel = page.locator('.actions button .btn-label').first()
+    const display = await btnLabel.evaluate((el: Element) =>
+      window.getComputedStyle(el).display,
+    )
+    expect(display).not.toBe('none')
+  })
+
+  test('鎖定服務 slot 2 為空但保留空間，Logs 仍在 slot 3', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    await page.locator('#tab-system').click()
+
+    const sshdRow = getServiceRow(page, 'sshd.service')
+    const slots = sshdRow.locator('.action-slot')
+    await expect(slots).toHaveCount(3)
+
+    // Slot 1: locked badge
+    await expect(slots.nth(0).locator('.locked-badge')).toBeVisible()
+    // Slot 2: empty (no button)
+    await expect(slots.nth(1).locator('button')).toHaveCount(0)
+    // Slot 3: Logs button
+    await expect(slots.nth(2).locator('button')).toBeVisible()
+  })
+})
+
+
 // ── Scenario 9: 響應式切換（resize） ────────────────────────────
 
 test.describe('Scenario 9: 響應式即時切換', () => {

@@ -48,7 +48,7 @@ func (m *DBusMonitor) Start() {
 			continue
 		}
 		active, sub, unitFileState := parsePropertiesChanged(signal.Body)
-		if active != "" {
+		if active != "" || unitFileState != "" {
 			m.hub.BroadcastMessage(websocket.Message{
 				Type: "status_change", Name: unitName,
 				Active: active, Sub: sub, UnitFileState: unitFileState,

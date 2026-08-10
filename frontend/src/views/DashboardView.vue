@@ -6,6 +6,7 @@ import { listServices, startService, stopService, restartService, enableService,
 import { useAuthStore } from '../stores/auth'
 import { useToast } from '../composables/useToast'
 import { useI18n } from '../composables/useI18n'
+import { useServiceFilter } from '../composables/useServiceFilter'
 import AppHeader from '../components/AppHeader.vue'
 import StatsBar from '../components/StatsBar.vue'
 import TabsBar from '../components/TabsBar.vue'
@@ -22,7 +23,6 @@ const { showToast } = useToast()
 const services = ref<Service[]>([])
 const loading = ref(true)
 const tab = ref(localStorage.getItem('lms-tab') || 'my')
-const search = ref('')
 
 // Log drawer state
 const logDrawerVisible = ref(false)
@@ -107,6 +107,22 @@ function cancelDisable() {
   pendingDisableService.value = undefined
 }
 
+const router = useRouter()
+
+// Service filtering composable
+const {
+  statusFilter,
+  searchText,
+  regexMode,
+  regexError,
+  filteredServices,
+  setStatusFilter,
+  clearSearch,
+  toggleRegex,
+  clearAllFilters,
+  initFromQuery,
+} = useServiceFilter(services, router)
+
 const statsServices = computed(() =>
   services.value.filter(s => tab.value === 'my' ? !s.locked : s.locked)
 )
@@ -120,8 +136,6 @@ function setTab(t: string) {
   tab.value = t
   localStorage.setItem('lms-tab', t)
 }
-
-const router = useRouter()
 
 async function handleLogout() {
   await auth.logout()
@@ -138,7 +152,10 @@ function closeLogDrawer() {
   logDrawerServiceName.value = ''
 }
 
-onMounted(loadServices)
+onMounted(() => {
+  loadServices()
+  initFromQuery()
+})
 </script>
 
 <template>
@@ -146,17 +163,28 @@ onMounted(loadServices)
     <AppHeader :username="auth.username" @refresh="loadServices" @logout="handleLogout" />
     <TabsBar :services="services" :tab="tab" @set-tab="setTab" />
     <StatsBar :services="statsServices" />
-    <Toolbar @search="(s: string) => search = s" />
+    <Toolbar
+      :statusFilter="statusFilter"
+      :searchText="searchText"
+      :regexMode="regexMode"
+      :regexError="regexError"
+      :filteredCount="filteredServices.length"
+      :loading="loading"
+      @update:searchText="searchText = $event"
+      @set-status-filter="setStatusFilter"
+      @toggle-regex="toggleRegex"
+      @clear-search="clearSearch"
+    />
     <ServiceTable
-      :services="services"
+      :filteredServices="filteredServices"
       :tab="tab"
-      :search="search"
       :loading="loading"
       :togglingService="togglingService"
       @action="handleAction"
       @refresh="loadServices"
       @toggle="handleToggle"
       @open-logs="openLogDrawer"
+      @clear-filters="clearAllFilters"
     />
     <ConfirmModal
       :show="showDisableConfirm"

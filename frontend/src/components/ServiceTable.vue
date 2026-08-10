@@ -4,12 +4,12 @@ import type { Service, ServiceAction } from '../types/service'
 import { useI18n } from '../composables/useI18n'
 import ServiceRow from './ServiceRow.vue'
 import ConfirmModal from './ConfirmModal.vue'
+import EmptyState from './EmptyState.vue'
 
 const { t } = useI18n()
 const props = defineProps<{
-  services: Service[]
+  filteredServices: Service[]
   tab: string
-  search: string
   loading: boolean
   togglingService?: string
 }>()
@@ -18,6 +18,7 @@ const emit = defineEmits<{
   refresh: []
   toggle: [action: 'enable' | 'disable', name: string]
   'open-logs': [name: string]
+  'clear-filters': []
 }>()
 
 // Sort
@@ -33,12 +34,10 @@ function toggleSort(col: string) {
   }
 }
 
-// Filtered and sorted services
-const filtered = computed(() => {
-  let list = props.services.filter(s => {
-    const tabMatch = props.tab === 'my' ? !s.locked : s.locked
-    const searchMatch = !props.search || s.name.toLowerCase().includes(props.search.toLowerCase())
-    return tabMatch && searchMatch
+// Apply tab filter + sorting on the pre-filtered list from upstream
+const displayServices = computed(() => {
+  let list = props.filteredServices.filter(s => {
+    return props.tab === 'my' ? !s.locked : s.locked
   })
 
   if (sortCol.value) {
@@ -120,19 +119,16 @@ const confirmMessage = computed(() => {
         <template v-if="loading">
           <tr><td colspan="6"><div class="empty-state"><div class="spinner-sm"></div></div></td></tr>
         </template>
-        <template v-else-if="filtered.length === 0">
+        <template v-else-if="displayServices.length === 0">
           <tr>
             <td colspan="6">
-              <div class="empty-state">
-                <div class="empty-icon">{{ search ? '🔍' : '📭' }}</div>
-                <em>{{ search ? t('search.empty', { term: search }) : t('empty.state') }}</em>
-              </div>
+              <EmptyState @clear="$emit('clear-filters')" />
             </td>
           </tr>
         </template>
         <template v-else>
           <ServiceRow
-            v-for="svc in filtered"
+            v-for="svc in displayServices"
             :key="svc.name"
             :service="svc"
             :togglingService="togglingService"

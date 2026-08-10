@@ -212,7 +212,7 @@ body {
 }
 .toolbar .search-wrap input {
   padding-left: 2.2rem;
-  padding-right: 2.2rem;
+  padding-right: 4.5rem;
   border-radius: 20px;
   border: 2px solid var(--lms-border);
   transition: border-color var(--lms-transition), box-shadow var(--lms-transition);
@@ -250,6 +250,109 @@ body {
 .toolbar .search-clear:hover {
   color: var(--lms-text);
   background: var(--lms-border);
+}
+
+/* ── Status filter buttons ── */
+.toolbar .status-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.toolbar .btn-status {
+  font-size: 0.78rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 16px;
+  border: 1px solid var(--lms-border);
+  background: var(--lms-surface);
+  color: var(--lms-muted);
+  cursor: pointer;
+  transition: all var(--lms-transition);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+.toolbar .btn-status:hover {
+  border-color: var(--lms-accent);
+  color: var(--lms-accent);
+}
+.toolbar .btn-status.active {
+  background: var(--lms-accent);
+  color: #fff;
+  border-color: var(--lms-accent);
+}
+.toolbar .btn-status:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.toolbar .btn-status .status-btn-icon {
+  font-size: 0.85rem;
+}
+
+/* ── Regex toggle button ── */
+.toolbar .btn-regex {
+  position: absolute;
+  right: 2.2rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: 1px solid var(--lms-border);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--lms-muted);
+  padding: 0.15rem 0.4rem;
+  border-radius: 10px;
+  line-height: 1;
+  transition: all var(--lms-transition);
+  font-family: monospace;
+}
+.toolbar .btn-regex:hover {
+  border-color: var(--lms-accent);
+  color: var(--lms-accent);
+}
+.toolbar .btn-regex.active {
+  background: var(--lms-accent);
+  color: #fff;
+  border-color: var(--lms-accent);
+}
+.toolbar .btn-regex:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Regex error ── */
+.toolbar .regex-error {
+  width: 100%;
+  color: var(--lms-danger);
+  font-size: 0.78rem;
+  padding: 0.2rem 0.5rem;
+  font-family: monospace;
+}
+
+/* ── Filtered count ── */
+.toolbar .filtered-count {
+  font-size: 0.78rem;
+  color: var(--lms-muted);
+  white-space: nowrap;
+  padding: 0.2rem 0;
+}
+
+/* ── Empty state button ── */
+.empty-state .btn {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  padding: 0.4rem 1rem;
+  border-radius: var(--lms-radius-sm);
+  cursor: pointer;
+  border: 1px solid var(--lms-border);
+  background: var(--lms-surface);
+  color: var(--lms-text);
+  transition: all var(--lms-transition);
+}
+.empty-state .btn:hover {
+  border-color: var(--lms-accent);
+  color: var(--lms-accent);
 }
 
 /* ── Tabs ── */

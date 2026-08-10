@@ -44,6 +44,33 @@ type sessionJSON struct {
 	Username      string `json:"username,omitempty"`
 }
 
+// batchRequest is the expected JSON body for POST /api/v1/services/batch.
+type batchRequest struct {
+	Names  []string `json:"names"`
+	Action string   `json:"action"`
+}
+
+// batchResponse is the top-level JSON response for POST /api/v1/services/batch.
+type batchResponse struct {
+	Summary batchSummary  `json:"summary"`
+	Results []batchResult `json:"results"`
+}
+
+// batchSummary contains aggregated counts.
+type batchSummary struct {
+	Total   int `json:"total"`
+	Success int `json:"success"`
+	Failed  int `json:"failed"`
+}
+
+// batchResult describes the outcome for a single service.
+type batchResult struct {
+	Name   string `json:"name"`
+	Action string `json:"action"`
+	Result string `json:"result"`          // "success" | "failure"
+	Error  string `json:"error,omitempty"` // populated only on failure
+}
+
 // ============================================================
 //  Helpers
 // ============================================================
@@ -436,6 +463,168 @@ func (h *Handler) HandleAuditExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("AUDIT: exported %d entries to CSV", count)
+}
+
+// ============================================================
+//  POST /api/v1/services/batch
+// ============================================================
+
+const (
+	maxBatchSize = 50
+	batchTimeout = 60 * time.Second
+)
+
+var validBatchActions = map[string]bool{
+	"start":   true,
+	"stop":    true,
+	"restart": true,
+}
+
+// HandleBatchServices processes a batch service operation request.
+// POST /api/v1/services/batch
+func (h *Handler) HandleBatchServices(w http.ResponseWriter, r *http.Request) {
+	// 1. Decode request body
+	var req batchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, messageJSON{Error: "invalid request body"})
+		return
+	}
+
+	// 2. Validate: names must not be empty
+	if len(req.Names) == 0 {
+		writeJSON(w, http.StatusBadRequest, messageJSON{Error: "names must not be empty"})
+		return
+	}
+
+	// 3. Validate: names count ≤ maxBatchSize
+	if len(req.Names) > maxBatchSize {
+		writeJSON(w, http.StatusBadRequest, messageJSON{
+			Error: "batch size exceeds maximum of 50",
+		})
+		return
+	}
+
+	// 4. Validate: action must be one of {start, stop, restart}
+	if !validBatchActions[req.Action] {
+		writeJSON(w, http.StatusBadRequest, messageJSON{
+			Error: "invalid action, must be start, stop, or restart",
+		})
+		return
+	}
+
+	// 5. Validate: no locked services in names
+	services, err := h.systemd.ListServices()
+	if err != nil {
+		log.Printf("ERROR listing services for batch: %v", err)
+		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "failed to list services"})
+		return
+	}
+	lockedMap := make(map[string]bool, len(services))
+	for _, svc := range services {
+		if svc.Locked {
+			lockedMap[svc.Name] = true
+		}
+	}
+	for _, name := range req.Names {
+		if lockedMap[name] {
+			writeJSON(w, http.StatusBadRequest, messageJSON{
+				Error: "locked service cannot be batch-operated: " + name,
+			})
+			return
+		}
+	}
+
+	// 6. Set overall context timeout
+	ctx, cancel := context.WithTimeout(r.Context(), batchTimeout)
+	defer cancel()
+
+	// 7. Get username for audit log
+	username, _ := auth.GetSession(r).Values["username"].(string)
+	clientIP := audit.ExtractClientIP(r)
+
+	// 8. Sequential execution: iterate names, call systemd, write audit, collect results
+	results := make([]batchResult, 0, len(req.Names))
+	successCount := 0
+	failedCount := 0
+
+	for _, name := range req.Names {
+		// Check context timeout before each operation
+		if ctx.Err() != nil {
+			results = append(results, batchResult{
+				Name:   name,
+				Action: req.Action,
+				Result: "failure",
+				Error:  "batch operation timed out",
+			})
+			failedCount++
+			continue
+		}
+
+		// Call systemd manager based on action
+		var svcErr error
+		switch req.Action {
+		case "start":
+			svcErr = h.systemd.StartService(name)
+		case "stop":
+			svcErr = h.systemd.StopService(name)
+		case "restart":
+			svcErr = h.systemd.RestartService(name)
+		}
+
+		// Build result for this service
+		if svcErr != nil {
+			results = append(results, batchResult{
+				Name:   name,
+				Action: req.Action,
+				Result: "failure",
+				Error:  svcErr.Error(),
+			})
+			failedCount++
+		} else {
+			results = append(results, batchResult{
+				Name:   name,
+				Action: req.Action,
+				Result: "success",
+			})
+			successCount++
+		}
+
+		// Write audit log (per service, independent)
+		if h.Audit != nil {
+			result := audit.ResultSuccess
+			detail := ""
+			if svcErr != nil {
+				result = audit.ResultFailure
+				detail = svcErr.Error()
+			}
+			// Map action string to audit.Action
+			var auditAction audit.Action
+			switch req.Action {
+			case "start":
+				auditAction = audit.ActionStart
+			case "stop":
+				auditAction = audit.ActionStop
+			case "restart":
+				auditAction = audit.ActionRestart
+			}
+			entry, entryErr := audit.NewEntry(username, clientIP,
+				auditAction, name, result, detail)
+			if entryErr == nil {
+				h.Audit.Write(entry)
+			}
+		}
+	}
+
+	// 9. Return summary + results (always HTTP 200 — partial failure is still a valid response)
+	resp := batchResponse{
+		Summary: batchSummary{
+			Total:   len(req.Names),
+			Success: successCount,
+			Failed:  failedCount,
+		},
+		Results: results,
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // ============================================================

@@ -7,11 +7,14 @@ const { t } = useI18n()
 const props = defineProps<{
   service: Service
   togglingService?: string
+  selected?: boolean
+  batchExecuting?: boolean
 }>()
 const emit = defineEmits<{
   action: [action: ServiceAction, name: string]
   toggle: [action: 'enable' | 'disable', name: string]
   'open-logs': [name: string]
+  'toggle-select': [name: string]
 }>()
 
 const statusClass = computed(() => {
@@ -78,6 +81,16 @@ function doToggle() {
 
 <template>
   <tr>
+    <td class="col-check" :data-label="'選取'">
+      <span v-if="service.locked" class="locked-icon" title="服務已鎖定">🔒</span>
+      <input
+        v-else
+        type="checkbox"
+        :checked="selected"
+        :disabled="batchExecuting"
+        @change="$emit('toggle-select', service.name)"
+      />
+    </td>
     <td :data-label="t('col.name')">{{ service.name }}</td>
     <td :data-label="t('col.load')">{{ t('status.load.' + service.load) }}</td>
     <td :data-label="t('col.active')">

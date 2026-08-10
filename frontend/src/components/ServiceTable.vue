@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { Service, ServiceAction } from '../types/service'
 import { useI18n } from '../composables/useI18n'
 import ServiceRow from './ServiceRow.vue'
+import BatchToolbar from './BatchToolbar.vue'
 import ConfirmModal from './ConfirmModal.vue'
 import EmptyState from './EmptyState.vue'
 
@@ -12,6 +13,9 @@ const props = defineProps<{
   tab: string
   loading: boolean
   togglingService?: string
+  selectedNames?: Set<string>
+  batchExecuting?: boolean
+  batchProgress?: { done: number; total: number } | null
 }>()
 const emit = defineEmits<{
   action: [action: ServiceAction, name: string]
@@ -19,6 +23,10 @@ const emit = defineEmits<{
   toggle: [action: 'enable' | 'disable', name: string]
   'open-logs': [name: string]
   'clear-filters': []
+  'toggle-select': [name: string]
+  'select-all': [filteredNames: string[]]
+  'batch-action': [action: ServiceAction]
+  'clear-selection': []
 }>()
 
 // Sort
@@ -88,9 +96,38 @@ const confirmMessage = computed(() => {
   const key = pendingAction.value.action === 'stop' ? 'modal.stop' : 'modal.restart'
   return t(key, { name: pendingAction.value.name })
 })
+
+// ── Batch selection computed ──
+const selectedNamesSet = computed(() => props.selectedNames || new Set<string>())
+
+const selectedCount = computed(() => selectedNamesSet.value.size)
+
+const allSelected = computed(() => {
+  const selectable = displayServices.value.filter(s => !s.locked)
+  return selectable.length > 0 && selectable.every(s => selectedNamesSet.value.has(s.name))
+})
+
+const selectableCount = computed(() =>
+  displayServices.value.filter(s => !s.locked).length
+)
+
+function onSelectAll() {
+  if (allSelected.value) {
+    emit('select-all', [])
+  } else {
+    emit('select-all', displayServices.value.filter(s => !s.locked).map(s => s.name))
+  }
+}
 </script>
 
 <template>
+  <BatchToolbar
+    :selectedCount="selectedCount"
+    :executing="batchExecuting || false"
+    :progress="batchProgress || null"
+    @batch-action="(action) => emit('batch-action', action)"
+    @clear-selection="emit('clear-selection')"
+  />
   <div class="table-wrapper">
     <table>
       <caption>
@@ -99,6 +136,14 @@ const confirmMessage = computed(() => {
       </caption>
       <thead>
         <tr>
+          <th class="col-check">
+            <input
+              type="checkbox"
+              :checked="allSelected"
+              :disabled="selectableCount === 0 || batchExecuting"
+              @change="onSelectAll"
+            />
+          </th>
           <th class="sortable" @click="toggleSort('name')">
             {{ t('col.name') }} <span class="sort-icon" :class="{ active: sortCol === 'name' }">{{ sortCol === 'name' ? (sortAsc ? '▲' : '▼') : '' }}</span>
           </th>
@@ -117,11 +162,11 @@ const confirmMessage = computed(() => {
       </thead>
       <tbody id="service-table-body">
         <template v-if="loading">
-          <tr><td colspan="6"><div class="empty-state"><div class="spinner-sm"></div></div></td></tr>
+          <tr><td colspan="7"><div class="empty-state"><div class="spinner-sm"></div></div></td></tr>
         </template>
         <template v-else-if="displayServices.length === 0">
           <tr>
-            <td colspan="6">
+            <td colspan="7">
               <EmptyState @clear="$emit('clear-filters')" />
             </td>
           </tr>
@@ -132,9 +177,12 @@ const confirmMessage = computed(() => {
             :key="svc.name"
             :service="svc"
             :togglingService="togglingService"
+            :selected="selectedNamesSet.has(svc.name)"
+            :batchExecuting="batchExecuting"
             @action="onAction"
             @toggle="(action, name) => emit('toggle', action, name)"
             @open-logs="(name) => emit('open-logs', name)"
+            @toggle-select="(name) => emit('toggle-select', name)"
           />
         </template>
       </tbody>

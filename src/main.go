@@ -95,6 +95,7 @@ func main() {
 		r.Post("/api/v1/services/{name}/restart", h.HandleRestartJSON)
 		r.Post("/api/v1/services/{name}/enable", h.HandleEnableJSON)
 		r.Post("/api/v1/services/{name}/disable", h.HandleDisableJSON)
+		r.Post("/api/v1/services/batch", h.HandleBatchServices)
 		r.Get("/api/v1/services/{name}/logs/ws", h.HandleServiceLogsWS)
 		r.Get("/api/v1/ws", h.HandleStatusWS)
 		r.Get("/api/v1/audit", h.HandleAuditQuery)

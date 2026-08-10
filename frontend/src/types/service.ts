@@ -34,3 +34,28 @@ export interface LogLine {
   text: string
   match: boolean
 }
+
+// ── Batch Operation Types ──
+
+export interface BatchRequest {
+  names: string[]
+  action: 'start' | 'stop' | 'restart'
+}
+
+export interface BatchResult {
+  name: string
+  action: string
+  result: 'success' | 'failure'
+  error?: string
+}
+
+export interface BatchSummary {
+  total: number
+  success: number
+  failed: number
+}
+
+export interface BatchResponse {
+  summary: BatchSummary
+  results: BatchResult[]
+}

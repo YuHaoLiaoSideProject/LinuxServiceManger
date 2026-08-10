@@ -32,12 +32,16 @@ type mockSystemd struct {
 	enableErr        error
 	disableErr       error
 	getServiceLogsFn func(name string, lines int) (string, error)
-	startCalled      []string
-	stopCalled       []string
-	restartCalled    []string
-	enableCalled     []string
-	disableCalled    []string
-	getLogsCalled    []getLogsCall
+	// Per-service error maps for batch operation partial-failure testing.
+	startErrFor   map[string]error
+	stopErrFor    map[string]error
+	restartErrFor map[string]error
+	startCalled   []string
+	stopCalled    []string
+	restartCalled []string
+	enableCalled  []string
+	disableCalled []string
+	getLogsCalled []getLogsCall
 }
 
 type getLogsCall struct {
@@ -54,16 +58,31 @@ func (m *mockSystemd) ListServices() ([]systemd.Service, error) {
 
 func (m *mockSystemd) StartService(name string) error {
 	m.startCalled = append(m.startCalled, name)
+	if m.startErrFor != nil {
+		if err, ok := m.startErrFor[name]; ok {
+			return err
+		}
+	}
 	return m.startErr
 }
 
 func (m *mockSystemd) StopService(name string) error {
 	m.stopCalled = append(m.stopCalled, name)
+	if m.stopErrFor != nil {
+		if err, ok := m.stopErrFor[name]; ok {
+			return err
+		}
+	}
 	return m.stopErr
 }
 
 func (m *mockSystemd) RestartService(name string) error {
 	m.restartCalled = append(m.restartCalled, name)
+	if m.restartErrFor != nil {
+		if err, ok := m.restartErrFor[name]; ok {
+			return err
+		}
+	}
 	return m.restartErr
 }
 

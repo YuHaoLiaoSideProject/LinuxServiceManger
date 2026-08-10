@@ -94,19 +94,19 @@ describe('服務列表 — 使用者瀏覽與操作', () => {
     mockLang.value = 'zh-TW' // 每個測試前重置為繁體中文
   })
 
-  it('表格欄位標頭應顯示六個欄位（繁體中文）', () => {
+  it('表格欄位標頭應顯示七個欄位（繁體中文）', () => {
     const wrapper = mount(ServiceTable, {
       props: { filteredServices: makeServices(), tab: 'my', loading: false },
     })
 
     const headers = wrapper.findAll('th')
-    expect(headers.length).toBe(6)
-    expect(headers[0].text()).toContain('名稱')
-    expect(headers[1].text()).toContain('載入狀態')
-    expect(headers[2].text()).toContain('啟用狀態')
-    expect(headers[3].text()).toContain('執行狀態')
-    expect(headers[4].text()).toContain('開機啟動')
-    expect(headers[5].text()).toContain('操作')
+    expect(headers.length).toBe(7)
+    expect(headers[1].text()).toContain('名稱')
+    expect(headers[2].text()).toContain('載入狀態')
+    expect(headers[3].text()).toContain('啟用狀態')
+    expect(headers[4].text()).toContain('執行狀態')
+    expect(headers[5].text()).toContain('開機啟動')
+    expect(headers[6].text()).toContain('操作')
   })
 
   it('使用者在「我的服務」tab，只看到未鎖定的服務', () => {
@@ -239,9 +239,9 @@ describe('服務列表 — 使用者瀏覽與操作', () => {
     })
 
     let headers = wrapper.findAll('th')
-    expect(headers[0].text()).toContain('名稱')
-    expect(headers[4].text()).toContain('開機啟動')
-    expect(headers[5].text()).toContain('操作')
+    expect(headers[1].text()).toContain('名稱')
+    expect(headers[5].text()).toContain('開機啟動')
+    expect(headers[6].text()).toContain('操作')
 
     // 切到英文，需要重新掛載（因為 t() 是在 setup 裡呼叫的）
     mockLang.value = 'en'
@@ -250,12 +250,12 @@ describe('服務列表 — 使用者瀏覽與操作', () => {
     })
 
     headers = wrapperEn.findAll('th')
-    expect(headers[0].text()).toContain('Name')
-    expect(headers[1].text()).toContain('Load')
-    expect(headers[2].text()).toContain('Active')
-    expect(headers[3].text()).toContain('Sub')
-    expect(headers[4].text()).toContain('Auto-start')
-    expect(headers[5].text()).toContain('Actions')
+    expect(headers[1].text()).toContain('Name')
+    expect(headers[2].text()).toContain('Load')
+    expect(headers[3].text()).toContain('Active')
+    expect(headers[4].text()).toContain('Sub')
+    expect(headers[5].text()).toContain('Auto-start')
+    expect(headers[6].text()).toContain('Actions')
   })
 
   it('從英文切回繁體中文，欄位標頭應恢復中文', () => {
@@ -264,7 +264,7 @@ describe('服務列表 — 使用者瀏覽與操作', () => {
       props: { filteredServices: makeServices(), tab: 'my', loading: false },
     })
 
-    expect(wrapperEn.findAll('th')[0].text()).toContain('Name')
+    expect(wrapperEn.findAll('th')[1].text()).toContain('Name')
 
     mockLang.value = 'zh-TW'
     const wrapperZH = mount(ServiceTable, {
@@ -272,9 +272,9 @@ describe('服務列表 — 使用者瀏覽與操作', () => {
     })
 
     const headers = wrapperZH.findAll('th')
-    expect(headers[0].text()).toContain('名稱')
-    expect(headers[4].text()).toContain('開機啟動')
-    expect(headers[5].text()).toContain('操作')
+    expect(headers[1].text()).toContain('名稱')
+    expect(headers[5].text()).toContain('開機啟動')
+    expect(headers[6].text()).toContain('操作')
   })
 
   it('RWD 手機版：切換語系後 data-label 也跟著變', () => {

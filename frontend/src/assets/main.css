@@ -260,7 +260,7 @@ body {
   border: none;
 }
 
-/* ── Stats bar ── */
+/* ── Stats bar（卡片即 filter，規格：docs/uiux/014-dashboard-stats-redesign.html）── */
 .stats-bar {
   display: flex;
   flex-wrap: wrap;
@@ -278,30 +278,57 @@ body {
   align-items: center;
   gap: 0.5rem;
   font-size: 0.85rem;
-  transition: transform var(--lms-transition), box-shadow var(--lms-transition), border-color var(--lms-transition);
-  cursor: default;
+  font-family: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--lms-transition), box-shadow var(--lms-transition), border-color var(--lms-transition), background var(--lms-transition);
 }
 .stat-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 16px rgba(0,0,0,0.08);
   border-color: var(--lms-accent);
 }
-.stat-card .stat-icon {
-  font-size: 1.4rem;
-  flex-shrink: 0;
+.stat-card:focus-visible {
+  outline: 2px solid var(--lms-accent);
+  outline-offset: 2px;
 }
+.stat-card:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+.stat-card.active {
+  border-color: var(--lms-accent);
+  background: var(--lms-accent-light);
+}
+.stat-card.active .stat-label { color: var(--lms-accent); }
+.stat-card .stat-icon {
+  flex-shrink: 0;
+  display: flex;
+}
+.stat-card .stat-icon svg { display: block; }
 .stat-card .stat-value {
   font-size: 1.3rem;
   font-weight: 700;
   line-height: 1;
+  display: block;
 }
 .stat-card .stat-label {
   color: var(--lms-muted);
   font-size: 0.75rem;
+  display: block;
+  margin-top: 0.15rem;
 }
-.stat-total  { border-left: 4px solid var(--lms-accent); }
-.stat-active { border-left: 4px solid var(--lms-success); }
-.stat-failed { border-left: 4px solid var(--lms-danger); }
+.stat-total    { border-left: 4px solid var(--lms-accent); }
+.stat-active   { border-left: 4px solid var(--lms-success); }
+.stat-failed   { border-left: 4px solid var(--lms-danger); }
+.stat-inactive { border-left: 4px solid var(--lms-muted); }
+.stat-total .stat-icon    { color: var(--lms-accent); }
+.stat-active .stat-icon   { color: var(--lms-success); }
+.stat-failed .stat-icon   { color: var(--lms-danger); }
+.stat-inactive .stat-icon { color: var(--lms-muted); }
 
 /* ── Toolbar (search + actions) ──
    規格：docs/uiux/012-toolbar-dashboard-design.html（單列：pills → 搜尋 → 計數 → 重新整理）
@@ -315,79 +342,8 @@ body {
   margin-bottom: 1rem;
 }
 
-/* ── Status filter pills (segmented, 36px, dot + count badge) ── */
-.toolbar .status-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px; /* 文件 token：群組內 8px */
-  width: auto; /* 覆寫 Pico [role=group]{width:100%}，還原內容寬度 */
-  margin-bottom: 0; /* 覆寫 Pico [role=group]{margin-bottom:var(--pico-spacing)}，避免與 search-wrap 垂直不對齊 */
-  box-shadow: none; /* 移除 Pico [role=group] focus-within 的藍色外框（保留 pill 本身的 focus ring） */
-}
-.toolbar .status-filters .btn-status {
-  margin-left: 0; /* 覆寫 Pico [role=group] button:not(:first-child){margin-left:-1px} */
-}
-.toolbar .btn-status {
-  height: var(--lms-h);
-  flex: 0 0 auto; /* 覆寫 Pico [role=group] flex:1，還原自然寬度 */
-  font-size: 13px; /* 文件：pills 13px */
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0 0.85rem;
-  border-radius: 18px;
-  border: 1px solid var(--lms-border);
-  background: var(--lms-surface);
-  color: var(--lms-muted);
-  cursor: pointer;
-  transition: all var(--lms-transition);
-  white-space: nowrap;
-  font-weight: 500;
-}
-.toolbar .btn-status .dotp {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-  flex-shrink: 0;
-}
-.toolbar .btn-status .dotp.all,
-.toolbar .btn-status .dotp.inact { background: var(--lms-muted); }
-.toolbar .btn-status .dotp.run { background: var(--lms-success); }
-.toolbar .btn-status .dotp.fail { background: var(--lms-danger); }
-.toolbar .btn-status .cnt {
-  font-size: 11px; /* 文件：badge 11px */
-  background: var(--lms-surface-2);
-  border-radius: 20px;
-  padding: 1px 6px;
-  color: var(--lms-muted);
-  font-weight: 700;
-  line-height: 1.4;
-}
-.toolbar .btn-status:hover {
-  border-color: var(--lms-accent);
-  color: var(--lms-accent);
-}
-.toolbar .btn-status.active {
-  background: var(--lms-accent);
-  border-color: var(--lms-accent);
-  color: #fff;
-}
-.toolbar .btn-status.active .dotp.all,
-.toolbar .btn-status.active .dotp.inact,
-.toolbar .btn-status.active .dotp.run,
-.toolbar .btn-status.active .dotp.fail { background: #fff; }
-.toolbar .btn-status.active .cnt {
-  background: rgba(255,255,255,0.22);
-  color: #fff;
-}
-.toolbar .btn-status:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 
 /* 文件 a11y：所有互動元件 focus ring 可見（Pico 會用 box-shadow:none 蓋掉） */
-.toolbar .btn-status:focus-visible,
 .toolbar .btn-regex:focus-visible,
 .toolbar .btn-refresh:focus-visible,
 .toolbar .search-clear:focus-visible {
@@ -1343,12 +1299,8 @@ tbody tr:last-child td {
   .actions button .btn-label { display: none; }
 }
 
-/* Toolbar (768–1023px)：pills 佔一列；search ＋ 計數 ＋ 重新整理 同列。
-   避免 pills 與 search 併列時 search 被擠窄、refresh 單獨掉到第二列。 */
+/* Toolbar (768–1023px)：search ＋ 計數 ＋ 重新整理 同列。 */
 @media (min-width: 768px) and (max-width: 1023px) {
-  .toolbar .status-filters {
-    flex-basis: 100%;
-  }
   .toolbar .search-wrap {
     flex: 1;
     max-width: none;
@@ -1390,20 +1342,27 @@ tbody tr:last-child td {
     font-size: 0.9rem;
   }
 
-  /* ── Stats: horizontal swipe chips ── */
+  /* ── Stats: horizontal swipe chips ──
+     ⚠️ 不再使用 scroll-snap-type / scroll-snap-align：在真實手機上（iOS Safari /
+     部分 Android）點擊位於 snap 點附近的卡片時，瀏覽器會把點擊視為
+     「捲動到 snap 位置」手勢而吞掉 click 事件 → 卡片 filter 失效。
+     保留橫向捲動（overflow-x:auto）但移除 snap，點擊一律可靠觸發。
+     touch-action: manipulation 消除 300ms 延遲，點擊更即時。 */
   .stats-bar {
     flex-wrap: nowrap;
     overflow-x: auto;
     gap: 0.5rem;
     -webkit-overflow-scrolling: touch;
-    scroll-snap-type: x proximity;
     padding-bottom: 2px;
+    scrollbar-width: none;
   }
+  .stats-bar::-webkit-scrollbar { display: none; }
   .stat-card {
     flex: 0 0 auto;
     min-width: 110px;
     padding: 0.6rem 0.9rem;
-    scroll-snap-align: start;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
   .stat-card .stat-value { font-size: 1.35rem; }
   .stat-card .stat-icon { font-size: 1.5rem; }
@@ -1411,23 +1370,11 @@ tbody tr:last-child td {
   /* ── Tabs ── */
   .tab-btn { font-size: 0.9rem; padding: 0.6rem 1rem; }
 
-  /* ── Toolbar ── */
+  /* ── Toolbar（無 pills）：搜尋全寬 44px ── */
   .toolbar {
     flex-direction: column;
     align-items: stretch;
     gap: 0.6rem;
-  }
-  /* Status pills → 2×2 equal-width grid, 44px touch targets */
-  .toolbar .status-filters {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.4rem;
-    width: 100%;
-  }
-  .toolbar .btn-status {
-    height: var(--lms-h-mobile);
-    justify-content: center;
-    font-size: 14px;
   }
   /* Search full-width 44px */
   .toolbar .search-wrap {

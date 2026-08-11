@@ -11,6 +11,16 @@ export type StatusFilter = 'all' | 'running' | 'failed' | 'inactive'
 const VALID_STATUSES: StatusFilter[] = ['all', 'running', 'failed', 'inactive']
 
 // ---------------------------------------------------------------------------
+// 共用述詞 — StatsBar 卡片計數與 filter 共用同一口徑，確保「卡片數字 = 點擊後的列數」
+// ---------------------------------------------------------------------------
+
+export function matchesStatus(s: Service, status: StatusFilter): boolean {
+  if (status === 'all') return true
+  if (status === 'running') return s.sub === 'running'
+  return s.active === status
+}
+
+// ---------------------------------------------------------------------------
 // Composable
 // ---------------------------------------------------------------------------
 
@@ -39,13 +49,9 @@ export function useServiceFilter(services: Ref<Service[]>, router?: Router) {
   const filteredServices = computed<Service[]>(() => {
     let result = services.value
 
-    // 1. Status filter
-    // Note: systemd ActiveState is 'active' (not 'running').
-    // We map the user-facing 'running' filter to s.sub === 'running' for correctness.
-    if (statusFilter.value === 'running') {
-      result = result.filter(s => s.sub === 'running')
-    } else if (statusFilter.value !== 'all') {
-      result = result.filter(s => s.active === statusFilter.value)
+    // 1. Status filter — 述詞與 StatsBar 卡片共用（matchesStatus），口徑一致
+    if (statusFilter.value !== 'all') {
+      result = result.filter(s => matchesStatus(s, statusFilter.value))
     }
 
     // 2. Text / regex filter (using debounced text)

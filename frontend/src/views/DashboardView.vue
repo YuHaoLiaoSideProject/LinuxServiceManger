@@ -218,13 +218,10 @@ const statsServices = computed(() =>
   services.value.filter(s => tab.value === 'my' ? !s.locked : s.locked)
 )
 
-// Status counts for the filter pills — same semantics as useServiceFilter
-const filterCounts = computed(() => ({
-  all: services.value.length,
-  running: services.value.filter(s => s.sub === 'running').length,
-  failed: services.value.filter(s => s.active === 'failed').length,
-  inactive: services.value.filter(s => s.active === 'inactive').length,
-}))
+// 表格視圖計數：tab + 狀態 + 搜尋 後的列數（與 ServiceTable 顯示一致）
+const tabbedFilteredCount = computed(() =>
+  filteredServices.value.filter(s => tab.value === 'my' ? !s.locked : s.locked).length
+)
 
 const disableConfirmMessage = computed(() => {
   if (!pendingDisableService.value) return ''
@@ -358,7 +355,12 @@ onUnmounted(() => {
   <main class="app-container">
     <AppHeader :username="auth.username" :wsStatus="wsStatus" @logout="handleLogout" />
     <TabsBar :services="services" :tab="tab" @set-tab="setTab" />
-    <StatsBar :services="statsServices" />
+    <StatsBar
+      :services="statsServices"
+      :statusFilter="statusFilter"
+      :loading="loading"
+      @set-status-filter="setStatusFilter"
+    />
     <BatchResultPanel
       v-if="showBatchResult && batchResults.length > 0"
       :results="batchResults"
@@ -366,17 +368,14 @@ onUnmounted(() => {
       @dismiss="dismissBatchResult"
     />
     <Toolbar
-      :statusFilter="statusFilter"
       :searchText="searchText"
       :regexMode="regexMode"
       :regexError="regexError"
-      :filteredCount="filteredServices.length"
-      :totalCount="services.length"
-      :counts="filterCounts"
+      :filteredCount="tabbedFilteredCount"
+      :totalCount="statsServices.length"
       :loading="loading"
       :showRefresh="true"
       @update:searchText="searchText = $event"
-      @set-status-filter="setStatusFilter"
       @toggle-regex="toggleRegex"
       @clear-search="clearSearch"
       @refresh="loadServices"

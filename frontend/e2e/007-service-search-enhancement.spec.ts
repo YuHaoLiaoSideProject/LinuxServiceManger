@@ -25,7 +25,7 @@ const MOCK_007 = [
 // ── Helpers ───────────────────────────────────────────────────────
 
 function statusBtn(label: string) {
-  return (page: any) => page.locator('.status-filters .btn-status', { hasText: label })
+  return (page: any) => page.locator('.stats-bar .stat-card', { hasText: label })
 }
 function searchInput(page: any) { return page.locator('.search-wrap input[type="search"]') }
 function regexToggle(page: any) { return page.locator('.btn-regex') }
@@ -36,10 +36,10 @@ function emptyStateEl(page: any) { return page.locator('.empty-state') }
 function serviceRows(page: any) { return page.locator('#service-table-body tr') }
 
 async function assertStatusActive(page: any, label: string) {
-  await expect(statusBtn(label)(page)).toHaveClass(/active/)
+  await expect(statusBtn(label)(page)).toHaveAttribute('aria-pressed', 'true')
 }
 async function assertStatusInactive(page: any, label: string) {
-  await expect(statusBtn(label)(page)).not.toHaveClass(/active/)
+  await expect(statusBtn(label)(page)).toHaveAttribute('aria-pressed', 'false')
 }
 
 // ===================================================================
@@ -646,12 +646,12 @@ test.describe('過濾計數顯示', () => {
     await setupApiMocks(page, { authenticated: false, includeActions: true, services: MOCK_007 })
     await loginViaUI(page)
 
-    // Default: all 8 services (before tab filter)
-    await expect(filteredCountEl(page)).toContainText('8')
+    // Default（我的服務 tab）：顯示 6 / 共 6（表格視圖 = tab-filtered）
+    await expect(filteredCountEl(page)).toContainText('6')
 
-    // Filter running: 5 total (nginx, apache2, php-fpm, sshd, systemd-logind)
+    // Filter running：我的 tab 下 3 個 unlocked running（nginx, apache2, php-fpm）
     await statusBtn('Running')(page).click()
-    await expect(filteredCountEl(page)).toContainText('5')
+    await expect(filteredCountEl(page)).toContainText('3')
 
     // Add text search "php"
     await searchInput(page).fill('php')

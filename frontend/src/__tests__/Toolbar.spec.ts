@@ -13,10 +13,6 @@ vi.mock('../composables/useI18n', () => ({
         'search.clear.aria': '清除搜尋',
         'search.clear.title': '清除',
         'search.regex.title': '切換正則搜尋',
-        'filter.all': '全部',
-        'filter.running': '執行中',
-        'filter.failed': '失敗',
-        'filter.inactive': '未啟用',
         'filter.count.shown': '顯示',
         'filter.count.total': '/ 共',
       }
@@ -29,7 +25,6 @@ vi.mock('../composables/useI18n', () => ({
 }))
 
 const defaultProps = {
-  statusFilter: 'all' as const,
   searchText: '',
   regexMode: false,
   regexError: null,
@@ -88,49 +83,11 @@ describe('Toolbar — 工具列', () => {
     expect(wrapper.find('.search-clear.visible').exists()).toBe(true)
   })
 
-  it('顯示四個狀態過濾按鈕', () => {
+  it('工具列沒有狀態過濾 pills（已移至 StatsBar 卡片）', () => {
     const wrapper = mount(Toolbar, { props: defaultProps })
 
-    const statusBtns = wrapper.findAll('.btn-status')
-    expect(statusBtns.length).toBe(4)
-    expect(statusBtns[0].text()).toContain('全部')
-    expect(statusBtns[1].text()).toContain('執行中')
-    expect(statusBtns[2].text()).toContain('失敗')
-    expect(statusBtns[3].text()).toContain('未啟用')
-  })
-
-  it('當前 active 狀態按鈕有 .active class', () => {
-    const wrapper = mount(Toolbar, {
-      props: { ...defaultProps, statusFilter: 'running' },
-    })
-
-    const statusBtns = wrapper.findAll('.btn-status')
-    expect(statusBtns[1].classes()).toContain('active')
-    expect(statusBtns[0].classes()).not.toContain('active')
-    expect(statusBtns[2].classes()).not.toContain('active')
-    expect(statusBtns[3].classes()).not.toContain('active')
-  })
-
-  it('點擊狀態按鈕 emit set-status-filter', async () => {
-    const wrapper = mount(Toolbar, { props: defaultProps })
-
-    const statusBtns = wrapper.findAll('.btn-status')
-    await statusBtns[1].trigger('click') // Running
-
-    const emitted = wrapper.emitted('set-status-filter')
-    expect(emitted).toBeTruthy()
-    expect(emitted![0]).toEqual(['running'])
-  })
-
-  it('loading 時狀態按鈕 disabled', () => {
-    const wrapper = mount(Toolbar, {
-      props: { ...defaultProps, loading: true },
-    })
-
-    const statusBtns = wrapper.findAll('.btn-status')
-    for (const btn of statusBtns) {
-      expect((btn.element as HTMLButtonElement).disabled).toBe(true)
-    }
+    expect(wrapper.find('.status-filters').exists()).toBe(false)
+    expect(wrapper.findAll('.btn-status').length).toBe(0)
   })
 
   it('loading 時 regex 按鈕 disabled', () => {
@@ -190,32 +147,5 @@ describe('Toolbar — 工具列', () => {
     const text = wrapper.find('.filtered-count').text().replace(/\s+/g, ' ').trim()
     expect(text).toBe('顯示 5 / 共 34')
     expect(wrapper.find('.filtered-count b').text()).toBe('5')
-  })
-
-  it('狀態 pill 顯示計數 badge', () => {
-    const wrapper = mount(Toolbar, {
-      props: {
-        ...defaultProps,
-        counts: { all: 34, running: 12, failed: 2, inactive: 20 },
-      },
-    })
-
-    const statusBtns = wrapper.findAll('.btn-status')
-    expect(statusBtns[0].text()).toContain('34')
-    expect(statusBtns[1].text()).toContain('12')
-    expect(statusBtns[2].text()).toContain('2')
-    expect(statusBtns[3].text()).toContain('20')
-  })
-
-  it('狀態 pill 使用 CSS 圓點而非 emoji 圖示', () => {
-    const wrapper = mount(Toolbar, { props: defaultProps })
-
-    const statusBtns = wrapper.findAll('.btn-status')
-    for (const btn of statusBtns) {
-      expect(btn.find('.dotp').exists()).toBe(true)
-      expect(btn.text()).not.toContain('🟢')
-      expect(btn.text()).not.toContain('🔴')
-      expect(btn.text()).not.toContain('⚪')
-    }
   })
 })

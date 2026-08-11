@@ -141,7 +141,6 @@ test.describe('E2E-01~03: 進入 Audit Log 頁面', () => {
     await page.waitForURL('**/audit')
 
     // Should see the audit page
-    await expect(page.locator('main.app-container h2')).toContainText('Audit Log')
 
     // Table should render with data
     await expect(auditTable(page)).toBeVisible()

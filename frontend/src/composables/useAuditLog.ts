@@ -61,17 +61,24 @@ export function useAuditLog() {
 
   // -- actions --------------------------------------------------------------
 
+  // 請求序號：搜尋框在請求進行中仍可輸入 → 可能同時有多個請求在飛。
+  // 只套用「最新」請求的回應，避免較晚回應的舊請求覆蓋較新的搜尋結果。
+  let requestSeq = 0
+
   async function fetchAuditLog(pageOverride?: number): Promise<void> {
+    const seq = ++requestSeq
     loading.value = true
     error.value = null
     try {
       const { data } = await axios.get<AuditQueryResult>('/audit', {
         params: buildParams(pageOverride),
       })
+      if (seq !== requestSeq) return // 已發出更新的請求 → 忽略這次回應
       entries.value = data.data
       total.value = data.total
       page.value = data.page
     } catch (err: unknown) {
+      if (seq !== requestSeq) return // 舊請求失敗也不影響較新的請求
       let msg = '載入稽核紀錄時發生錯誤'
       if (err instanceof Error) {
         msg = (err as any).response?.data?.error || err.message
@@ -80,7 +87,7 @@ export function useAuditLog() {
       entries.value = []
       total.value = 0
     } finally {
-      loading.value = false
+      if (seq === requestSeq) loading.value = false
     }
   }
 

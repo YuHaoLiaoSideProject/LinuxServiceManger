@@ -188,18 +188,20 @@ describe('AuditLogView — 稽核紀錄頁面', () => {
 
   // -- Loading State -----------------------------------------------------
 
-  it('F-AV-02: loading=true → 顯示 spinner', () => {
+  it('F-AV-02: loading=true 且無既有資料 → 顯示 spinner', () => {
     loading.value = true
     const wrapper = mount(AuditLogView)
     expect(wrapper.find('.spinner-sm').exists()).toBe(true)
   })
 
-  it('F-AV-03: loading=true 時不顯示表格', () => {
+  it('F-AV-03: loading=true 但有既有資料（搜尋/重新整理）→ 表格保持顯示（不閃爍）', () => {
     loading.value = true
     total.value = 5
     entries.value = [makeEntry()]
     const wrapper = mount(AuditLogView)
-    expect(wrapper.find('table').exists()).toBe(false)
+    // Bug 回歸：呼叫 API 刷新時不得把表格換成 spinner（畫面閃爍）
+    expect(wrapper.find('table').exists()).toBe(true)
+    expect(wrapper.find('.spinner-sm').exists()).toBe(false)
   })
 
   // -- Error State -------------------------------------------------------
@@ -414,12 +416,6 @@ describe('AuditLogView — 稽核紀錄頁面', () => {
   })
 
   // -- i18n: User-facing strings should not be hardcoded -----------------
-
-  it('F-AV-I18N-01: 頁面標題應使用 i18n 而非硬編碼', () => {
-    mockT.mockClear()
-    mount(AuditLogView)
-    expect(mockT).toHaveBeenCalledWith('audit.title')
-  })
 
   it('F-AV-I18N-02: 匯出按鈕應使用 i18n 而非硬編碼', () => {
     mockT.mockClear()

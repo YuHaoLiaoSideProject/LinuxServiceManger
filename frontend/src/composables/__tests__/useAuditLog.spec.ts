@@ -121,6 +121,66 @@ describe('useAuditLog', () => {
     expect(error.value).toContain('failed to query audit log')
   })
 
+  it('F-AV-FETCH-04: 較晚回應的舊請求不得覆蓋較新結果（out-of-order 防護）', async () => {
+    // 兩個 pending promise，由測試自行控制回應順序
+    const resolvers: Array<(v: { data: unknown }) => void> = []
+    mockGet.mockImplementation(() => new Promise((resolve) => { resolvers.push(resolve) }))
+
+    const { search, entries, total, loading, fetchAuditLog } = useAuditLog()
+
+    // 請求 1（舊）：search=ngi
+    search.value = 'ngi'
+    const p1 = fetchAuditLog(1)
+    // 請求 2（新）：search=nginx（搜尋框在請求進行中仍可輸入）
+    search.value = 'nginx'
+    const p2 = fetchAuditLog(1)
+
+    // 兩個請求都真的送出了
+    expect(mockGet).toHaveBeenCalledTimes(2)
+    expect(mockGet.mock.calls[0][1].params.search).toBe('ngi')
+    expect(mockGet.mock.calls[1][1].params.search).toBe('nginx')
+
+    // 新請求先回應（total=1）→ 套用
+    resolvers[1]({ data: makeQueryResult({ data: [makeEntry({ target: 'nginx.service' })], total: 1 }) })
+    await p2
+    expect(total.value).toBe(1)
+    expect(entries.value).toHaveLength(1)
+
+    // 舊請求較晚回應（total=99）→ 必須被忽略，不得覆蓋新結果
+    resolvers[0]({ data: makeQueryResult({ data: [makeEntry({ target: 'stale' })], total: 99 }) })
+    await p1
+    expect(total.value).toBe(1)
+    expect(entries.value).toHaveLength(1)
+    expect(entries.value[0].target).toBe('nginx.service')
+    expect(loading.value).toBe(false)
+  })
+
+  it('F-AV-FETCH-05: 較舊請求失敗也不影響較新請求的結果', async () => {
+    const resolvers: Array<(err: Error | null, data?: unknown) => void> = []
+    mockGet.mockImplementation(() => new Promise((resolve, reject) => {
+      resolvers.push((err, data) => (err ? reject(err) : resolve(data)))
+    }))
+
+    const { entries, total, error, loading, fetchAuditLog } = useAuditLog()
+
+    const p1 = fetchAuditLog(1)
+    const p2 = fetchAuditLog(1)
+
+    // 新請求先成功
+    resolvers[1](null, { data: makeQueryResult({ data: [makeEntry()], total: 2 }) })
+    await p2
+    expect(total.value).toBe(2)
+    expect(error.value).toBeNull()
+
+    // 舊請求後失敗 → 不得污染較新請求的狀態
+    resolvers[0](new Error('Network Error'))
+    await p1
+    expect(total.value).toBe(2)
+    expect(entries.value).toHaveLength(1)
+    expect(error.value).toBeNull()
+    expect(loading.value).toBe(false)
+  })
+
   // -- Pagination ---------------------------------------------------------
 
   it('F-AV-PAGE-01: goToPage(2) → fetch 第二頁', async () => {

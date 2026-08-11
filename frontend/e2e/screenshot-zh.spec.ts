@@ -10,7 +10,7 @@ test('擷取繁體中文介面截圖', async ({ page }) => {
   await page.waitForTimeout(500)
 
   // Verify Chinese headers
-  await expect(page.locator('.stats-bar')).toContainText('總服務數')
+  await expect(page.locator('.stats-bar')).toContainText('全部')
 
   // Screenshot
   await page.screenshot({ path: 'e2e/screenshots/lms-zh-tw.png', fullPage: true })

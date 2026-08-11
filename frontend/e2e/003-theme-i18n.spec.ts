@@ -18,7 +18,7 @@ test.describe('語言切換 zh-TW ↔ en', () => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
-    await expect(page.locator('.stats-bar')).toContainText('Total Services')
+    await expect(page.locator('.stats-bar')).toContainText('All')
     await expect(page.locator('.stats-bar')).toContainText('Running')
 
     const searchInput = page.locator('.search-wrap input[type="search"]')
@@ -35,7 +35,7 @@ test.describe('語言切換 zh-TW ↔ en', () => {
     // Click language toggle (🌐 button)
     await toggleLang(page)
 
-    await expect(page.locator('.stats-bar')).toContainText('總服務數')
+    await expect(page.locator('.stats-bar')).toContainText('全部')
     await expect(page.locator('.stats-bar')).toContainText('執行中')
 
     const searchInput = page.locator('.search-wrap input[type="search"]')
@@ -51,11 +51,11 @@ test.describe('語言切換 zh-TW ↔ en', () => {
 
     // en → zh-TW
     await toggleLang(page)
-    await expect(page.locator('.stats-bar')).toContainText('總服務數')
+    await expect(page.locator('.stats-bar')).toContainText('全部')
 
     // zh-TW → en
     await toggleLang(page)
-    await expect(page.locator('.stats-bar')).toContainText('Total Services')
+    await expect(page.locator('.stats-bar')).toContainText('All')
   })
 
   test('登入頁支援預設英文，登入後切換中文可看到語言改變', async ({ page }) => {
@@ -78,11 +78,11 @@ test.describe('語言切換 zh-TW ↔ en', () => {
     await page.waitForSelector('.app-header')
 
     // Dashboard shows English
-    await expect(page.locator('.stats-bar')).toContainText('Total Services')
+    await expect(page.locator('.stats-bar')).toContainText('All')
 
     // Switch to Chinese from dashboard
     await toggleLang(page)
-    await expect(page.locator('.stats-bar')).toContainText('總服務數')
+    await expect(page.locator('.stats-bar')).toContainText('全部')
   })
 })
 
@@ -153,7 +153,7 @@ test.describe('偏好持久化 (localStorage)', () => {
 
     // Switch to zh-TW
     await toggleLang(page)
-    await expect(page.locator('.stats-bar')).toContainText('總服務數')
+    await expect(page.locator('.stats-bar')).toContainText('全部')
 
     // Reload — session mock uses dynamic state, survives reload
     await page.reload()
@@ -161,7 +161,7 @@ test.describe('偏好持久化 (localStorage)', () => {
     await page.waitForSelector('.app-header')
 
     // Should still be in zh-TW (loaded from localStorage)
-    await expect(page.locator('.stats-bar')).toContainText('總服務數')
+    await expect(page.locator('.stats-bar')).toContainText('全部')
   })
 
   test('重新整理後主題偏好應維持', async ({ page }) => {

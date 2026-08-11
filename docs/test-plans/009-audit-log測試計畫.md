@@ -103,6 +103,9 @@
 | F-AV-25 | 時間欄位格式化 | mock 紀錄 timestamp="2025-08-09T14:30:00Z" | mount + await API response | 表格顯示「2025-08-09 14:30:00」 |
 | F-AV-26 | target 為空時顯示 "-" | mock 紀錄 target=""（登入/登出） | mount + await API response | 目標欄位顯示「-」 |
 | F-AV-27 | 搜尋結果計數顯示 | mock API 回傳 total=15（搜尋結果） | 輸入搜尋 "nginx" 並等待 | 顯示「找到 15 筆紀錄」 |
+| F-AV-28 | loading 中且有既有資料時表格保持顯示（bug 回歸） | 已有 entries，loading=true（搜尋/重新整理中） | mount AuditLogView | 表格仍顯示、不顯示全區 spinner（畫面不閃爍） |
+| F-AV-29 | 較晚回應的舊請求不覆蓋新結果（race 防護） | 兩個 fetch 同時進行，新請求先回應 | 手動控制兩個 promise 的回應順序 | 舊請求（較晚回應）被忽略，total/entries 保持新請求的結果 |
+| F-AV-30 | 較舊請求失敗不影響較新請求 | 兩個 fetch 同時進行，新請求成功、舊請求後失敗 | 手動控制回應/失敗順序 | error 不被舊請求污染，結果保持新請求狀態 |
 
 ### 3.2 Header 導覽連結
 
@@ -137,6 +140,9 @@
 | E2E-17 | 搜尋無匹配結果 | 1. 進入 Audit Log 頁面<br>2. 搜尋 "xyz123nonexistent" | 1. 表格顯示「沒有符合條件的紀錄」<br>2. 顯示「清除過濾」連結<br>3. 點擊連結後恢復全部紀錄 |
 | E2E-18 | API 錯誤顯示重試 | 1. 模擬 audit API 故障<br>2. 進入 Audit Log 頁面 | 1. 顯示錯誤訊息<br>2. 顯示「重試」按鈕<br>3. 點擊後重新嘗試載入 |
 | E2E-19 | 搜尋 + 日期 + 翻頁組合 | 1. 搜尋 "nginx"<br>2. 設定日期範圍<br>3. 翻到第 2 頁 | 翻頁請求保留 search 和 from/to 參數 |
+| E2E-20 | 搜尋輸入到一半暫停可繼續輸入（bug 回歸） | 1. 進入 Audit Log 頁面<br>2. 搜尋框輸入 "ngi" 並暫停（debounce 觸發 API，延遲回應）<br>3. API 進行中不重新點擊，直接繼續輸入 "nx" | 1. API 進行中搜尋框保持 enabled＋保有焦點＋值不變<br>2. 繼續輸入後值變成 "nginx"，並發送 search=nginx 請求<br>3. 表格更新為 "nginx" 結果、條件列顯示匹配筆數 |
+| E2E-21 | API 進行中表格不閃爍（bug 回歸） | 1. 進入 Audit Log 頁面<br>2. 輸入搜尋關鍵字（mock 延遲回應）<br>3. 在 loading 期間檢查畫面 | 1. loading 期間表格仍在 DOM 且可見<br>2. 不被全區 spinner 取代（畫面不閃爍） |
+| E2E-22 | 較晚回應的舊請求不覆蓋新結果（race 防護） | 1. 進入 Audit Log 頁面<br>2. 輸入 "ngi"（mock 延遲 1200ms 回應）<br>3. 請求進行中繼續輸入 "nx"（mock 50ms 回應）<br>4. 等舊請求回應 | 1. 新請求結果先套用<br>2. 舊請求較晚回應時被忽略，表格仍是新結果 |
 
 ---
 
@@ -190,6 +196,8 @@
 | 無任何操作紀錄時顯示空狀態 | E2E-02, F-AV-05 | E2E + Frontend |
 | 瀏覽稽核紀錄表格 | E2E-03, F-AV-03, F-AV-04 | E2E + Frontend |
 | 搜尋稽核紀錄 | E2E-04, F-AV-08~11 | E2E + Frontend |
+| 搜尋輸入到一半暫停可繼續輸入、畫面不閃爍（回歸） | E2E-20, E2E-21, F-AV-28 | E2E + Frontend |
+| 較晚回應的舊請求不覆蓋新結果（回歸） | E2E-22, F-AV-29, F-AV-30 | E2E + Frontend |
 | 日期範圍篩選 | E2E-05, F-AV-12, F-AV-13 | E2E + Frontend |
 | 翻頁瀏覽稽核紀錄 | E2E-06, F-AV-14~19 | E2E + Frontend |
 | 匯出 CSV | E2E-07, F-AV-21 | E2E + Frontend |
@@ -212,4 +220,4 @@
 | 超過保留期限的紀錄自動清理 | MAN-03, SYS-20, SYS-21 | Manual + Backend |
 | JSON Lines 檔案達 100MB 上限 | MAN-04, SYS-22 | Manual + Backend |
 
-> **覆蓋率總結**：26 個 BDD Scenario 全部覆蓋，測試案例總數：Backend 37 個 + Frontend 30 個 + E2E 19 個 + Manual 7 個 = **93 個測試案例**。
+> **覆蓋率總結**：29 個 BDD Scenario 全部覆蓋，測試案例總數：Backend 37 個 + Frontend 32 個 + E2E 22 個 + Manual 7 個 = **98 個測試案例**。

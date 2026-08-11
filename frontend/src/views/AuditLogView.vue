@@ -154,8 +154,6 @@ function pageNumbers(): number[] {
       @logout="handleLogout"
     />
 
-    <h2>{{ t('audit.title') }}</h2>
-
     <!-- Toolbar（規格：docs/uiux/013-toolbar-audit-design.html） -->
     <div class="audit-toolbar">
       <div class="tb-row1">
@@ -171,7 +169,6 @@ function pageNumbers(): number[] {
             :value="search"
             :placeholder="t('audit.searchPlaceholder')"
             :aria-label="t('audit.searchPlaceholder')"
-            :disabled="loading"
             autocomplete="off"
             @input="handleSearchInput"
           />
@@ -189,7 +186,6 @@ function pageNumbers(): number[] {
         <DateRangeGroup
           v-model:from="dateFrom"
           v-model:to="dateTo"
-          :disabled="loading"
           :invalid="dateInvalid"
           :from-label="t('audit.dateFrom')"
           :to-label="t('audit.dateTo')"
@@ -248,8 +244,9 @@ function pageNumbers(): number[] {
       </div>
     </div>
 
-    <!-- Loading -->
-    <div v-if="loading" class="empty-state">
+    <!-- Loading：只在「沒有既有資料可顯示」時整區顯示 spinner（首次載入）；
+         搜尋/重新整理/翻頁時保留表格，避免畫面閃爍 -->
+    <div v-if="loading && entries.length === 0" class="empty-state">
       <div class="spinner-sm"></div>
     </div>
 

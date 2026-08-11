@@ -44,6 +44,24 @@ Feature: 稽核操作紀錄
     And 搜尋框下方顯示「找到 N 筆紀錄」
     And 分頁重設為第 1 頁
 
+  @regression @p1
+  Scenario: 搜尋輸入到一半暫停時畫面不閃爍、可繼續輸入（bug 回歸）
+    Given Audit Log 頁面已載入多筆紀錄
+    When 管理員在搜尋框輸入 "ngi" 後暫停，debounce 觸發 API 請求
+    And 管理員在 API 請求進行中繼續輸入 "nx"
+    Then 搜尋框保持可用、保有焦點，值變成 "nginx"
+    And 畫面不閃爍（表格維持顯示，不被 spinner 取代）
+    And 發送 GET /api/v1/audit?search=nginx&page=1&limit=50
+    And 表格更新為 "nginx" 的搜尋結果
+
+  @regression @p1
+  Scenario: 快速連續輸入時較晚回應的舊請求不得覆蓋新結果
+    Given Audit Log 頁面已載入多筆紀錄
+    When 管理員在舊請求（search=ngi）回應前繼續輸入並送出新請求（search=nginx）
+    And 舊請求的回應比新請求晚到達
+    Then 表格顯示的是 search=nginx 的結果
+    And 較晚回應的舊請求被忽略，不覆蓋新結果
+
   @happy-path
   Scenario: 日期範圍篩選
     Given Audit Log 頁面已載入多筆紀錄

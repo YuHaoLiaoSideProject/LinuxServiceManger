@@ -194,6 +194,46 @@ func TestQuerySearch(t *testing.T) {
 }
 
 // ============================================================
+//  TestQuerySearchLocalizedLabels
+// ============================================================
+
+// Search must also match the localized display labels shown in the UI
+// (e.g. "登入" for login) — regression test for the bug where searching
+// the visible action text returned no records.
+func TestQuerySearchLocalizedLabels(t *testing.T) {
+	path := tempFilePath(t)
+	m := New(Config{FilePath: path, WriteBufSize: 10})
+	defer m.Shutdown()
+
+	now := time.Now().UTC()
+	m.Write(Entry{Timestamp: now.Format(time.RFC3339), Username: "admin", SourceIP: "10.0.0.1", Action: ActionLogin, Target: "-", Result: ResultSuccess})
+	m.Write(Entry{Timestamp: now.Format(time.RFC3339), Username: "admin", SourceIP: "10.0.0.1", Action: ActionLogout, Target: "-", Result: ResultSuccess})
+	m.Write(Entry{Timestamp: now.Format(time.RFC3339), Username: "operator", SourceIP: "10.0.0.2", Action: ActionStart, Target: "nginx.service", Result: ResultSuccess})
+	m.Shutdown()
+
+	cases := []struct {
+		search string
+		want   int
+	}{
+		{"登入", 1},
+		{"登出", 1},
+		{"登", 2},
+		{"啟動", 1},
+		{"login", 1}, // raw action value still matches
+		{"STOP", 0},
+	}
+	for _, c := range cases {
+		res, err := m.Query(QueryParams{Page: 1, Limit: 10, Search: c.search})
+		if err != nil {
+			t.Fatalf("query error for %q: %v", c.search, err)
+		}
+		if res.Total != c.want {
+			t.Errorf("search %q: expected %d, got %d", c.search, c.want, res.Total)
+		}
+	}
+}
+
+// ============================================================
 //  TestQueryDateRange
 // ============================================================
 

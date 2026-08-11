@@ -249,6 +249,57 @@ func TestHandleAuditQuery_SearchNoResults(t *testing.T) {
 }
 
 // ============================================================
+//  TEST: GET /api/v1/audit — search by localized action label
+// ============================================================
+
+// Regression test: the UI renders localized action labels (e.g. "登入" for
+// login), so searching for the visible text must return the matching entries.
+func TestHandleAuditQuery_SearchLocalizedAction(t *testing.T) {
+	origUser, origPass := auth.AdminUser, auth.AdminPass
+	auth.AdminUser, auth.AdminPass = "admin", "pass"
+	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
+
+	auditMod := newTestAuditModule(t)
+	entry, err := audit.NewEntry("admin", "10.0.0.1", audit.ActionLogin, "-", audit.ResultSuccess, "")
+	if err != nil {
+		t.Fatalf("NewEntry: %v", err)
+	}
+	entry.Timestamp = "2025-08-05T10:00:00Z"
+	auditMod.Write(entry)
+
+	entry2, _ := audit.NewEntry("admin", "10.0.0.1", audit.ActionStart, "nginx.service", audit.ResultSuccess, "")
+	entry2.Timestamp = "2025-08-06T10:00:00Z"
+	auditMod.Write(entry2)
+	auditMod.Shutdown()
+
+	mock := &mockSystemd{services: sampleServices()}
+	h := New(nil, mock, auditMod)
+	router := setupTestRouterWithAudit(h)
+
+	cookie := loginAndGetCookie(t, router, "admin", "pass")
+
+	// 中文「登入」應命中 action=login 的紀錄
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/audit?search="+url.QueryEscape("登入"), nil)
+	req.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	body := assertJSON(t, w, http.StatusOK)
+	total, _ := body["total"].(float64)
+	if total != 1 {
+		t.Errorf("expected 1 login entry for search 登入, got total=%v", total)
+	}
+	data, ok := body["data"].([]interface{})
+	if !ok || len(data) != 1 {
+		t.Fatalf("expected 1 data entry, got %#v", body["data"])
+	}
+	first := data[0].(map[string]interface{})
+	if first["action"] != "login" {
+		t.Errorf("expected action login, got %v", first["action"])
+	}
+}
+
+// ============================================================
 //  TEST: GET /api/v1/audit — date range filter
 // ============================================================
 

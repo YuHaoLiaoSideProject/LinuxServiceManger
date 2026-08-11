@@ -42,6 +42,21 @@ var validActions = map[Action]bool{
 	ActionDisable: true,
 }
 
+// actionDisplayLabels maps each audit action to its localized display label
+// (matching the frontend's zh-TW translations in useI18n.ts). The UI renders
+// these labels in the Action column, so search must match against them as well
+// as the raw action value — otherwise searching for the text users actually
+// see (e.g. "登入") returns no records.
+var actionDisplayLabels = map[Action]string{
+	ActionLogin:   "登入",
+	ActionLogout:  "登出",
+	ActionStart:   "啟動",
+	ActionStop:    "停止",
+	ActionRestart: "重啟",
+	ActionEnable:  "啟用",
+	ActionDisable: "停用",
+}
+
 // Result represents the outcome of an audited operation.
 type Result string
 
@@ -307,12 +322,18 @@ func (m *Module) scanAndFilter(params QueryParams) ([]Entry, error) {
 			continue
 		}
 
-		// Apply search filter (case-insensitive on username/action/target)
+		// Apply search filter (case-insensitive on username/action/target).
+		// The action is also matched against its localized display label so
+		// users can search for the text they see in the UI (e.g. "登入").
 		if params.Search != "" {
 			search := strings.ToLower(params.Search)
-			if !strings.Contains(strings.ToLower(e.Username), search) &&
-				!strings.Contains(strings.ToLower(string(e.Action)), search) &&
-				!strings.Contains(strings.ToLower(e.Target), search) {
+			haystack := strings.ToLower(e.Username) + " " +
+				strings.ToLower(string(e.Action)) + " " +
+				strings.ToLower(e.Target)
+			if label, ok := actionDisplayLabels[e.Action]; ok {
+				haystack += " " + strings.ToLower(label)
+			}
+			if !strings.Contains(haystack, search) {
 				continue
 			}
 		}

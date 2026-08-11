@@ -68,6 +68,11 @@ async function setupAuditMocks(page: any, auditData = AUDIT_ENTRIES) {
 
     if (search === 'nginx') {
       response = { ...AUDIT_SEARCH_NGINX }
+    } else if (search === '登入') {
+      // 模擬後端行為：動作「login」也會比對本地化標籤「登入」
+      // （見 src/internal/audit/audit.go 的 actionDisplayLabels）
+      const filtered = auditData.data.filter((e: any) => e.action === 'login')
+      response = { ...auditData, data: filtered, total: filtered.length }
     } else if (search === 'nonexistent123') {
       response = { ...AUDIT_SEARCH_NONE }
     }
@@ -112,8 +117,8 @@ function auditTable(page: any) { return page.locator('main.app-container .table-
 function auditRows(page: any) { return page.locator('main.app-container tbody tr') }
 function searchInput(page: any) { return page.locator('.search-box input') }
 function dateInputs(page: any) { return page.locator('.daterange input') }
-function condRow(page: any) { return page.locator('.audit-toolbar .cond-row') }
 function exportBtn(page: any) { return page.locator('.btn-export') }
+function condRow(page: any) { return page.locator('.audit-toolbar .cond-row') }
 function pagination(page: any) { return page.locator('.pagination') }
 function pageInfo(page: any) { return page.locator('.page-info') }
 function spinner(page: any) { return page.locator('.spinner-sm') }
@@ -246,6 +251,54 @@ test.describe('E2E-04: 搜尋稽核紀錄', () => {
 
     // Should be back to full list
     await expect(auditRows(page)).toHaveCount(5)
+  })
+
+  test('搜尋「登入」（動作顯示文字）→ 必須顯示登入紀錄（bug 回歸）', async ({ page }) => {
+    // 重現使用者情境：中文介面動作欄顯示「登入」，搜尋框輸入「登入」
+    await page.addInitScript(() => localStorage.setItem('lms-lang', 'zh-TW'))
+    await setupApiMocks(page, { authenticated: true })
+    await setupAuditMocks(page)
+    await gotoDashboard(page)
+
+    await auditLink(page).click()
+    await page.waitForURL('**/audit')
+    // 初始載入 5 筆，其中 1 筆是 action=login
+    await expect(auditRows(page)).toHaveCount(5)
+
+    // 送出「登入」搜尋（後端比對本地化動作標籤，模擬修正後行為）
+    const searchResp = page.waitForResponse((resp) => {
+      const u = new URL(resp.url())
+      return u.pathname.includes('/api/v1/audit') && u.searchParams.get('search') === '登入'
+    })
+    await searchInput(page).fill('登入')
+    await searchResp
+
+    // 必須顯示資料，而不是「沒有符合條件的紀錄」
+    await expect(auditRows(page)).toHaveCount(1)
+    await expect(page.locator('main.app-container')).not.toContainText('沒有符合條件的紀錄')
+    // 動作欄確實是「登入」紀錄
+    await expect(auditRows(page).first()).toContainText('登入')
+    // 條件回饋列「符合 1 筆記錄」
+    await expect(condRow(page)).toContainText('1')
+  })
+
+  test('搜尋「登入」但沒有登入紀錄 → 仍顯示「沒有符合條件的紀錄」', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('lms-lang', 'zh-TW'))
+    await setupApiMocks(page, { authenticated: true })
+    // 沒有任何 audit 資料（無 login 紀錄）
+    await setupAuditMocks(page, AUDIT_EMPTY)
+    await gotoDashboard(page)
+
+    await auditLink(page).click()
+    await page.waitForURL('**/audit')
+
+    await searchInput(page).fill('登入')
+    await page.waitForTimeout(500)
+
+    // 真的沒有登入紀錄時，空狀態訊息仍要正確顯示
+    await expect(auditRows(page)).toHaveCount(0)
+    await expect(page.locator('main.app-container')).toContainText('沒有符合條件的紀錄')
+    await expect(clearLink(page)).toBeVisible()
   })
 
   test('搜尋不存在的資料 → 請求帶 search 參數、條件列 0 筆、✕ 清除可恢復', async ({ page }) => {

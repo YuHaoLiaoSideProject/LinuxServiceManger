@@ -263,8 +263,15 @@ func (m *Module) Query(params QueryParams) (QueryResult, error) {
 		end = len(entries)
 	}
 
+	// Never return a nil slice: encoding/json marshals nil as `null`,
+	// which the frontend treats as an API error (see frontend AuditLogView).
+	pageEntries := entries[start:end]
+	if pageEntries == nil {
+		pageEntries = []Entry{}
+	}
+
 	return QueryResult{
-		Entries: entries[start:end],
+		Entries: pageEntries,
 		Total:   total,
 		Page:    params.Page,
 		Limit:   params.Limit,
@@ -283,7 +290,7 @@ func (m *Module) scanAndFilter(params QueryParams) ([]Entry, error) {
 	}
 	defer f.Close()
 
-	var entries []Entry
+	entries := []Entry{}
 	scanner := bufio.NewScanner(f)
 	// Allow large lines (up to 1 MB)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)

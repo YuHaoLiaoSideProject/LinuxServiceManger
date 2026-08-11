@@ -551,6 +551,287 @@ body {
   display: inline-block;
 }
 
+/* ============================================================
+   Audit toolbar（docs/uiux/013-toolbar-audit-design.html）
+   ── 與 Dashboard 共用 token：36/44px、radius-sm、3px focus ring
+   列一：搜尋(icon+✕) → 日期群組(單外框) → [匯出=accent][重新整理=secondary]
+   列二（有條件時）：✓ 符合 N 筆 + ✕ 清除條件
+   ============================================================ */
+.audit-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--lms-border);
+  margin-bottom: 1rem;
+}
+.audit-toolbar .tb-row1 {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* token：群組間 8px */
+  flex-wrap: wrap;
+}
+
+/* ── 搜尋框（flex 伸縮，min 220 / max 420，與 Dashboard 相同規格）── */
+.audit-toolbar .search-box {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  max-width: 420px;
+}
+.audit-toolbar .search-box input {
+  width: 100%;
+  height: var(--lms-h);
+  margin-bottom: 0;
+  padding: 0 2.3rem 0 2.3rem;
+  border: 1px solid var(--lms-border);
+  border-radius: var(--lms-radius-sm);
+  background: var(--lms-surface);
+  color: var(--lms-text);
+  font-size: 14px;
+  transition: border-color var(--lms-transition), box-shadow var(--lms-transition);
+}
+.audit-toolbar .search-box input:focus {
+  border-color: var(--lms-accent);
+  box-shadow: 0 0 0 3px var(--lms-accent-light);
+  outline: none;
+}
+.audit-toolbar .search-box input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* 隱藏瀏覽器原生 search 的清除按鈕（改用自製 ✕） */
+.audit-toolbar .search-box input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+.audit-toolbar .search-icon {
+  position: absolute;
+  left: 0.7rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--lms-muted);
+  pointer-events: none;
+  display: flex;
+}
+.audit-toolbar .search-clear {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--lms-muted);
+  line-height: 1;
+  transition: color var(--lms-transition), background var(--lms-transition);
+}
+.audit-toolbar .search-box.has-value .search-clear {
+  display: flex;
+}
+.audit-toolbar .search-clear:hover {
+  color: var(--lms-text);
+  background: var(--lms-border);
+}
+.audit-toolbar .search-clear:focus-visible {
+  outline: 2px solid var(--lms-accent);
+  outline-offset: 2px;
+}
+
+/* ── 日期範圍群組（單一外框 + focus-within 光圈 + invalid 紅框）── */
+.audit-toolbar .daterange {
+  display: inline-flex;
+  align-items: center;
+  height: var(--lms-h);
+  border: 1px solid var(--lms-border);
+  border-radius: var(--lms-radius-sm);
+  background: var(--lms-surface);
+  overflow: hidden;
+  transition: border-color var(--lms-transition), box-shadow var(--lms-transition);
+}
+.audit-toolbar .daterange:focus-within {
+  border-color: var(--lms-accent);
+  box-shadow: 0 0 0 3px var(--lms-accent-light);
+}
+.audit-toolbar .daterange.invalid {
+  border-color: var(--lms-danger);
+  box-shadow: 0 0 0 3px rgba(197, 34, 31, 0.12);
+}
+.audit-toolbar .daterange input {
+  /* 不能用固定 width：Android Chrome 上固定寬度的 date input 點擊不會跳出
+     picker（會變成文字輸入）。改用 auto + min-width 保留版面寬度。 */
+  width: auto;
+  min-width: 110px;
+  height: 100%;
+  margin-bottom: 0; /* 覆寫 Pico input 預設 margin */
+  border: none;
+  background: transparent;
+  color: var(--lms-text);
+  font-size: 13px;
+  padding: 0 1.75rem 0 0.4rem; /* 右側預留原生行事曆圖示空間 */
+  font-family: var(--lms-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  /* 恢復原生 date 控制外觀：Pico 設了 appearance:none，iOS/Android 上
+     點擊不會跳出日期選擇器（只會聚焦/開鍵盤） */
+  -webkit-appearance: auto;
+  appearance: auto;
+}
+.audit-toolbar .daterange input:focus {
+  outline: none;
+  box-shadow: none; /* 覆寫 Pico input focus glow，只保留群組外框光圈 */
+}
+.audit-toolbar .daterange input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* 原生行事曆圖示：Pico v2 用 opacity:0 藏掉它並自繪 icon（background-image），
+   但 app 又把背景設為 transparent 把那個 icon 也弄掉了 → 完全看不到、
+   也難以觸發日期選擇器。這裡改回顯示原生 indicator。 */
+.audit-toolbar .daterange input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  margin-left: 8px;
+  cursor: pointer;
+}
+.audit-toolbar .daterange .sep {
+  color: var(--lms-muted);
+  font-size: 0.75rem;
+  padding: 0 0.15rem;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+/* ── 動作按鈕：匯出 = Primary（accent）、重新整理 = Secondary ── */
+.audit-toolbar .actions-row {
+  display: flex;
+  gap: 8px;
+}
+.audit-toolbar .btn-export,
+.audit-toolbar .btn-refresh {
+  height: var(--lms-h);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.9rem;
+  border-radius: var(--lms-radius-sm);
+  font-size: 14px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--lms-transition);
+  white-space: nowrap;
+  font-weight: 500;
+}
+.audit-toolbar .btn-export {
+  background: var(--lms-accent);
+  border-color: var(--lms-accent);
+  color: #fff;
+}
+.audit-toolbar .btn-export:hover:not(:disabled) {
+  background: var(--lms-accent-hover);
+}
+.audit-toolbar .btn-refresh {
+  background: var(--lms-surface-2);
+  border-color: var(--lms-border);
+  color: var(--lms-text);
+}
+.audit-toolbar .btn-refresh:hover:not(:disabled) {
+  background: var(--lms-surface);
+  border-color: var(--lms-muted);
+}
+.audit-toolbar .btn-export:disabled,
+.audit-toolbar .btn-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.audit-toolbar .btn-export:focus-visible,
+.audit-toolbar .btn-refresh:focus-visible {
+  outline: 2px solid var(--lms-accent);
+  outline-offset: 2px;
+}
+/* 匯出 = 白 spinner；重新整理 = muted spinner */
+.audit-toolbar .btn-export .spin,
+.audit-toolbar .btn-refresh .spin {
+  display: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.audit-toolbar .btn-export.loading .spin,
+.audit-toolbar .btn-refresh.loading .spin {
+  display: inline-block;
+}
+.audit-toolbar .btn-refresh .spin {
+  border-color: var(--lms-muted);
+  border-top-color: transparent;
+}
+
+/* ── 條件回饋列：✓ 符合 N 筆 + ✕ 清除條件 ── */
+.audit-toolbar .cond-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--lms-muted);
+  min-height: 22px;
+}
+.audit-toolbar .cond-row .cond-check {
+  color: var(--lms-success);
+  font-weight: 700;
+}
+.audit-toolbar .cond-row b {
+  color: var(--lms-accent);
+  font-weight: 700;
+}
+.audit-toolbar .cond-row .link-btn {
+  height: auto;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--lms-muted);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  text-decoration: underline;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.audit-toolbar .cond-row .link-btn:hover {
+  color: var(--lms-accent);
+}
+.audit-toolbar .cond-row .link-btn:focus-visible {
+  outline: 2px solid var(--lms-accent);
+  outline-offset: 2px;
+}
+
+/* ── EmptyState 內「清除條件」捷徑 ── */
+.empty-state .clear-link {
+  display: inline-block;
+  margin-top: 0.75rem;
+  color: var(--lms-accent);
+  text-decoration: none;
+  font-size: 0.9rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--lms-radius-sm);
+}
+.empty-state .clear-link:hover {
+  text-decoration: underline;
+}
+.empty-state .clear-link:focus-visible {
+  outline: 2px solid var(--lms-accent);
+  outline-offset: 2px;
+}
+
 /* ── Empty state button ── */
 .empty-state .btn {
   margin-top: 0.75rem;
@@ -1035,6 +1316,10 @@ tbody tr:last-child td {
 [data-theme="dark"] .toolbar .search-wrap input:focus {
   box-shadow: 0 0 0 3px rgba(138,180,248,0.2);
 }
+[data-theme="dark"] .audit-toolbar .search-box input:focus,
+[data-theme="dark"] .audit-toolbar .daterange:focus-within {
+  box-shadow: 0 0 0 3px rgba(138,180,248,0.2);
+}
 [data-theme="dark"] .table-wrapper table tr:hover {
   background: rgba(138,180,248,0.06);
 }
@@ -1066,6 +1351,10 @@ tbody tr:last-child td {
   }
   .toolbar .search-wrap {
     flex: 1;
+    max-width: none;
+  }
+  /* Audit toolbar：搜尋改全寬，讓日期群組與按鈕留在同一列 */
+  .audit-toolbar .search-box {
     max-width: none;
   }
 }
@@ -1166,6 +1455,46 @@ tbody tr:last-child td {
     height: var(--lms-h-mobile);
     justify-content: center;
     font-size: 14px;
+  }
+
+  /* ── Audit toolbar：搜尋全寬 44px → 日期群組全寬（兩欄等分）→ 動作並排 → 條件列置底 ── */
+  .audit-toolbar .tb-row1 {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .audit-toolbar .search-box {
+    max-width: none;
+  }
+  .audit-toolbar .search-box input {
+    height: var(--lms-h-mobile);
+    font-size: 16px; /* ≥16px 避免 iOS focus 自動放大 */
+  }
+  .audit-toolbar .daterange {
+    display: flex;
+    width: 100%;
+    height: var(--lms-h-mobile);
+  }
+  .audit-toolbar .daterange input {
+    flex: 1;
+    width: auto;
+    font-size: 14px;
+  }
+  .audit-toolbar .actions-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    width: 100%;
+  }
+  .audit-toolbar .btn-export,
+  .audit-toolbar .btn-refresh {
+    height: var(--lms-h-mobile);
+    justify-content: center;
+    font-size: 14px;
+  }
+  .audit-toolbar .cond-row {
+    font-size: 0.8125rem;
+    padding: 0.1rem 0;
   }
 
   /* ── Table → Card conversion ── */

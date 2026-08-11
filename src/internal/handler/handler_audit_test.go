@@ -237,6 +237,15 @@ func TestHandleAuditQuery_SearchNoResults(t *testing.T) {
 	if total != 0 {
 		t.Errorf("expected total=0 for no-match search, got %v", total)
 	}
+	// data must serialize as [] (not null): a nil slice would break the
+	// frontend's entries.length check (see frontend AuditLogView search).
+	data, ok := body["data"].([]interface{})
+	if !ok {
+		t.Fatalf("expected data to be an array for no-match search, got %#v", body["data"])
+	}
+	if len(data) != 0 {
+		t.Errorf("expected empty data array for no-match search, got %d entries", len(data))
+	}
 }
 
 // ============================================================

@@ -111,7 +111,8 @@ function auditLink(page: any) { return page.locator('[data-testid="nav-audit"]')
 function auditTable(page: any) { return page.locator('main.app-container .table-wrapper table') }
 function auditRows(page: any) { return page.locator('main.app-container tbody tr') }
 function searchInput(page: any) { return page.locator('.search-box input') }
-function dateInputs(page: any) { return page.locator('.date-range input[type="date"]') }
+function dateInputs(page: any) { return page.locator('.daterange input') }
+function condRow(page: any) { return page.locator('.audit-toolbar .cond-row') }
 function exportBtn(page: any) { return page.locator('.btn-export') }
 function pagination(page: any) { return page.locator('.pagination') }
 function pageInfo(page: any) { return page.locator('.page-info') }
@@ -206,8 +207,8 @@ test.describe('E2E-04: 搜尋稽核紀錄', () => {
     // Wait for debounce (300ms) + API call
     await page.waitForTimeout(500)
 
-    // Should show result count
-    await expect(page.locator('.search-result-count')).toContainText('3')
+    // Should show condition row with matched count
+    await expect(condRow(page)).toContainText('3')
 
     // Table should update to 3 rows
     await expect(auditRows(page)).toHaveCount(3)
@@ -245,6 +246,45 @@ test.describe('E2E-04: 搜尋稽核紀錄', () => {
 
     // Should be back to full list
     await expect(auditRows(page)).toHaveCount(5)
+  })
+
+  test('搜尋不存在的資料 → 請求帶 search 參數、條件列 0 筆、✕ 清除可恢復', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: true })
+    await setupAuditMocks(page)
+    await gotoDashboard(page)
+
+    await auditLink(page).click()
+    await page.waitForURL('**/audit')
+    await expect(auditRows(page)).toHaveCount(5)
+
+    // 1. 搜尋不存在的資料 → 等待 debounce 後送出帶 search 參數的請求
+    const searchResp = page.waitForResponse(
+      (resp) => resp.url().includes('/api/v1/audit') && resp.url().includes('search=nonexistent123'),
+    )
+    await searchInput(page).fill('nonexistent123')
+    await searchResp
+
+    // 2. 表格 0 筆 → EmptyState「沒有符合條件的紀錄」+ 清除條件捷徑
+    await expect(auditRows(page)).toHaveCount(0)
+    await expect(page.locator('main.app-container')).toContainText('No matching records')
+    await expect(clearLink(page)).toBeVisible()
+
+    // 3. 條件回饋列顯示「符合 0 筆記錄」
+    await expect(condRow(page)).toBeVisible()
+    await expect(condRow(page)).toContainText('0')
+
+    // 4. 搜尋框出現 ✕ clear
+    const clearBtn = page.locator('.search-clear')
+    await expect(clearBtn).toBeVisible()
+
+    // 5. 點 ✕ → 清空搜尋並恢復全部紀錄（請求不再帶 search 參數）、條件列消失
+    const resetResp = page.waitForResponse(
+      (resp) => resp.url().includes('/api/v1/audit') && !resp.url().includes('search='),
+    )
+    await clearBtn.click()
+    await resetResp
+    await expect(auditRows(page)).toHaveCount(5)
+    await expect(condRow(page)).not.toBeVisible()
   })
 })
 

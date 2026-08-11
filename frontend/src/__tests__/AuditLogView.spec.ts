@@ -42,17 +42,18 @@ const { mockT } = vi.hoisted(() => ({
   mockT: vi.fn((key: string, params?: Record<string, string>) => {
     const map: Record<string, string> = {
       'audit.title': '稽核紀錄',
-      'audit.searchPlaceholder': '搜尋使用者、動作、目標服務...',
+      'audit.searchPlaceholder': '搜尋操作者、動作、目標服務...',
       'audit.exportCsv': '匯出 CSV',
       'audit.exportSuccess': '稽核紀錄已匯出',
       'audit.exportFailed': '匯出失敗',
       'audit.pagination.prev': '上一頁',
       'audit.pagination.next': '下一頁',
       'audit.pagination.info': '第 {page} / {total} 頁，共 {count} 筆',
-      'audit.searchResultCount': '找到 {count} 筆紀錄',
+      'audit.matched.prefix': '符合',
+      'audit.matched.suffix': '筆記錄',
       'audit.noRecords': '尚無操作紀錄',
       'audit.noMatch': '沒有符合條件的紀錄',
-      'audit.clearFilters': '清除過濾',
+      'audit.clearFilters': '清除條件',
       'audit.retry': '重試',
       'audit.dateFrom': '開始日期',
       'audit.dateTo': '結束日期',
@@ -242,7 +243,7 @@ describe('AuditLogView — 稽核紀錄頁面', () => {
     const wrapper = mount(AuditLogView)
     expect(wrapper.text()).toContain('沒有符合條件的紀錄')
     expect(wrapper.find('.clear-link').exists()).toBe(true)
-    expect(wrapper.find('.clear-link').text()).toBe('清除過濾')
+    expect(wrapper.find('.clear-link').text()).toBe('清除條件')
   })
 
   it('F-AV-08: 點擊清除過濾 → 呼叫 clearFilters()', async () => {
@@ -273,25 +274,25 @@ describe('AuditLogView — 稽核紀錄頁面', () => {
     expect(mockOnSearchInput).toHaveBeenCalledWith('nginx')
   })
 
-  it('F-AV-11: search 有值 → 顯示「找到 N 筆紀錄」', () => {
+  it('F-AV-11: search 有值 → 條件回饋列顯示「符合 N 筆記錄」', () => {
     search.value = 'nginx'
     total.value = 15
     const wrapper = mount(AuditLogView)
-    expect(wrapper.find('.search-result-count').exists()).toBe(true)
-    expect(wrapper.find('.search-result-count').text()).toContain('15')
+    expect(wrapper.find('.cond-row').exists()).toBe(true)
+    expect(wrapper.find('.cond-row').text()).toContain('15')
   })
 
-  it('F-AV-12: search 為空 → 不顯示搜尋計數', () => {
+  it('F-AV-12: 無任何過濾條件 → 不顯示條件回饋列', () => {
     search.value = ''
     const wrapper = mount(AuditLogView)
-    expect(wrapper.find('.search-result-count').exists()).toBe(false)
+    expect(wrapper.find('.cond-row').exists()).toBe(false)
   })
 
   // -- Date Range --------------------------------------------------------
 
-  it('F-AV-13: dateFrom 變更 → v-model 綁定 + @change 呼叫 onDateRangeChange', async () => {
+  it('F-AV-13: dateFrom 變更 → v-model 綁定 + input 觸發 onDateRangeChange', async () => {
     const wrapper = mount(AuditLogView)
-    const dateInputs = wrapper.findAll('input[type="date"]')
+    const dateInputs = wrapper.findAll('.daterange input')
     expect(dateInputs).toHaveLength(2)
     await dateInputs[0].setValue('2025-08-01')
     expect(mockOnDateRangeChange).toHaveBeenCalled()
@@ -302,10 +303,9 @@ describe('AuditLogView — 稽核紀錄頁面', () => {
     dateTo.value = '2025-08-09'
     const wrapper = mount(AuditLogView)
     mockOnDateRangeChange.mockClear()
-    const dateInputs = wrapper.findAll('input[type="date"]')
+    const dateInputs = wrapper.findAll('.daterange input')
     // Clear the first date input
     await dateInputs[0].setValue('')
-    // handleDateChange is called, which reads current dateFrom/dateTo values
     expect(mockOnDateRangeChange).toHaveBeenCalled()
   })
 
@@ -451,7 +451,7 @@ describe('AuditLogView — 稽核紀錄頁面', () => {
     mockOnDateRangeChange.mockClear()
 
     // 先設定正常的開始日期（會觸發一次呼叫，合法）
-    const dateInputs = wrapper.findAll('input[type="date"]')
+    const dateInputs = wrapper.findAll('.daterange input')
     await dateInputs[0].setValue('2025-08-01')
     // Clear: 這步驟會因 dateTo 仍為空而觸發一次呼叫，這是預期行為
     mockOnDateRangeChange.mockClear()
@@ -495,7 +495,7 @@ describe('AuditLogView — 稽核紀錄頁面', () => {
 
   it('F-AV-A11Y-02: 日期輸入框應有 aria-label（非僅 title）', () => {
     const wrapper = mount(AuditLogView)
-    const dateInputs = wrapper.findAll('input[type="date"]')
+    const dateInputs = wrapper.findAll('.daterange input')
     dateInputs.forEach((input) => {
       expect(input.attributes('aria-label')).toBeTruthy()
     })

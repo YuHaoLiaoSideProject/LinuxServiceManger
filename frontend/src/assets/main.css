@@ -469,14 +469,14 @@ thead th {
   white-space: nowrap;
 }
 
-/* ── Fixed column widths ── */
+/* ── Fixed column widths (service table only) ── */
 .col-check { width: 5%; text-align: center; }
-th:nth-child(2) { width: 22%; }  /* Name */
-th:nth-child(3) { width: 9%; }   /* Load */
-th:nth-child(4) { width: 11%; }  /* Active */
-th:nth-child(5) { width: 9%; }   /* Sub */
-th:nth-child(6) { width: 15%; }  /* AutoStart */
-th:nth-child(7) { width: 29%; }  /* Actions */
+.service-table th:nth-child(2) { width: 22%; }  /* Name */
+.service-table th:nth-child(3) { width: 9%; }   /* Load */
+.service-table th:nth-child(4) { width: 11%; }  /* Active */
+.service-table th:nth-child(5) { width: 9%; }   /* Sub */
+.service-table th:nth-child(6) { width: 15%; }  /* AutoStart */
+.service-table th:nth-child(7) { width: 29%; }  /* Actions */
 
 /* ── Sortable headers ── */
 th.sortable {
@@ -512,7 +512,7 @@ tbody tr:hover {
 tbody tr:last-child td {
   border-bottom: none;
 }
-td[data-label="Name"] {
+.service-table td[data-label="Name"] {
   font-weight: 600;
   word-break: break-all;
 }
@@ -834,8 +834,8 @@ td[data-label="Name"] {
   .app-header-left h1 { font-size: 1.15rem; }
 
   /* Tablet column widths: more room for name, tighter actions */
-  th:nth-child(1) { width: 30%; }  /* Name */
-  th:nth-child(6) { width: 22%; }  /* Actions */
+  .service-table th:nth-child(2) { width: 30%; }  /* Name */
+  .service-table th:nth-child(7) { width: 22%; }  /* Actions */
 
   /* Grid columns equal width, force no content-based sizing */
   .actions { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
@@ -951,14 +951,14 @@ td[data-label="Name"] {
     display: none;
   }
 
-  /* Name row: prominent, no label */
-  .table-wrapper table td:nth-child(2) {
+  /* Name row: prominent, no label (service table only) */
+  .table-wrapper .service-table td:nth-child(2) {
     font-size: 1.125rem;
     font-weight: 700;
     word-break: break-all;
     padding-top: 0;
   }
-  .table-wrapper table td:nth-child(2)::before {
+  .table-wrapper .service-table td:nth-child(2)::before {
     display: none;
   }
 
@@ -1098,7 +1098,7 @@ td[data-label="Name"] {
   .table-wrapper table tr { padding: 0.85rem; margin-bottom: 0.85rem; }
   .table-wrapper table td { padding: 0.45rem 0; font-size: 0.9375rem; }
   .table-wrapper table td::before { font-size: 0.75rem; }
-  .table-wrapper table td:nth-child(2) { font-size: 1.0625rem; }
+  .table-wrapper .service-table td:nth-child(2) { font-size: 1.0625rem; }
   .actions button:first-of-type { font-size: 0.9375rem; min-height: 48px; }
   .actions button:not(:first-of-type) { min-height: 48px; min-width: 48px; font-size: 0.8125rem; }
   .status-dot { width: 12px; height: 12px; }

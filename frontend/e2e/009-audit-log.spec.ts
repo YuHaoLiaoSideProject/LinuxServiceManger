@@ -467,6 +467,36 @@ test.describe('UI/UX Audit: 行動版響應式設計', () => {
 })
 
 // ===================================================================
+// UI/UX Audit: C3 — 時間欄位寬度（迴歸：main.css 全域欄寬洩漏）
+// ===================================================================
+
+test.describe('UI/UX Audit: 時間欄位寬度', () => {
+  test('C3: Time 欄寬度必須足以容納完整時間戳（不被壓扁/截斷）', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: true })
+    await setupAuditMocks(page)
+    await gotoDashboard(page)
+
+    await auditLink(page).click()
+    await page.waitForURL('**/audit')
+    await expect(auditTable(page)).toBeVisible()
+
+    // Time 欄曾因 main.css 全域欄寬洩漏只剩 ~61px
+    const timeBox = await page.locator('main.app-container th').nth(0).boundingBox()
+    expect(timeBox).not.toBeNull()
+    expect(timeBox!.width).toBeGreaterThanOrEqual(120)
+
+    // 完整時間戳應渲染為單行，不換行、不截斷
+    const firstTimeCell = page.locator('main.app-container tbody tr td').first()
+    await expect(firstTimeCell).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
+    const noOverflow = await firstTimeCell.evaluate((el) => {
+      const td = el as HTMLTableCellElement
+      return td.scrollWidth <= td.clientWidth + 1
+    })
+    expect(noOverflow).toBe(true)
+  })
+})
+
+// ===================================================================
 // F-HD-03: 未登入時不顯示 Audit Log 連結
 // ===================================================================
 

@@ -129,7 +129,7 @@ function onSelectAll() {
     @clear-selection="emit('clear-selection')"
   />
   <div class="table-wrapper">
-    <table>
+    <table class="service-table">
       <caption>
         <span>{{ t('caption.title') }}</span>
         <span class="caption-sub">{{ t('caption.sub') }}</span>

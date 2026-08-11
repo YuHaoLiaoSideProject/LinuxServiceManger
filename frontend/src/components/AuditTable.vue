@@ -76,6 +76,28 @@ function displayDetail(detail: string): string {
 </template>
 
 <style scoped>
+/* ── Fixed column widths (audit table) ──
+   NOTE: main.css 的全域欄寬規則已 scope 到 .service-table，
+   這裡為 Audit Table 定義自己的欄寬，避免 table-layout: fixed 下欄位錯位。 */
+.table-wrapper table th:nth-child(1) { width: 18%; min-width: 12.5rem; }  /* Time */
+.table-wrapper table th:nth-child(2) { width: 11%; }  /* User */
+.table-wrapper table th:nth-child(3) { width: 14%; }  /* Source IP */
+.table-wrapper table th:nth-child(4) { width: 10%; }  /* Action */
+.table-wrapper table th:nth-child(5) { width: 15%; }  /* Target */
+.table-wrapper table th:nth-child(6) { width: 9%; }   /* Result */
+.table-wrapper table th:nth-child(7) { width: 23%; }  /* Detail */
+
+/* Time: 完整時間戳不換行 */
+.table-wrapper table td:nth-child(1) {
+  white-space: nowrap;
+}
+
+/* Detail: 長訊息允許換行 */
+.table-wrapper table td:nth-child(7) {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

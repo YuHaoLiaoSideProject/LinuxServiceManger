@@ -218,6 +218,14 @@ const statsServices = computed(() =>
   services.value.filter(s => tab.value === 'my' ? !s.locked : s.locked)
 )
 
+// Status counts for the filter pills — same semantics as useServiceFilter
+const filterCounts = computed(() => ({
+  all: services.value.length,
+  running: services.value.filter(s => s.sub === 'running').length,
+  failed: services.value.filter(s => s.active === 'failed').length,
+  inactive: services.value.filter(s => s.active === 'inactive').length,
+}))
+
 const disableConfirmMessage = computed(() => {
   if (!pendingDisableService.value) return ''
   return t('modal.disable', { name: pendingDisableService.value })
@@ -348,7 +356,7 @@ onUnmounted(() => {
 
 <template>
   <main class="app-container">
-    <AppHeader :username="auth.username" :wsStatus="wsStatus" @refresh="loadServices" @logout="handleLogout" />
+    <AppHeader :username="auth.username" :wsStatus="wsStatus" @logout="handleLogout" />
     <TabsBar :services="services" :tab="tab" @set-tab="setTab" />
     <StatsBar :services="statsServices" />
     <BatchResultPanel
@@ -363,11 +371,15 @@ onUnmounted(() => {
       :regexMode="regexMode"
       :regexError="regexError"
       :filteredCount="filteredServices.length"
+      :totalCount="services.length"
+      :counts="filterCounts"
       :loading="loading"
+      :showRefresh="true"
       @update:searchText="searchText = $event"
       @set-status-filter="setStatusFilter"
       @toggle-regex="toggleRegex"
       @clear-search="clearSearch"
+      @refresh="loadServices"
     />
     <ServiceTable
       :filteredServices="filteredServices"

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { setupApiMocks, loginViaUI, MOCK_SERVICES, getServiceRow } from './auth.setup'
+import { setupApiMocks, loginViaUI, MOCK_SERVICES, getServiceRow, toggleLang } from './auth.setup'
 
 /**
  * 006 — RWD 行動版 Card Layout 驗證 E2E Tests
@@ -349,7 +349,7 @@ test.describe('Scenario 6: 手機版 data-label 語系切換', () => {
     await loginViaUI(page)
 
     // Switch to zh-TW
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
 
     const row = getServiceRow(page, 'nginx.service')
     await expect(row.locator('td[data-label="名稱"]')).toBeVisible()
@@ -364,7 +364,7 @@ test.describe('Scenario 6: 手機版 data-label 語系切換', () => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
 
     const nameCell = page.locator('td[data-label="名稱"]').first()
     const content = await getBeforeContent(nameCell)
@@ -376,8 +376,8 @@ test.describe('Scenario 6: 手機版 data-label 語系切換', () => {
     await loginViaUI(page)
 
     // zh-TW → en → zh-TW → en
-    await page.locator('.lang-toggle').click()
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
+    await toggleLang(page)
 
     const row = getServiceRow(page, 'nginx.service')
     await expect(row.locator('td[data-label="Name"]')).toBeVisible()

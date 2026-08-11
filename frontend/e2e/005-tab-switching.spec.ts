@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { setupApiMocks, loginViaUI, MOCK_SERVICES, getServiceRow } from './auth.setup'
+import { setupApiMocks, loginViaUI, MOCK_SERVICES, getServiceRow, toggleLang } from './auth.setup'
 
 /**
  * 005 — 我的服務 / 系統服務切換驗證 E2E Tests
@@ -697,7 +697,7 @@ test.describe('Scenario 9: 多語言支援', () => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
 
     await expect(getMyTab(page)).toContainText('我的服務')
     await expect(getSystemTab(page)).toContainText('系統服務')
@@ -708,11 +708,11 @@ test.describe('Scenario 9: 多語言支援', () => {
     await loginViaUI(page)
 
     // Switch to zh-TW
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
     await expect(getMyTab(page)).toContainText('我的服務')
 
     // Switch back to en
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
     await expect(getMyTab(page)).toContainText('My Services')
   })
 
@@ -720,7 +720,7 @@ test.describe('Scenario 9: 多語言支援', () => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
 
     // Switch to system tab in Chinese
     await getSystemTab(page).click()

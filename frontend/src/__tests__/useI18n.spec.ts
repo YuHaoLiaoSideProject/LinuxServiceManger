@@ -155,7 +155,7 @@ describe('列表相關語系 keys', () => {
     expect(t('tab.system')).toBe('系統服務')
 
     // 標頭
-    expect(t('header.refresh')).toBe('🔄 重新整理')
+    expect(t('header.refresh')).toBe('重新整理')
     expect(t('header.logout')).toBe('🚪 登出')
 
     // 表格欄位標頭
@@ -198,7 +198,7 @@ describe('列表相關語系 keys', () => {
     expect(t('tab.system')).toBe('System Services')
 
     // Header
-    expect(t('header.refresh')).toBe('🔄 Refresh')
+    expect(t('header.refresh')).toBe('Refresh')
     expect(t('header.logout')).toBe('🚪 Logout')
 
     // Column headers
@@ -302,7 +302,7 @@ describe('所有 component 用到的 key 皆存在於翻譯檔（不存在 = 紅
     'locked.tooltip': '此服務受保護，無法直接操作。設定 UNLOCKED_SERVICES 環境變數解鎖。',
     'tab.my': '我的服務',
     'tab.system': '系統服務',
-    'header.refresh': '🔄 重新整理',
+    'header.refresh': '重新整理',
     'header.logout': '🚪 登出',
     'header.refresh.aria': '重新整理',
     'header.logout.aria': '登出',
@@ -383,7 +383,7 @@ describe('所有 component 用到的 key 皆存在於翻譯檔（不存在 = 紅
     'locked.tooltip': 'This service is protected. Set the UNLOCKED_SERVICES environment variable to unlock.',
     'tab.my': 'My Services',
     'tab.system': 'System Services',
-    'header.refresh': '🔄 Refresh',
+    'header.refresh': 'Refresh',
     'header.logout': '🚪 Logout',
     'header.refresh.aria': 'Refresh',
     'header.logout.aria': 'Logout',

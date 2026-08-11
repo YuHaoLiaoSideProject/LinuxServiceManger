@@ -107,7 +107,7 @@ async function setupAuditMocks(page: any, auditData = AUDIT_ENTRIES) {
   })
 }
 
-function auditLink(page: any) { return page.locator('a.nav-link[href="/audit"]') }
+function auditLink(page: any) { return page.locator('[data-testid="nav-audit"]') }
 function auditTable(page: any) { return page.locator('main.app-container .table-wrapper table') }
 function auditRows(page: any) { return page.locator('main.app-container tbody tr') }
 function searchInput(page: any) { return page.locator('.search-box input') }
@@ -412,7 +412,7 @@ test.describe('UI/UX Audit: 導航一致性', () => {
     // C1 RED: AppHeader should still be visible after navigating to /audit
     // Currently AuditLogView does not include AppHeader → will FAIL
     await expect(page.locator('.app-header')).toBeVisible({ timeout: 3000 })
-    await expect(page.locator('.app-header .user-badge')).toBeVisible()
+    await expect(page.locator('[data-testid="account-btn"]')).toBeVisible()
     // Should have a way to navigate back
     await expect(page.locator('.app-header-left h1')).toBeVisible()
   })

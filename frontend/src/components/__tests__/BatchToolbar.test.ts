@@ -12,13 +12,26 @@ import BatchToolbar from '../BatchToolbar.vue'
 // Mock i18n — 使用與現有測試一致的模式
 vi.mock('../../composables/useI18n', () => ({
   useI18n: () => ({
-    t: (key: string) => {
+    t: (key: string, params?: Record<string, string>) => {
       const map: Record<string, string> = {
         'action.start': 'Start',
         'action.stop': 'Stop',
         'action.restart': 'Restart',
+        'batch.selected.prefix': '已選取',
+        'batch.selected.suffix': '個服務',
+        'batch.hint': '勾選服務後，可在此批次 啟動 / 停止 / 重啟',
+        'batch.progress': '{done}/{total} 完成',
+        'batch.progress.aria': '批次執行進度',
+        'batch.clear': '取消選取',
+        'batch.action.start.aria': '啟動 {count} 個服務',
+        'batch.action.stop.aria': '停止 {count} 個服務',
+        'batch.action.restart.aria': '重啟 {count} 個服務',
       }
-      return map[key] || key
+      let text = map[key] || key
+      if (params) {
+        text = Object.entries(params).reduce((s, [k, v]) => s.replace(`{${k}}`, v), text)
+      }
+      return text
     },
     lang: { value: 'zh-TW' },
     setLang: vi.fn(),
@@ -76,6 +89,40 @@ describe('BatchToolbar — 批次操作工具列', () => {
     })
     expect(wrapper.find('.batch-progress').exists()).toBe(true)
     expect(wrapper.find('.batch-progress').text()).toContain('3/5')
+  })
+
+  it('未選取且未執行時顯示 Idle 提示、無動作按鈕', () => {
+    const wrapper = mount(BatchToolbar, {
+      props: { selectedCount: 0, executing: false, progress: null },
+    })
+    expect(wrapper.find('.bb-hint').exists()).toBe(true)
+    expect(wrapper.find('.btn-start').exists()).toBe(false)
+    expect(wrapper.find('.btn-stop').exists()).toBe(false)
+    expect(wrapper.find('.btn-restart').exists()).toBe(false)
+    expect(wrapper.classes()).not.toContain('batch-selected')
+  })
+
+  it('已選取時有 .batch-selected class', () => {
+    const wrapper = mount(BatchToolbar, {
+      props: { selectedCount: 2, executing: false, progress: null },
+    })
+    expect(wrapper.classes()).toContain('batch-selected')
+  })
+
+  it('executing=true 時顯示進度列（role=progressbar）', () => {
+    const wrapper = mount(BatchToolbar, {
+      props: {
+        selectedCount: 5,
+        executing: true,
+        progress: { done: 3, total: 5 },
+      },
+    })
+    const bar = wrapper.find('.progress')
+    expect(bar.exists()).toBe(true)
+    expect(bar.attributes('role')).toBe('progressbar')
+    expect(bar.attributes('aria-valuenow')).toBe('3')
+    expect(bar.attributes('aria-valuemax')).toBe('5')
+    expect(wrapper.find('.bar').attributes('style')).toContain('60%')
   })
 
   // ── Emits 測試 ──

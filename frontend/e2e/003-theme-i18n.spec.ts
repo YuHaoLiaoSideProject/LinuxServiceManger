@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { setupApiMocks, loginViaUI } from './auth.setup'
+import { setupApiMocks, loginViaUI, toggleLang, toggleTheme } from './auth.setup'
 
 /**
  * 003 — 主題與多語言 E2E Tests
@@ -33,7 +33,7 @@ test.describe('語言切換 zh-TW ↔ en', () => {
     await loginViaUI(page)
 
     // Click language toggle (🌐 button)
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
 
     await expect(page.locator('.stats-bar')).toContainText('總服務數')
     await expect(page.locator('.stats-bar')).toContainText('執行中')
@@ -50,11 +50,11 @@ test.describe('語言切換 zh-TW ↔ en', () => {
     await loginViaUI(page)
 
     // en → zh-TW
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
     await expect(page.locator('.stats-bar')).toContainText('總服務數')
 
     // zh-TW → en
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
     await expect(page.locator('.stats-bar')).toContainText('Total Services')
   })
 
@@ -81,7 +81,7 @@ test.describe('語言切換 zh-TW ↔ en', () => {
     await expect(page.locator('.stats-bar')).toContainText('Total Services')
 
     // Switch to Chinese from dashboard
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
     await expect(page.locator('.stats-bar')).toContainText('總服務數')
   })
 })
@@ -99,7 +99,7 @@ test.describe('主題切換 深色/淺色', () => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
-    await page.locator('.theme-toggle').click()
+    await toggleTheme(page)
 
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   })
@@ -108,10 +108,10 @@ test.describe('主題切換 深色/淺色', () => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
-    await page.locator('.theme-toggle').click()
+    await toggleTheme(page)
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
 
-    await page.locator('.theme-toggle').click()
+    await toggleTheme(page)
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   })
 })
@@ -123,13 +123,13 @@ test.describe('偏好持久化 (localStorage)', () => {
     await loginViaUI(page)
 
     // Switch to zh-TW — this writes to localStorage
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
 
     const lang = await page.evaluate(() => localStorage.getItem('lms-lang'))
     expect(lang).toBe('zh-TW')
 
     // Switch back to en
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
     const lang2 = await page.evaluate(() => localStorage.getItem('lms-lang'))
     expect(lang2).toBe('en')
   })
@@ -141,7 +141,7 @@ test.describe('偏好持久化 (localStorage)', () => {
     let theme = await page.evaluate(() => localStorage.getItem('lms-theme'))
     expect(theme).toBe('light')
 
-    await page.locator('.theme-toggle').click()
+    await toggleTheme(page)
 
     theme = await page.evaluate(() => localStorage.getItem('lms-theme'))
     expect(theme).toBe('dark')
@@ -152,7 +152,7 @@ test.describe('偏好持久化 (localStorage)', () => {
     await loginViaUI(page)
 
     // Switch to zh-TW
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
     await expect(page.locator('.stats-bar')).toContainText('總服務數')
 
     // Reload — session mock uses dynamic state, survives reload
@@ -169,7 +169,7 @@ test.describe('偏好持久化 (localStorage)', () => {
     await loginViaUI(page)
 
     // Switch to dark
-    await page.locator('.theme-toggle').click()
+    await toggleTheme(page)
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
 
     // Reload — session mock survives, so dashboard loads directly

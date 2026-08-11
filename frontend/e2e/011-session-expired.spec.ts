@@ -224,7 +224,7 @@ test.describe('WebSocket session_expired', () => {
 
     // Dashboard should be visible and functional
     await expect(page.locator('.app-header')).toBeVisible()
-    await expect(page.locator('.user-badge')).toContainText('admin')
+    await expect(page.locator('[data-testid="account-btn"]')).toContainText('admin')
     await expect(page.locator('#service-table-body tr')).toHaveCount(3)
 
     // Connection indicator should show connected

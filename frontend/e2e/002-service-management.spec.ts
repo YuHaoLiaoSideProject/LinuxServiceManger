@@ -59,7 +59,7 @@ test.describe('Scenario 1: 載入服務列表', () => {
   test('Header 應顯示使用者名稱', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
-    await expect(page.locator('.user-badge')).toContainText('admin')
+    await expect(page.locator('[data-testid="account-btn"]')).toContainText('admin')
   })
 })
 

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { setupApiMocks, loginViaUI, gotoDashboard, VALID_USER, MOCK_SERVICES } from './auth.setup'
+import { setupApiMocks, loginViaUI, gotoDashboard, VALID_USER, MOCK_SERVICES, openAccountMenu, toggleLang } from './auth.setup'
 
 /**
  * 009 — 登出功能完整 E2E Tests
@@ -19,15 +19,16 @@ import { setupApiMocks, loginViaUI, gotoDashboard, VALID_USER, MOCK_SERVICES } f
  *  12. ✅ 登出後無法觸發服務操作（start/stop/restart）
  */
 
-// ── Helper: get the logout button (locale-aware) ─────────────────
+// ── Helper: get the logout menu item (locale-aware) ─────────────────
+// Logout now lives inside the account menu (👤 admin ▾).
+// Call openAccountMenu() before interacting with it.
 
 function getLogoutButton(page: import('@playwright/test').Page) {
-  // Default Playwright Chrome uses en-US, so default text is "Logout"
-  return page.locator('button', { hasText: 'Logout' })
+  return page.locator('[data-testid="menu-logout"]')
 }
 
 function getLogoutButtonZh(page: import('@playwright/test').Page) {
-  return page.locator('button', { hasText: '登出' })
+  return page.locator('[data-testid="menu-logout"]')
 }
 
 // ── Helper: perform logout and verify auth is cleared ──────────────
@@ -38,6 +39,7 @@ async function performLogout(page: import('@playwright/test').Page) {
     (req) => req.url().endsWith('/api/v1/logout') && req.method() === 'POST',
   )
 
+  await openAccountMenu(page)
   const logoutBtn = getLogoutButton(page)
   await expect(logoutBtn).toBeVisible()
   await logoutBtn.click()
@@ -66,6 +68,7 @@ test.describe('Scenario 1: 基本登出流程 — 點擊 Logout → 導向 /logi
     const logoutRequest = page.waitForRequest(
       (req) => req.url().endsWith('/api/v1/logout') && req.method() === 'POST',
     )
+    await openAccountMenu(page)
     await getLogoutButton(page).click()
     await logoutRequest
 
@@ -80,7 +83,7 @@ test.describe('Scenario 1: 基本登出流程 — 點擊 Logout → 導向 /logi
 
     // Verify on dashboard
     await expect(page.locator('.app-header')).toBeVisible()
-    await expect(page.locator('.user-badge')).toContainText(VALID_USER)
+    await expect(page.locator('[data-testid="account-btn"]')).toContainText(VALID_USER)
 
     // Click logout
     await performLogout(page)
@@ -116,6 +119,7 @@ test.describe('Scenario 2: 登出 API 呼叫驗證', () => {
       (req) => req.url().endsWith('/api/v1/logout') && req.method() === 'POST',
     )
 
+    await openAccountMenu(page)
     await getLogoutButton(page).click()
     const logoutReq = await logoutPromise
 
@@ -132,6 +136,7 @@ test.describe('Scenario 2: 登出 API 呼叫驗證', () => {
     const logoutResponse = page.waitForResponse(
       (res) => res.url().endsWith('/api/v1/logout') && res.status() === 200,
     )
+    await openAccountMenu(page)
     await getLogoutButton(page).click()
     const response = await logoutResponse
 
@@ -151,6 +156,7 @@ test.describe('Scenario 3: 登出後路由守衛 — 造訪 / 強制跳轉 /logi
     await loginViaUI(page)
 
     // Click logout without explicit navigation afterwards
+    await openAccountMenu(page)
     const logoutBtn = getLogoutButton(page)
     await expect(logoutBtn).toBeVisible()
     await logoutBtn.click()
@@ -196,6 +202,7 @@ test.describe('Scenario 4: 登出後瀏覽器回上一頁 — 不應回到 dashb
     await loginViaUI(page)
 
     // Click logout (stays on dashboard with cleared auth)
+    await openAccountMenu(page)
     const logoutBtn = getLogoutButton(page)
     await logoutBtn.click()
     await page.waitForTimeout(300)
@@ -231,6 +238,8 @@ test.describe('Scenario 5: 登出按鈕多語系支援', () => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
+    await openAccountMenu(page)
+
     await expect(getLogoutButtonZh(page)).toBeVisible()
     await expect(getLogoutButtonZh(page)).toContainText('🚪 登出')
   })
@@ -244,12 +253,14 @@ test.describe('Scenario 5: 登出按鈕多語系支援', () => {
     await loginViaUI(page)
 
     // Verify Chinese first
+    await openAccountMenu(page)
     await expect(getLogoutButtonZh(page)).toBeVisible()
 
-    // Click language toggle button (🌐) to switch to English
-    await page.locator('.lang-toggle').click()
+    // Switch to English via the account menu
+    await toggleLang(page)
 
-    // Logout button should now show English text
+    // Logout menu item should now show English text
+    await openAccountMenu(page)
     await expect(getLogoutButton(page)).toBeVisible()
     await expect(getLogoutButton(page)).toContainText('🚪 Logout')
   })
@@ -259,6 +270,7 @@ test.describe('Scenario 5: 登出按鈕多語系支援', () => {
     await loginViaUI(page)
 
     // Default language is English — verify
+    await openAccountMenu(page)
     await expect(getLogoutButton(page)).toBeVisible()
 
     // Click logout in English
@@ -284,6 +296,8 @@ test.describe('Scenario 6: 登出按鈕可訪問性 (Accessibility)', () => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
+    await openAccountMenu(page)
+
     const logoutBtn = getLogoutButton(page)
     await expect(logoutBtn).toHaveAttribute('aria-label', 'Logout')
   })
@@ -295,30 +309,41 @@ test.describe('Scenario 6: 登出按鈕可訪問性 (Accessibility)', () => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
+    await openAccountMenu(page)
+
     const logoutBtn = getLogoutButtonZh(page)
     await expect(logoutBtn).toHaveAttribute('aria-label', '登出')
   })
 
-  test('LO-15: 登出按鈕可透過 Tab 鍵聚焦並用 Enter 觸發', async ({ page }) => {
+  test('LO-15: 登出選單項可透過 Tab 鍵聚焦並用 Enter 觸發', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
-    // Tab through header buttons to reach logout (🌐 → ☀️/🌙 → 🔄 Refresh → 🚪 Logout)
+    // Tab through header: h1 brand → Dashboard nav → Audit nav → account button
     // Focus on a known element first
     await page.locator('h1').click()
 
-    // Tab to language toggle
+    // Tab to Dashboard nav link
     await page.keyboard.press('Tab')
-    // Tab to theme toggle
+    // Tab to Audit nav link
     await page.keyboard.press('Tab')
-    // Tab to refresh button
-    await page.keyboard.press('Tab')
-    // Tab to logout button
+    // Tab to account button (👤 admin ▾)
     await page.keyboard.press('Tab')
 
-    // Verify logout button is focused (default English: "🚪 Logout")
     const focused = page.locator(':focus')
-    await expect(focused).toContainText('Logout')
+    await expect(focused).toHaveAttribute('data-testid', 'account-btn')
+
+    // Enter opens the account menu
+    await page.keyboard.press('Enter')
+    await expect(page.locator('[data-testid="account-menu"]')).toBeVisible()
+
+    // Tab through menu items: theme → language → logout
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Tab')
+
+    const focusedLogout = page.locator(':focus')
+    await expect(focusedLogout).toHaveAttribute('data-testid', 'menu-logout')
 
     // Press Enter to trigger logout
     const logoutRequest = page.waitForRequest(
@@ -382,6 +407,7 @@ test.describe('Scenario 8: 登出 API 失敗 — 前端仍清除狀態', () => {
       })
     })
 
+    await openAccountMenu(page)
     await getLogoutButton(page).click()
     await page.waitForTimeout(500) // let the error propagate through axios
 
@@ -411,6 +437,7 @@ test.describe('Scenario 8: 登出 API 失敗 — 前端仍清除狀態', () => {
       await route.abort('failed')
     })
 
+    await openAccountMenu(page)
     await getLogoutButton(page).click()
     await page.waitForTimeout(500) // let the error propagate
 
@@ -445,6 +472,7 @@ test.describe('Scenario 9: 登出不影響 localStorage 設定', () => {
     await loginViaUI(page)
 
     // Verify language is English (button shows "Logout")
+    await openAccountMenu(page)
     await expect(getLogoutButton(page)).toBeVisible()
 
     // Logout
@@ -488,6 +516,7 @@ test.describe('Scenario 10: 連續快速點擊登出 — 不重複呼叫 API', (
     const logoutBtn = getLogoutButton(page)
 
     // Double click rapidly
+    await openAccountMenu(page)
     await logoutBtn.click({ clickCount: 2 })
     await page.waitForTimeout(300)
 
@@ -504,6 +533,7 @@ test.describe('Scenario 10: 連續快速點擊登出 — 不重複呼叫 API', (
     const logoutBtn = getLogoutButton(page)
 
     // Click and immediately click again
+    await openAccountMenu(page)
     await logoutBtn.click()
     // Small delay then try another click (button may already be gone)
     await page.waitForTimeout(100)
@@ -605,7 +635,7 @@ test.describe('Scenario 12: 登出後重新登入 — 功能恢復正常', () =>
 
     // Should be back on dashboard with services
     await expect(page.locator('.app-header')).toBeVisible()
-    await expect(page.locator('.user-badge')).toContainText(VALID_USER)
+    await expect(page.locator('[data-testid="account-btn"]')).toContainText(VALID_USER)
     await expect(page.locator('#service-table-body tr')).toHaveCount(6) // My Services tab, 6 unlocked
   })
 
@@ -634,7 +664,7 @@ test.describe('Scenario 12: 登出後重新登入 — 功能恢復正常', () =>
     for (let i = 0; i < 3; i++) {
       await loginViaUI(page)
       await expect(page.locator('.app-header')).toBeVisible()
-      await expect(page.locator('.user-badge')).toContainText(VALID_USER)
+      await expect(page.locator('[data-testid="account-btn"]')).toContainText(VALID_USER)
       await expect(page.locator('#service-table-body')).toBeVisible()
       await performLogout(page)
       await expect(page.locator('.login-form')).toBeVisible()
@@ -692,7 +722,8 @@ test.describe('Scenario 14: 手機版登出', () => {
     )
     expect(flexDir).toBe('column')
 
-    // Logout button still visible
+    // Logout menu item still reachable via account menu
+    await openAccountMenu(page)
     await expect(getLogoutButton(page)).toBeVisible()
   })
 
@@ -727,6 +758,7 @@ test.describe('Scenario 14: 手機版登出', () => {
     await loginViaUI(page)
 
     // At 320px, buttons get smaller but should still be visible and clickable
+    await openAccountMenu(page)
     await expect(getLogoutButton(page)).toBeVisible()
 
     // Click logout
@@ -752,7 +784,7 @@ test.describe('Scenario 14: 手機版登出', () => {
 
     // Dashboard visible, card layout
     await expect(page.locator('.app-header')).toBeVisible()
-    await expect(page.locator('.user-badge')).toContainText(VALID_USER)
+    await expect(page.locator('[data-testid="account-btn"]')).toContainText(VALID_USER)
 
     // Mobile card layout: thead hidden
     await expect(page.locator('.table-wrapper table thead')).toBeHidden()

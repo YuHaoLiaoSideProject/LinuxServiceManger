@@ -114,7 +114,6 @@ function pageNumbers(): number[] {
   <main class="app-container">
     <AppHeader
       :username="auth.username"
-      @refresh="handleRefresh"
       @logout="handleLogout"
     />
 
@@ -125,6 +124,7 @@ function pageNumbers(): number[] {
       <div class="search-box">
         <input
           type="text"
+          name="audit-search"
           :placeholder="t('audit.searchPlaceholder')"
           :value="search"
           :aria-label="t('audit.searchPlaceholder')"
@@ -137,6 +137,7 @@ function pageNumbers(): number[] {
       <div class="date-range">
         <input
           type="date"
+          name="audit-date-from"
           v-model="dateFrom"
           :aria-label="t('audit.dateFrom')"
           @change="handleDateChange"
@@ -144,6 +145,7 @@ function pageNumbers(): number[] {
         <span class="date-separator">–</span>
         <input
           type="date"
+          name="audit-date-to"
           v-model="dateTo"
           :aria-label="t('audit.dateTo')"
           @change="handleDateChange"
@@ -159,6 +161,14 @@ function pageNumbers(): number[] {
         <span v-if="exporting" class="spinner-sm"></span>
         {{ exporting ? '...' : t('audit.exportCsv') }}
       </button>
+
+      <button
+        class="btn-refresh secondary"
+        data-testid="btn-refresh"
+        :disabled="loading"
+        :aria-label="t('header.refresh.aria')"
+        @click="handleRefresh"
+      >{{ t('header.refresh') }}</button>
     </div>
 
     <!-- Loading -->

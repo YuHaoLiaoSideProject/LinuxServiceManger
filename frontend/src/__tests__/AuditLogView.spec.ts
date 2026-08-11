@@ -29,6 +29,7 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({
     replace: mockRouterReplace,
   }),
+  useRoute: () => ({ path: '/audit' }),
   createRouter: vi.fn(),
   createWebHistory: vi.fn(),
 }))

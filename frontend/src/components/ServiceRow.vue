@@ -86,6 +86,7 @@ function doToggle() {
       <input
         v-else
         type="checkbox"
+        :name="'select-' + service.name"
         :checked="selected"
         :disabled="batchExecuting"
         @change="$emit('toggle-select', service.name)"

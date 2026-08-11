@@ -139,6 +139,7 @@ function onSelectAll() {
           <th class="col-check">
             <input
               type="checkbox"
+              name="select-all"
               :checked="allSelected"
               :disabled="selectableCount === 0 || batchExecuting"
               @change="onSelectAll"

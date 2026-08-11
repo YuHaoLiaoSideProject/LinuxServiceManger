@@ -12,10 +12,13 @@ vi.mock('../composables/useI18n', () => ({
         'search.aria': '搜尋服務',
         'search.clear.aria': '清除搜尋',
         'search.clear.title': '清除',
+        'search.regex.title': '切換正則搜尋',
         'filter.all': '全部',
         'filter.running': '執行中',
         'filter.failed': '失敗',
         'filter.inactive': '未啟用',
+        'filter.count.shown': '顯示',
+        'filter.count.total': '/ 共',
       }
       return map[key] || key
     },
@@ -179,11 +182,40 @@ describe('Toolbar — 工具列', () => {
     expect(wrapper.emitted('toggle-regex')).toBeTruthy()
   })
 
-  it('顯示過濾後的服務數量', () => {
+  it('顯示過濾後的服務數量（顯示 X / 共 Y）', () => {
     const wrapper = mount(Toolbar, {
-      props: { ...defaultProps, filteredCount: 5 },
+      props: { ...defaultProps, filteredCount: 5, totalCount: 34 },
     })
 
-    expect(wrapper.find('.filtered-count').text()).toBe('5 個服務')
+    const text = wrapper.find('.filtered-count').text().replace(/\s+/g, ' ').trim()
+    expect(text).toBe('顯示 5 / 共 34')
+    expect(wrapper.find('.filtered-count b').text()).toBe('5')
+  })
+
+  it('狀態 pill 顯示計數 badge', () => {
+    const wrapper = mount(Toolbar, {
+      props: {
+        ...defaultProps,
+        counts: { all: 34, running: 12, failed: 2, inactive: 20 },
+      },
+    })
+
+    const statusBtns = wrapper.findAll('.btn-status')
+    expect(statusBtns[0].text()).toContain('34')
+    expect(statusBtns[1].text()).toContain('12')
+    expect(statusBtns[2].text()).toContain('2')
+    expect(statusBtns[3].text()).toContain('20')
+  })
+
+  it('狀態 pill 使用 CSS 圓點而非 emoji 圖示', () => {
+    const wrapper = mount(Toolbar, { props: defaultProps })
+
+    const statusBtns = wrapper.findAll('.btn-status')
+    for (const btn of statusBtns) {
+      expect(btn.find('.dotp').exists()).toBe(true)
+      expect(btn.text()).not.toContain('🟢')
+      expect(btn.text()).not.toContain('🔴')
+      expect(btn.text()).not.toContain('⚪')
+    }
   })
 })

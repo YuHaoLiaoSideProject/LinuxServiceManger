@@ -27,6 +27,17 @@
   --lms-shadow: 0 2px 12px rgba(0,0,0,0.06);
   --lms-shadow-lg: 0 12px 40px rgba(0,0,0,0.2);
   --lms-transition: 0.2s ease;
+
+  /* Toolbar design tokens (docs/uiux/012-toolbar-dashboard-design.html) */
+  --lms-h: 36px;
+  --lms-h-mobile: 44px;
+  --lms-surface-2: #f6f7f9;
+  --lms-surface-3: #eef0f3;
+}
+
+[data-theme="dark"] {
+  --lms-surface-2: #1e2530;
+  --lms-surface-3: #232c38;
 }
 
 /* ── Accessibility: prefers-reduced-motion ── */
@@ -39,6 +50,11 @@
 }
 
 /* ── Layout ── */
+html {
+  /* Reserve scrollbar space so content doesn't shift horizontally
+     when the vertical scrollbar appears/disappears between pages */
+  scrollbar-gutter: stable;
+}
 body {
   min-height: 100vh;
   background: var(--lms-bg);
@@ -52,6 +68,7 @@ body {
 
 /* ── Header ── */
 .app-header {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -76,82 +93,171 @@ body {
 .app-header-left h1 .header-icon {
   font-size: 1.5rem;
 }
-.user-badge {
+/* ── Primary navigation group ──
+   Absolutely centered so its position never depends on the
+   left/right column widths (e.g. WS indicator shown on Dashboard
+   but not on Audit page). */
+.nav-group {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--lms-border);
+  border: 1px solid var(--lms-border);
+  border-radius: 10px;
+  padding: 3px;
+}
+.nav-item {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  font-size: 0.8rem;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.4rem 0.85rem;
+  border-radius: 7px;
   color: var(--lms-muted);
-  background: var(--lms-surface);
-  border: 1px solid var(--lms-border);
-  padding: 0.3rem 0.7rem;
-  border-radius: 20px;
+  text-decoration: none;
   white-space: nowrap;
+  transition: color var(--lms-transition), background var(--lms-transition), box-shadow var(--lms-transition);
 }
+.nav-item:hover {
+  color: var(--lms-text);
+}
+.nav-item.active {
+  background: var(--lms-surface);
+  color: var(--lms-accent);
+  box-shadow: var(--lms-shadow);
+}
+
 .app-header-right {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
 }
-.app-header-right button,
-.app-header-right a[role="button"] {
+
+/* ── Account menu ── */
+.account {
+  position: relative;
+}
+.account-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   font-size: 0.8rem;
-  padding: 0.35rem 0.75rem;
+  font-weight: 500;
+  color: var(--lms-text);
+  background: var(--lms-surface);
+  border: 1px solid var(--lms-border);
+  border-radius: 20px;
+  padding: 0.28rem 0.8rem 0.28rem 0.35rem;
+  margin-bottom: 0;
+  cursor: pointer;
   white-space: nowrap;
-  margin-bottom: 0;
+  transition: border-color var(--lms-transition), background var(--lms-transition);
 }
-
-/* ── Theme toggle ── */
-.theme-toggle {
-  background: none;
-  border: 1px solid var(--lms-border);
+.account-btn:hover {
+  border-color: var(--lms-accent);
+  background: var(--lms-accent-light);
+}
+.account-btn:focus-visible {
+  outline: 2px solid var(--lms-accent);
+  outline-offset: 2px;
+}
+.account-btn .avatar {
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  width: 34px;
-  height: 34px;
-  min-width: 34px;
-  min-height: 34px;
-  cursor: pointer;
-  font-size: 1rem;
-  display: flex;
+  background: var(--lms-accent);
+  color: #fff;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background var(--lms-transition), transform var(--lms-transition);
-  color: var(--lms-text);
+  font-size: 0.72rem;
+  font-weight: 700;
   flex-shrink: 0;
-  margin-bottom: 0;
 }
-.theme-toggle:hover {
-  background: var(--lms-border);
+.account-btn .chevron {
+  font-size: 0.6rem;
+  color: var(--lms-muted);
+  transition: transform var(--lms-transition);
 }
-.theme-toggle:active {
-  transform: scale(0.92);
+.account-btn.open .chevron {
+  transform: rotate(180deg);
 }
 
-/* ── Language toggle ── */
-.lang-toggle {
-  background: none;
+.menu-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  min-width: 210px;
+  background: var(--lms-surface);
   border: 1px solid var(--lms-border);
-  border-radius: 50%;
-  width: 34px;
-  height: 34px;
-  min-width: 34px;
-  min-height: 34px;
-  cursor: pointer;
-  font-size: 1rem;
+  border-radius: 12px;
+  box-shadow: var(--lms-shadow-lg);
+  padding: 0.35rem;
+  display: none;
+}
+.menu-pop.open {
+  display: block;
+  animation: menuPop 0.14s ease;
+}
+@keyframes menuPop {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.menu-head {
+  padding: 0.55rem 0.7rem 0.5rem;
+  border-bottom: 1px solid var(--lms-border);
+  margin-bottom: 0.3rem;
+}
+.menu-head .who {
+  font-size: 0.85rem;
+  font-weight: 600;
   display: flex;
   align-items: center;
-  justify-content: center;
-  transition: background var(--lms-transition), transform var(--lms-transition);
-  color: var(--lms-text);
-  flex-shrink: 0;
-  margin-bottom: 0;
+  gap: 0.4rem;
 }
-.lang-toggle:hover {
+.menu-head .meta {
+  font-size: 0.72rem;
+  color: var(--lms-muted);
+  margin-top: 0.15rem;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  font-size: 0.82rem;
+  padding: 0.55rem 0.7rem;
+  margin-bottom: 0;
+  border: none;
+  background: none;
+  color: var(--lms-text);
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--lms-transition);
+}
+.menu-item:hover {
   background: var(--lms-border);
 }
-.lang-toggle:active {
-  transform: scale(0.92);
+.menu-item.danger {
+  color: var(--lms-danger);
+}
+.menu-item.danger:hover {
+  background: rgba(197, 34, 31, 0.08);
+}
+.menu-divider {
+  height: 1px;
+  background: var(--lms-border);
+  margin: 0.3rem 0.4rem;
+  border: none;
 }
 
 /* ── Stats bar ── */
@@ -197,80 +303,66 @@ body {
 .stat-active { border-left: 4px solid var(--lms-success); }
 .stat-failed { border-left: 4px solid var(--lms-danger); }
 
-/* ── Toolbar (search + actions) ── */
+/* ── Toolbar (search + actions) ──
+   規格：docs/uiux/012-toolbar-dashboard-design.html（單列：pills → 搜尋 → 計數 → 重新整理）
+   注意：Pico 對 [role=group] > * 套用 flex: 1 1 auto，會讓 pills 撐滿整列；
+   必須以 flex: 0 0 auto 覆寫回自然寬度（與文件一致）。 */
 .toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 8px; /* 文件 token：群組間 8px */
   margin-bottom: 1rem;
 }
-.toolbar .search-wrap {
-  flex: 1;
-  min-width: 200px;
-  position: relative;
-}
-.toolbar .search-wrap input {
-  padding-left: 2.2rem;
-  padding-right: 4.5rem;
-  border-radius: 20px;
-  border: 2px solid var(--lms-border);
-  transition: border-color var(--lms-transition), box-shadow var(--lms-transition);
-  font-size: 0.9rem;
-}
-.toolbar .search-wrap input:focus {
-  border-color: var(--lms-accent);
-  box-shadow: 0 0 0 3px var(--lms-accent-light);
-  outline: none;
-}
-.toolbar .search-icon {
-  position: absolute;
-  left: 0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--lms-muted);
-  pointer-events: none;
-  font-size: 0.9rem;
-}
-.toolbar .search-clear {
-  position: absolute;
-  right: 0.5rem;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1rem;
-  color: var(--lms-muted);
-  padding: 0.25rem 0.4rem;
-  border-radius: 50%;
-  line-height: 1;
-  transition: color var(--lms-transition), background var(--lms-transition);
-}
-.toolbar .search-clear:hover {
-  color: var(--lms-text);
-  background: var(--lms-border);
-}
 
-/* ── Status filter buttons ── */
+/* ── Status filter pills (segmented, 36px, dot + count badge) ── */
 .toolbar .status-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 8px; /* 文件 token：群組內 8px */
+  width: auto; /* 覆寫 Pico [role=group]{width:100%}，還原內容寬度 */
+  margin-bottom: 0; /* 覆寫 Pico [role=group]{margin-bottom:var(--pico-spacing)}，避免與 search-wrap 垂直不對齊 */
+  box-shadow: none; /* 移除 Pico [role=group] focus-within 的藍色外框（保留 pill 本身的 focus ring） */
+}
+.toolbar .status-filters .btn-status {
+  margin-left: 0; /* 覆寫 Pico [role=group] button:not(:first-child){margin-left:-1px} */
 }
 .toolbar .btn-status {
-  font-size: 0.78rem;
-  padding: 0.3rem 0.65rem;
-  border-radius: 16px;
+  height: var(--lms-h);
+  flex: 0 0 auto; /* 覆寫 Pico [role=group] flex:1，還原自然寬度 */
+  font-size: 13px; /* 文件：pills 13px */
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.85rem;
+  border-radius: 18px;
   border: 1px solid var(--lms-border);
   background: var(--lms-surface);
   color: var(--lms-muted);
   cursor: pointer;
   transition: all var(--lms-transition);
   white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
+  font-weight: 500;
+}
+.toolbar .btn-status .dotp {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.toolbar .btn-status .dotp.all,
+.toolbar .btn-status .dotp.inact { background: var(--lms-muted); }
+.toolbar .btn-status .dotp.run { background: var(--lms-success); }
+.toolbar .btn-status .dotp.fail { background: var(--lms-danger); }
+.toolbar .btn-status .cnt {
+  font-size: 11px; /* 文件：badge 11px */
+  background: var(--lms-surface-2);
+  border-radius: 20px;
+  padding: 1px 6px;
+  color: var(--lms-muted);
+  font-weight: 700;
+  line-height: 1.4;
 }
 .toolbar .btn-status:hover {
   border-color: var(--lms-accent);
@@ -278,31 +370,110 @@ body {
 }
 .toolbar .btn-status.active {
   background: var(--lms-accent);
-  color: #fff;
   border-color: var(--lms-accent);
+  color: #fff;
+}
+.toolbar .btn-status.active .dotp.all,
+.toolbar .btn-status.active .dotp.inact,
+.toolbar .btn-status.active .dotp.run,
+.toolbar .btn-status.active .dotp.fail { background: #fff; }
+.toolbar .btn-status.active .cnt {
+  background: rgba(255,255,255,0.22);
+  color: #fff;
 }
 .toolbar .btn-status:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
-.toolbar .btn-status .status-btn-icon {
-  font-size: 0.85rem;
+
+/* 文件 a11y：所有互動元件 focus ring 可見（Pico 會用 box-shadow:none 蓋掉） */
+.toolbar .btn-status:focus-visible,
+.toolbar .btn-regex:focus-visible,
+.toolbar .btn-refresh:focus-visible,
+.toolbar .search-clear:focus-visible {
+  outline: 2px solid var(--lms-accent);
+  outline-offset: 2px;
 }
 
-/* ── Regex toggle button ── */
-.toolbar .btn-regex {
+/* ── Search box (36px, radius 6px, focus ring 3px) ── */
+.toolbar .search-wrap {
+  flex: 1;
+  min-width: 220px;
+  max-width: 400px;
+  position: relative;
+}
+.toolbar .search-wrap input {
+  width: 100%;
+  height: var(--lms-h);
+  margin-bottom: 0;
+  padding-left: 2.3rem;
+  padding-right: 3.4rem;
+  border-radius: var(--lms-radius-sm);
+  border: 1px solid var(--lms-border);
+  background: var(--lms-surface);
+  color: var(--lms-text);
+  transition: border-color var(--lms-transition), box-shadow var(--lms-transition);
+  font-size: 14px; /* 文件：輸入框 14px */
+}
+.toolbar .search-wrap input:focus {
+  border-color: var(--lms-accent);
+  box-shadow: 0 0 0 3px var(--lms-accent-light);
+  outline: none;
+}
+.toolbar .search-wrap.error input {
+  border-color: var(--lms-danger);
+  box-shadow: 0 0 0 3px rgba(197,34,31,0.12);
+}
+.toolbar .search-icon {
   position: absolute;
-  right: 2.2rem;
+  left: 0.7rem;
   top: 50%;
   transform: translateY(-50%);
-  background: none;
-  border: 1px solid var(--lms-border);
-  cursor: pointer;
-  font-size: 0.75rem;
-  font-weight: 700;
   color: var(--lms-muted);
-  padding: 0.15rem 0.4rem;
-  border-radius: 10px;
+  pointer-events: none;
+  display: flex;
+}
+.toolbar .search-clear {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--lms-muted);
+  line-height: 1;
+  transition: color var(--lms-transition), background var(--lms-transition);
+}
+.toolbar .search-wrap.has-value .search-clear { display: flex; }
+.toolbar .search-clear:hover {
+  color: var(--lms-text);
+  background: var(--lms-border);
+}
+
+/* ── Regex toggle (inside search box) ── */
+.toolbar .btn-regex {
+  position: absolute;
+  right: 2.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 26px;
+  min-width: 32px;
+  padding: 0 0.4rem;
+  border-radius: 5px;
+  border: 1px solid var(--lms-border);
+  background: var(--lms-surface-2);
+  color: var(--lms-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
   line-height: 1;
   transition: all var(--lms-transition);
   font-family: monospace;
@@ -325,17 +496,59 @@ body {
 .toolbar .regex-error {
   width: 100%;
   color: var(--lms-danger);
-  font-size: 0.78rem;
-  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.1rem 0;
   font-family: monospace;
 }
 
-/* ── Filtered count ── */
+/* ── Filtered count: 「顯示 X / 共 Y」 ── */
 .toolbar .filtered-count {
-  font-size: 0.78rem;
+  font-size: 12px; /* 文件：計數 meta 12px */
   color: var(--lms-muted);
   white-space: nowrap;
   padding: 0.2rem 0;
+}
+.toolbar .filtered-count b {
+  color: var(--lms-accent);
+  font-weight: 700;
+}
+
+/* ── Refresh button (secondary, 36px, spinner on loading) ── */
+.toolbar .btn-refresh {
+  height: var(--lms-h);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.9rem;
+  border-radius: var(--lms-radius-sm);
+  font-size: 14px; /* 文件：按鈕 14px */
+  border: 1px solid var(--lms-border);
+  background: var(--lms-surface-2);
+  color: var(--lms-text);
+  cursor: pointer;
+  transition: all var(--lms-transition);
+  white-space: nowrap;
+  font-weight: 500;
+}
+.toolbar .btn-refresh:hover:not(:disabled) {
+  background: var(--lms-surface);
+  border-color: var(--lms-muted);
+}
+.toolbar .btn-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.toolbar .btn-refresh .spin {
+  display: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--lms-muted);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.toolbar .btn-refresh.loading .spin {
+  display: inline-block;
 }
 
 /* ── Empty state button ── */
@@ -845,6 +1058,18 @@ tbody tr:last-child td {
   .actions button .btn-label { display: none; }
 }
 
+/* Toolbar (768–1023px)：pills 佔一列；search ＋ 計數 ＋ 重新整理 同列。
+   避免 pills 與 search 併列時 search 被擠窄、refresh 單獨掉到第二列。 */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .toolbar .status-filters {
+    flex-basis: 100%;
+  }
+  .toolbar .search-wrap {
+    flex: 1;
+    max-width: none;
+  }
+}
+
 /* ============================================================
    RWD — Mobile (< 768px) : Card layout redesign
    Design tokens: 16px body, 48px touch targets, clear hierarchy
@@ -858,6 +1083,23 @@ tbody tr:last-child td {
   .app-header-left { width: 100%; }
   .app-header-left h1 { font-size: 1.15rem; }
   .app-header-right { width: 100%; justify-content: flex-start; gap: 0.5rem; }
+
+  /* Navigation → 50/50 split tabs */
+  .nav-group {
+    position: static;
+    left: auto;
+    transform: none;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px;
+    padding: 3px;
+  }
+  .nav-item {
+    justify-content: center;
+    padding: 0.55rem 0.5rem;
+    font-size: 0.9rem;
+  }
 
   /* ── Stats: horizontal swipe chips ── */
   .stats-bar {
@@ -880,13 +1122,50 @@ tbody tr:last-child td {
   /* ── Tabs ── */
   .tab-btn { font-size: 0.9rem; padding: 0.6rem 1rem; }
 
-  /* ── Search ── */
-  .toolbar { flex-direction: column; }
-  .toolbar .search-wrap { width: 100%; }
+  /* ── Toolbar ── */
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.6rem;
+  }
+  /* Status pills → 2×2 equal-width grid, 44px touch targets */
+  .toolbar .status-filters {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+    width: 100%;
+  }
+  .toolbar .btn-status {
+    height: var(--lms-h-mobile);
+    justify-content: center;
+    font-size: 14px;
+  }
+  /* Search full-width 44px */
+  .toolbar .search-wrap {
+    width: 100%;
+    max-width: none;
+  }
   .toolbar .search-wrap input {
-    min-height: 48px;
-    font-size: 1rem;
-    border-radius: 24px;
+    height: var(--lms-h-mobile);
+    font-size: 16px; /* ≥16px 避免 iOS focus 自動放大 */
+  }
+  /* 文件：regex／clear 維持原尺寸（附屬控制，不放大） */
+  .toolbar .btn-regex {
+    height: 26px;
+  }
+  .toolbar .search-clear {
+    width: 24px;
+    height: 24px;
+  }
+  /* Count + refresh row */
+  .toolbar .filtered-count {
+    font-size: 13px;
+    padding: 0.2rem 0.1rem;
+  }
+  .toolbar .btn-refresh {
+    height: var(--lms-h-mobile);
+    justify-content: center;
+    font-size: 14px;
   }
 
   /* ── Table → Card conversion ── */
@@ -1084,9 +1363,8 @@ tbody tr:last-child td {
   .app-header { gap: 0.5rem; margin-bottom: 0.75rem; }
   .app-header-left h1 { font-size: 1rem; }
   .app-header-left h1 .header-icon { font-size: 1.2rem; }
-  .user-badge { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
-  .app-header-right button,
-  .app-header-right a[role="button"] { font-size: 0.8rem; padding: 0.35rem 0.65rem; min-height: 40px; }
+  .account-btn { font-size: 0.78rem; padding: 0.25rem 0.6rem 0.25rem 0.3rem; min-height: 40px; }
+  .account-btn .avatar { width: 26px; height: 26px; }
 
   .stats-bar { gap: 0.4rem; }
   .stat-card { min-width: 100px; padding: 0.5rem 0.75rem; }

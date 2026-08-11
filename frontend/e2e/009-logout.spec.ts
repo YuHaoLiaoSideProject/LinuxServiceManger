@@ -710,17 +710,31 @@ test.describe('Scenario 13: 邊界情況', () => {
 // ===================================================================
 
 test.describe('Scenario 14: 手機版登出', () => {
-  test('LO-RWD-01: 手機版 header 為 column 佈局，登出按鈕仍可見', async ({ page }) => {
+  test('LO-RWD-01: 手機版 header 為 row+wrap 兩列（品牌/meta 同列、導航全寬），登出按鈕仍可見', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 })
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
-    // Header should be column layout on mobile
+    // 規格（docs/uiux/design-proposal-mobile.html）：品牌列 + 全寬導航列
     const header = page.locator('.app-header')
     const flexDir = await header.evaluate((el: Element) =>
       window.getComputedStyle(el).flexDirection,
     )
-    expect(flexDir).toBe('column')
+    expect(flexDir).toBe('row')
+    const wrap = await header.evaluate((el: Element) =>
+      window.getComputedStyle(el).flexWrap,
+    )
+    expect(wrap).toBe('wrap')
+
+    // 品牌 與 帳號/meta 同一列（比較垂直中心）
+    const leftBox = await page.locator('.app-header-left').boundingBox()
+    const rightBox = await page.locator('.app-header-right').boundingBox()
+    expect(leftBox && rightBox).toBeTruthy()
+    expect(Math.abs((leftBox!.y + leftBox!.height / 2) - (rightBox!.y + rightBox!.height / 2))).toBeLessThan(4)
+
+    // 導航列在品牌下方（第二列）
+    const navBox = await page.locator('.nav-group').boundingBox()
+    expect(navBox!.y).toBeGreaterThan(leftBox!.y + leftBox!.height - 2)
 
     // Logout menu item still reachable via account menu
     await openAccountMenu(page)

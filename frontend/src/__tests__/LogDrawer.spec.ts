@@ -676,16 +676,20 @@ describe('LogDrawer — 日誌檢視器', () => {
   // ═══════════════════════════════════════════════════════════════
 
   // ── F-LD-RWD-01 ──
-  it('F-LD-RWD-01: 窄螢幕時 CSS 包含 media query 將 .log-drawer width 設為 100vw', () => {
+  it('F-LD-RWD-01: 窄螢幕時 LogDrawer 轉為 bottom sheet（底部滑入、圓角上緣、最大高度）', () => {
     // Read the source .vue file to verify CSS media query exists
     // (Vue scoped styles are not injected as <style> tags in happy-dom)
     const sourcePath = resolve(__dirname, '../components/LogDrawer.vue')
     const source = readFileSync(sourcePath, 'utf-8')
 
-    // Verify media query exists with 100vw rule in the component source
-    expect(source).toContain('@media (max-width: 768px)')
-    expect(source).toMatch(/width:\s*100vw/)
-    // Also check that min-width and max-width are unset in mobile
+    // 規格：docs/uiux/design-proposal-mobile.html — 手機版日誌用 bottom sheet
+    expect(source).toContain('@media (max-width: 767px)')
+    expect(source).toMatch(/transform:\s*translateY\(100%\)/)
+    expect(source).toMatch(/max-height:\s*88dvh/)
+    expect(source).toMatch(/border-radius:\s*16px 16px 0 0/)
+    expect(source).toMatch(/align-items:\s*flex-end/)
+    // 仍保留全螢幕寬度與 min/max-width 重置
+    expect(source).toMatch(/width:\s*100%/)
     expect(source).toMatch(/min-width:\s*unset/)
     expect(source).toMatch(/max-width:\s*unset/)
   })

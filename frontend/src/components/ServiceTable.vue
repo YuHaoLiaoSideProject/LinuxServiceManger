@@ -163,10 +163,10 @@ function onSelectAll() {
       </thead>
       <tbody id="service-table-body">
         <template v-if="loading">
-          <tr><td colspan="7"><div class="empty-state"><div class="spinner-sm"></div></div></td></tr>
+          <tr class="row-feedback"><td colspan="7"><div class="empty-state"><div class="spinner-sm"></div></div></td></tr>
         </template>
         <template v-else-if="displayServices.length === 0">
-          <tr>
+          <tr class="row-feedback">
             <td colspan="7">
               <EmptyState @clear="$emit('clear-filters')" />
             </td>

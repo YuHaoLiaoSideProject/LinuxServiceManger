@@ -222,7 +222,9 @@ test.describe('Scenario 3: 資料過濾正確性', () => {
 
     const sshdRow = getServiceRow(page, 'sshd.service')
     await expect(sshdRow.locator('.locked-badge').first()).toBeVisible()
-    await expect(sshdRow.locator('button')).toHaveCount(0)
+    // 僅 Logs 按鈕（locked 服務不提供 Start/Stop/Restart）
+    await expect(sshdRow.locator('button')).toHaveCount(1)
+    await expect(sshdRow.locator('button.btn-act-logs')).toBeVisible()
   })
 })
 

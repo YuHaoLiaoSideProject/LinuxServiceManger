@@ -106,15 +106,15 @@ test.describe('Scenario 1: 檢視 Auto-start 欄位', () => {
     await expect(nginxRow.locator('td[data-label="Actions"]')).toBeVisible()
   })
 
-  test('六個欄位標頭存在', async ({ page }) => {
+  test('七個欄位標頭存在（含 checkbox 欄）', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
     const headers = page.locator('thead th')
-    await expect(headers).toHaveCount(6)
-    await expect(headers.nth(0)).toHaveText('Name')
-    await expect(headers.nth(4)).toHaveText('Auto-start')
-    await expect(headers.nth(5)).toHaveText('Actions')
+    await expect(headers).toHaveCount(7)
+    await expect(headers.nth(1)).toHaveText('Name')
+    await expect(headers.nth(5)).toHaveText('Auto-start')
+    await expect(headers.nth(6)).toHaveText('Actions')
   })
 })
 

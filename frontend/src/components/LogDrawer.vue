@@ -316,11 +316,25 @@ onUnmounted(() => {
   transform: translateX(0);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767px) {
+  /* 規格（docs/uiux/design-proposal-mobile.html）：手機版日誌改 bottom sheet
+     —— 由底部滑入、圓角上緣、最高 88dvh，避免全螢幕遮擋背景 */
+  .drawer-overlay {
+    justify-content: center;
+    align-items: flex-end;
+  }
   .log-drawer {
-    width: 100vw;
+    width: 100%;
     min-width: unset;
     max-width: unset;
+    height: auto;
+    max-height: 88dvh;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.25);
+    transform: translateY(100%);
+  }
+  .log-drawer.drawer--open {
+    transform: translateY(0);
   }
 }
 

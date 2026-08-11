@@ -16,6 +16,7 @@
   --lms-danger-light: #fce8e6;
   --lms-danger-border: #f5c6c2;
   --lms-warning: #e37400;
+  --lms-warning-light: #fff3e0;
   --lms-bg: var(--pico-background-color);
   --lms-surface: var(--pico-card-background-color);
   --lms-border: var(--pico-muted-border-color);
@@ -38,6 +39,7 @@
 [data-theme="dark"] {
   --lms-surface-2: #1e2530;
   --lms-surface-3: #232c38;
+  --lms-warning-light: rgba(227, 116, 0, 0.18);
 }
 
 /* ── Accessibility: prefers-reduced-motion ── */
@@ -1319,17 +1321,50 @@ tbody tr:last-child td {
   /* ── Layout ── */
   .app-container { padding: 0.75rem 0.75rem 5rem; }
 
-  /* ── Header ── */
-  .app-header { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
-  .app-header-left { width: 100%; }
-  .app-header-left h1 { font-size: 1.15rem; }
-  .app-header-right { width: 100%; justify-content: flex-start; gap: 0.5rem; }
+  /* ── Header（規格：docs/uiux/design-proposal-mobile.html — sticky + blur，品牌列 + 全寬導航列）── */
+  .app-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.85rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--lms-surface);
+    border-bottom: 1px solid var(--lms-border);
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .app-header-left {
+    width: auto;
+    flex: 1;
+    min-width: 0;
+    order: 0;
+  }
+  .app-header-left h1 {
+    font-size: 1.05rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .app-header-left h1 .header-icon { font-size: 1.25rem; }
+  .app-header-right {
+    width: auto;
+    order: 1;
+    justify-content: flex-end;
+    gap: 0.4rem;
+  }
 
-  /* Navigation → 50/50 split tabs */
+  /* Navigation → 50/50 split tabs（第二列，全寬；order 3 確保位於品牌/meta 之下） */
   .nav-group {
     position: static;
     left: auto;
     transform: none;
+    order: 3;
     width: 100%;
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1366,9 +1401,58 @@ tbody tr:last-child td {
   }
   .stat-card .stat-value { font-size: 1.35rem; }
   .stat-card .stat-icon { font-size: 1.5rem; }
+  /* 規格：圖示方塊（40px、圓角、狀態色淡底） */
+  .stat-card .stat-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    align-items: center;
+    justify-content: center;
+  }
+  .stat-total    .stat-icon { background: var(--lms-accent-light); }
+  .stat-active   .stat-icon { background: var(--lms-success-light); }
+  .stat-failed   .stat-icon { background: var(--lms-danger-light); }
+  .stat-inactive .stat-icon { background: var(--lms-surface-2); }
 
-  /* ── Tabs ── */
-  .tab-btn { font-size: 0.9rem; padding: 0.6rem 1rem; }
+  /* ── Tabs（規格：segmented control — pill、active 填滿 accent、badge 反白）── */
+  .tabs-bar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    margin-bottom: 0.85rem;
+    padding: 3px;
+    background: var(--lms-surface);
+    border: 1px solid var(--lms-border);
+    border-radius: 12px;
+  }
+  .tab-btn {
+    justify-content: center;
+    padding: 0.6rem 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--lms-muted);
+    border: none;
+    border-radius: 9px;
+    margin-bottom: 0;
+    min-height: 44px;
+  }
+  .tab-btn:hover {
+    color: var(--lms-text);
+    background: var(--lms-surface-2);
+  }
+  .tab-btn.active {
+    color: #fff;
+    background: var(--lms-accent);
+    box-shadow: 0 1px 4px rgba(26, 115, 232, 0.35);
+  }
+  .tab-btn .tab-count {
+    background: rgba(0, 0, 0, 0.08);
+    color: inherit;
+  }
+  .tab-btn.active .tab-count {
+    background: rgba(255, 255, 255, 0.25);
+    color: #fff;
+  }
 
   /* ── Toolbar（無 pills）：搜尋全寬 44px ── */
   .toolbar {
@@ -1376,14 +1460,23 @@ tbody tr:last-child td {
     align-items: stretch;
     gap: 0.6rem;
   }
-  /* Search full-width 44px */
+  /* Search full-width 44px，pill 外型（規格：radius 20px、2px 邊框、3px focus ring） */
   .toolbar .search-wrap {
     width: 100%;
     max-width: none;
   }
   .toolbar .search-wrap input {
     height: var(--lms-h-mobile);
+    min-height: var(--lms-h-mobile);
     font-size: 16px; /* ≥16px 避免 iOS focus 自動放大 */
+    border-radius: 20px;
+    border-width: 2px;
+    background: var(--lms-surface);
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .toolbar .search-wrap input:focus {
+    box-shadow: 0 0 0 3px var(--lms-accent-light);
   }
   /* 文件：regex／clear 維持原尺寸（附屬控制，不放大） */
   .toolbar .btn-regex {
@@ -1415,6 +1508,7 @@ tbody tr:last-child td {
   }
   .audit-toolbar .search-box input {
     height: var(--lms-h-mobile);
+    min-height: var(--lms-h-mobile);
     font-size: 16px; /* ≥16px 避免 iOS focus 自動放大 */
   }
   .audit-toolbar .daterange {
@@ -1485,10 +1579,6 @@ tbody tr:last-child td {
     text-align: right;
     font-size: 1rem;
   }
-  .table-wrapper table td:last-child {
-    border-bottom: none;
-    padding-bottom: 0;
-  }
   .table-wrapper table td::before {
     content: attr(data-label);
     font-weight: 600;
@@ -1506,12 +1596,61 @@ tbody tr:last-child td {
     display: none;
   }
 
+  /* Audit 表格（非 service-table）：卡片最後一列去底線（service-table 已由 grid 規則處理） */
+  .table-wrapper table:not(.service-table) tr td:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  /* ── Service card：grid 重排（規格：design-proposal-mobile.html）──
+     列 1：Name（左）+ Status pill（右）→ 列 2：Load/Sub meta → 列 3：AutoStart → 列 4：Actions
+     註：col-check 已 display:none，不參與 grid。
+     ⚠️ 此布局需配合 ServiceTable.vue 的 .row-feedback（loading/empty 列維持 block）。 */
+  .table-wrapper .service-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 0.85rem;
+  }
+  .table-wrapper .service-table tr.row-feedback {
+    display: block;
+  }
+  .table-wrapper .service-table tr.row-feedback td {
+    display: block;
+    text-align: center;
+    border: none;
+    padding: 0.5rem 0;
+  }
+  .table-wrapper .service-table td:nth-child(2) { grid-area: 1 / 1; border-bottom: none; padding-top: 0; }
+  .table-wrapper .service-table td:nth-child(4) { grid-area: 1 / 2; border-bottom: none; padding-top: 0; justify-content: flex-end; }
+  .table-wrapper .service-table td:nth-child(4)::before { display: none; }
+  .table-wrapper .service-table td:nth-child(3) { grid-area: 2 / 1; font-size: 0.875rem; }
+  .table-wrapper .service-table td:nth-child(5) { grid-area: 2 / 2; font-size: 0.875rem; }
+  .table-wrapper .service-table td:nth-child(6) { grid-area: 3 / 1 / 4 / 3; }
+  .table-wrapper .service-table td:nth-child(7) {
+    grid-area: 4 / 1 / 5 / 3;
+    display: block;
+    border: none;
+    border-top: 1px solid var(--lms-border);
+    margin: 0 -1rem;
+    padding: 0.75rem 1rem;
+    background: var(--lms-surface-2);
+    border-radius: 0 0 calc(var(--lms-radius-lg, 14px) - 1px) calc(var(--lms-radius-lg, 14px) - 1px);
+  }
+  .table-wrapper .service-table td:nth-child(7)::before { display: none; }
+
+  /* 鎖定服務：左側 warning 邊線（規格：locked card variant） */
+  .table-wrapper .service-table tr:has(.locked-badge) {
+    border-left: 3px solid var(--lms-warning);
+  }
+
   /* Name row: prominent, no label (service table only) */
   .table-wrapper .service-table td:nth-child(2) {
     font-size: 1.125rem;
     font-weight: 700;
     word-break: break-all;
     padding-top: 0;
+    min-width: 0;
   }
   .table-wrapper .service-table td:nth-child(2)::before {
     display: none;
@@ -1526,6 +1665,22 @@ tbody tr:last-child td {
   .status-active, .status-inactive, .status-failed, .status-other {
     font-size: 1rem;
   }
+  /* Status pill（規格：卡片標頭右側的狀態 badge） */
+  .table-wrapper .service-table td:nth-child(4) .status-active,
+  .table-wrapper .service-table td:nth-child(4) .status-inactive,
+  .table-wrapper .service-table td:nth-child(4) .status-failed,
+  .table-wrapper .service-table td:nth-child(4) .status-other {
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  .table-wrapper .service-table td:nth-child(4) .status-active   { background: var(--lms-success-light); color: var(--lms-success); }
+  .table-wrapper .service-table td:nth-child(4) .status-inactive { background: var(--lms-surface-2); color: var(--lms-muted); }
+  .table-wrapper .service-table td:nth-child(4) .status-failed   { background: var(--lms-danger-light); color: var(--lms-danger); }
+  .table-wrapper .service-table td:nth-child(4) .status-other    { background: var(--lms-warning-light); color: var(--lms-warning); }
   @keyframes dotPulse {
     0%, 100% { box-shadow: 0 0 0 0 rgba(24,128,56,0.5); }
     50%      { box-shadow: 0 0 0 10px rgba(24,128,56,0); }
@@ -1560,7 +1715,9 @@ tbody tr:last-child td {
     padding: 0.4rem 0.8rem;
   }
 
-  /* ── Actions: primary full-width + secondary icon buttons ── */
+  /* ── Actions（規格：primary 全寬色塊 + secondary 圖示按鈕，同一列）──
+     ⚠️ 不用 :first-of-type：每個 .action-slot 內只有一個 button，會全部命中。
+     改用 ServiceRow.vue 的 .btn-act-* class 精準指定階層。 */
   .actions {
     display: flex;
     flex-wrap: wrap;
@@ -1569,37 +1726,50 @@ tbody tr:last-child td {
   .actions .action-slot {
     display: contents;
   }
-  /* Primary action (Start / Stop): full-width, colored, bold */
-  .actions button:first-of-type {
-    flex: 1 1 100%;
+  /* Primary Start / Stop：flex 撐滿剩餘寬度，成功/危險色 */
+  .actions .btn-act-start,
+  .actions .btn-act-stop {
+    flex: 1 1 auto;
+    width: auto; /* 覆寫 base .actions button { width: 100% } */
     min-height: 48px;
     font-size: 1rem;
     font-weight: 700;
     justify-content: center;
-    border-radius: var(--lms-radius);
     border: none;
-    background: var(--lms-accent);
     color: #fff;
-    box-shadow: 0 2px 8px rgba(26,115,232,0.3);
+    border-radius: var(--lms-radius);
     transition: background var(--lms-transition), transform 0.1s;
   }
-  .actions button:first-of-type:active {
-    transform: scale(0.97);
-  }
-  .actions button:first-of-type:hover {
-    background: var(--lms-accent-hover);
-  }
-  /* Secondary actions (Restart / Logs): compact icon buttons */
-  .actions button:not(:first-of-type) {
-    flex: 1 1 auto;
+  .actions .btn-act-start { background: var(--lms-success); box-shadow: 0 2px 8px rgba(24,128,56,0.3); }
+  .actions .btn-act-stop  { background: var(--lms-danger);  box-shadow: 0 2px 8px rgba(197,34,31,0.3); }
+  .actions .btn-act-start:hover { background: #12632e; }
+  .actions .btn-act-stop:hover  { background: #a71d1a; }
+  .actions .btn-act-start:active,
+  .actions .btn-act-stop:active { transform: scale(0.97); }
+  /* Secondary Restart / Logs：48px 圖示按鈕 */
+  .actions .btn-act-restart,
+  .actions .btn-logs {
+    flex: 0 0 48px;
+    width: 48px;
     min-width: 48px;
     min-height: 48px;
     justify-content: center;
     font-size: 0.875rem;
     border-radius: var(--lms-radius);
+    padding: 0;
   }
+  .actions .btn-act-restart .btn-label,
+  .actions .btn-logs .btn-label { display: none; }
   .actions button .btn-label { display: inline; }
   .actions button .btn-icon { font-size: 1.1rem; }
+  /* 鎖定服務：badge 撐滿剩餘寬度，Logs 靠右 */
+  .actions .locked-badge {
+    flex: 1 1 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 48px;
+  }
 
   /* ── Toast: slide from bottom ── */
   #toast-container {
@@ -1625,10 +1795,13 @@ tbody tr:last-child td {
     border-color: var(--lms-accent);
     box-shadow: 0 4px 20px rgba(138,180,248,0.15);
   }
-  [data-theme="dark"] .actions button:first-of-type {
-    background: var(--lms-accent);
-    color: #fff;
-  }
+  /* Status pill 深色版 */
+  [data-theme="dark"] .table-wrapper .service-table td:nth-child(4) .status-active   { background: rgba(24, 128, 56, 0.22); }
+  [data-theme="dark"] .table-wrapper .service-table td:nth-child(4) .status-inactive { background: var(--lms-surface-2); }
+  [data-theme="dark"] .table-wrapper .service-table td:nth-child(4) .status-failed   { background: rgba(197, 34, 31, 0.22); }
+  [data-theme="dark"] .table-wrapper .service-table td:nth-child(4) .status-other    { background: var(--lms-warning-light); }
+  [data-theme="dark"] .actions .btn-act-start { background: var(--lms-success); }
+  [data-theme="dark"] .actions .btn-act-stop  { background: var(--lms-danger); }
 }
 
 /* ============================================================
@@ -1650,11 +1823,14 @@ tbody tr:last-child td {
   .toolbar .search-wrap input { font-size: 0.9375rem; }
 
   .table-wrapper table tr { padding: 0.85rem; margin-bottom: 0.85rem; }
+  .table-wrapper .service-table td:nth-child(7) { margin: 0 -0.85rem; padding: 0.75rem 0.85rem; }
   .table-wrapper table td { padding: 0.45rem 0; font-size: 0.9375rem; }
   .table-wrapper table td::before { font-size: 0.75rem; }
   .table-wrapper .service-table td:nth-child(2) { font-size: 1.0625rem; }
-  .actions button:first-of-type { font-size: 0.9375rem; min-height: 48px; }
-  .actions button:not(:first-of-type) { min-height: 48px; min-width: 48px; font-size: 0.8125rem; }
+  .actions .btn-act-start,
+  .actions .btn-act-stop { font-size: 0.9375rem; min-height: 48px; }
+  .actions .btn-act-restart,
+  .actions .btn-logs { min-height: 48px; min-width: 48px; width: 48px; font-size: 0.8125rem; }
   .status-dot { width: 12px; height: 12px; }
 
   .lms-modal { padding: 1.25rem; border-radius: 12px; }

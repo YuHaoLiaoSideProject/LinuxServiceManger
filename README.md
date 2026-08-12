@@ -175,9 +175,12 @@ go build -o ../linux-service-manager main.go
 | `ADMIN_PASS` | `admin123` | 管理員密碼（**必須設定**，否則啟動拒絕） |
 | `SESSION_KEY` | — | Session 加密金鑰（**必須設定**，否則啟動拒絕） |
 | `PORT` | `8080` | HTTP 監聽埠號 |
+| `SECURE_COOKIE` | `true` | Session cookie 是否啟用 `Secure` flag。純 HTTP 部署（無 HTTPS）**必須設為 `false`**，否則瀏覽器會拒絕 cookie 導致無法登入 |
 | `UNLOCKED_SERVICES` | (空) | 解鎖指定服務的 glob 模式，逗號分隔（見下方說明） |
 
 > ⚠️ **重要**：`ADMIN_PASS` 和 `SESSION_KEY` 兩個環境變數必須明確設定，使用預設值會導致程式拒絕啟動。
+> 
+> ⚠️ **純 HTTP 部署注意**：若沒有使用 HTTPS（例如直接暴露 port 8080 或 10500），必須設定 `SECURE_COOKIE=false`。瀏覽器會拒絕儲存帶有 `Secure` flag 的 cookie 在 HTTP 連線上，導致登入成功後所有請求仍是 401。
 
 ### 解鎖服務
 
@@ -351,6 +354,7 @@ Environment="ADMIN_USER=admin"
 Environment="ADMIN_PASS=change_me"
 Environment="SESSION_KEY=change_me_to_random_string"
 Environment="PORT=8080"
+Environment="SECURE_COOKIE=false"
 ExecStart=/opt/linux-service-manager/linux-service-manager
 Restart=on-failure
 RestartSec=5

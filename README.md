@@ -13,14 +13,18 @@
 |------|------|
 | 🔐 **管理員登入** | 帳號密碼驗證、Cookie-based session、30 分鐘閒置逾時、HttpOnly |
 | 📋 **服務列表** | 即時查詢所有 systemd 服務，含 Load / Active / Sub 狀態，支援排序欄位 |
-| ▶️ **服務操作** | Start、Stop、Restart，附帶確認對話框防止誤操作 |
+| ▶️ **服務操作** | Start、Stop、Restart、Enable、Disable，附帶確認對話框防止誤操作 |
 | 🔒 **服務保護** | 僅 `/etc/systemd/system/` 下的自訂服務可操作，系統服務自動鎖定；可透過環境變數解鎖 |
-| 🔍 **搜尋過濾** | 前端即時搜尋，支援分頁（我的服務 / 系統服務） |
-| 📊 **狀態統計** | 總服務數、執行中、失敗數量一目了然（StatsBar） |
+| 🔍 **搜尋過濾** | 前端即時搜尋，支援分頁（我的服務 / 系統服務），含動態統計卡篩選 |
+| 📊 **狀態統計** | 總服務數、執行中、失敗數量一目了然（StatsBar），點擊統計卡快速篩選 |
+| 📝 **日誌檢視器** | WebSocket 串流即時查看服務 journalctl 日誌，支援自動捲動與暫停 |
+| 🔄 **即時狀態推送** | WebSocket 雙向通道，systemd 狀態變更與開機啟動變更即時推送到前端 |
+| 📜 **審計日誌** | 記錄所有服務操作（啟動/停止/重啟/啟用/停用），支援時間範圍查詢、搜尋與 CSV 匯出 |
+| 📦 **批次操作** | 多選服務一次執行 start / stop / restart，含進度提示與個別結果回報 |
 | 🌗 **深色模式** | 支援亮色 / 暗色主題切換，記憶偏好 (localStorage) |
 | 🌐 **雙語介面** | 繁體中文 / English 切換 (i18n) |
 | 🛎️ **Toast 通知** | 操作結果即時彈出通知（成功 / 失敗） |
-| 📱 **RWD 響應式** | 桌面表格、平板精簡、手機卡片三種佈局 |
+| 📱 **RWD 響應式** | 桌面表格、平板精簡、手機 sticky header + segmented tabs + bottom sheet 佈局 |
 | 🚀 **單檔部署** | 一個約 15MB 的 binary，內嵌 Vue 3 SPA，`scp` 上傳直接執行，無 runtime 依賴 |
 
 ## 🛠 技術棧
@@ -58,19 +62,20 @@
 │  │  chi    │  │  auth    │  │ systemd │ │
 │  │ router  │──│ middleware│──│ handler │ │
 │  └────┬────┘  └──────────┘  └────┬────┘ │
-│       │                          │       │
-│  ┌────▼────┐              ┌──────▼─────┐ │
-│  │ embed   │              │  godbus/   │ │
-│  │ static/ │              │  dbus5     │ │
-│  │ (Vue    │              └──────┬─────┘ │
-│  │  SPA)   │                     │       │
-│  └─────────┘                     │       │
-└──────────────────────────────────┼───────┘
-                                   │ D-Bus
-                          ┌────────▼────────┐
-                          │    systemd       │
-                          │  (系統 init)     │
-                          └─────────────────┘
+│       │                          │       │                          │       │
+│  ┌────▼────┐  ┌──────────┐  ┌───▼──────┐ │
+│  │ embed   │  │ websocket│  │  godbus/ │ │
+│  │ static/ │  │ hub      │  │  dbus5   │ │
+│  │ (Vue    │  │ + client │  └────┬─────┘ │
+│  │  SPA)   │  └────┬─────┘       │       │
+│  └─────────┘       │             │       │
+│                    │  WS 雙向    │ D-Bus │
+└────────────────────┼─────────────┼───────┘
+                     │             │
+              ┌──────▼──┐   ┌─────▼────────┐
+              │ Browser │   │   systemd     │
+              │ (即時推) │   │ (系統 init)   │
+              └─────────┘   └──────────────┘
 ```
 
 ## 🚀 快速開始
@@ -86,7 +91,7 @@ curl -fsSL https://raw.githubusercontent.com/YuHaoLiaoSideProject/LinuxServiceMa
 指定版本（tag 格式為日期版本號）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YuHaoLiaoSideProject/LinuxServiceManger/main/install.sh | bash -s -- --tag 20260810.01
+curl -fsSL https://raw.githubusercontent.com/YuHaoLiaoSideProject/LinuxServiceManger/main/install.sh | bash -s -- --tag 20260812.01
 ```
 
 僅下載 binary，不安裝 service：
@@ -195,19 +200,34 @@ linux-service-manager/
 │   ├── main.go                    # 進入點 (Go embed static/)
 │   ├── go.mod / go.sum            # Go module 依賴
 │   ├── internal/
+│   │   ├── audit/
+│   │   │   ├── audit.go           # 審計日誌記錄與查詢
+│   │   │   └── audit_test.go      # 審計日誌測試
 │   │   ├── auth/
 │   │   │   ├── auth.go            # Session 管理、登入驗證
 │   │   │   └── auth_test.go       # Session 測試
 │   │   ├── handler/
-│   │   │   ├── handler.go         # HTML/htmx 路由（legacy）+ 頁面路由
+│   │   │   ├── handler.go         # HTML/htmx 路由（legacy）+ WebSocket handler
 │   │   │   ├── handler_test.go    # JSON API 測試
+│   │   │   ├── handler_audit_test.go  # 審計 API 測試
+│   │   │   ├── handler_batch_test.go  # 批次操作 API 測試
 │   │   │   └── json_handler.go    # JSON API (/api/v1/*) handlers
 │   │   ├── middleware/
 │   │   │   ├── auth.go            # 認證 middleware（HTML redirect + JSON 401）
-│   │   │   └── auth_test.go       # middleware 測試
-│   │   └── systemd/
-│   │       ├── systemd.go         # D-Bus / systemctl 操作 systemd
-│   │       └── systemd_test.go    # systemd 測試
+│   │   │   ├── auth_test.go       # middleware 測試
+│   │   │   └── ratelimit.go       # 登入速率限制 middleware
+│   │   ├── monitor/
+│   │   │   ├── monitor.go         # 服務狀態監控調度
+│   │   │   ├── dbus_monitor.go    # D-Bus signal 即時監聽
+│   │   │   └── polling_monitor.go # 定期輪詢狀態監控
+│   │   ├── systemd/
+│   │   │   ├── systemd.go         # D-Bus / systemctl 操作 systemd
+│   │   │   └── systemd_test.go    # systemd 測試
+│   │   └── websocket/
+│   │       ├── hub.go             # WebSocket Hub（client 管理與廣播）
+│   │       ├── hub_test.go        # Hub 測試
+│   │       ├── client.go          # WebSocket client 連線
+│   │       └── origin.go          # WebSocket origin 檢查
 │   ├── templates/
 │   │   ├── index.html             # Legacy htmx 頁面
 │   │   └── login.html             # Legacy 登入頁面
@@ -218,23 +238,34 @@ linux-service-manager/
 │   │   ├── App.vue                # 根元件
 │   │   ├── views/
 │   │   │   ├── LoginView.vue      # 登入頁面
-│   │   │   └── DashboardView.vue  # 儀表板（服務管理）
+│   │   │   ├── DashboardView.vue  # 儀表板（服務管理）
+│   │   │   └── AuditLogView.vue   # 審計日誌查詢頁面
 │   │   ├── components/
-│   │   │   ├── AppHeader.vue      # 頁首：重新整理、登出、主題/語言切換
+│   │   │   ├── AppHeader.vue      # 頁首：導覽、重新整理、登出、主題/語言切換
+│   │   │   ├── AuditTable.vue     # 審計日誌表格（含時間範圍、搜尋、匯出）
+│   │   │   ├── BatchResultPanel.vue  # 批次操作結果面板
+│   │   │   ├── BatchToolbar.vue   # 批次操作工具列（多選模式）
 │   │   │   ├── ConfirmModal.vue   # Stop/Restart 確認對話框
+│   │   │   ├── DateRangeGroup.vue # 日期範圍選擇器
+│   │   │   ├── EmptyState.vue     # 空狀態提示
+│   │   │   ├── LogDrawer.vue      # 日誌檢視器（WebSocket 即時串流）
 │   │   │   ├── LoginForm.vue      # 登入表單
-│   │   │   ├── ServiceRow.vue     # 單一服務列（含操作按鈕）
+│   │   │   ├── ServiceRow.vue     # 單一服務列（含操作按鈕、多選 checkbox）
 │   │   │   ├── ServiceTable.vue   # 可排序、可篩選的服務表格
-│   │   │   ├── StatsBar.vue       # 統計列：總數 / 執行中 / 失敗
+│   │   │   ├── StatsBar.vue       # 統計卡：總數 / 執行中 / 失敗（可點擊篩選）
 │   │   │   ├── TabsBar.vue        # 分頁：我的服務 / 系統服務
 │   │   │   ├── ToastContainer.vue # Toast 通知容器
-│   │   │   └── Toolbar.vue        # 搜尋欄
+│   │   │   └── Toolbar.vue        # 搜尋欄 + 批次模式切換
 │   │   ├── composables/
+│   │   │   ├── useAuditLog.ts     # 審計日誌查詢邏輯
 │   │   │   ├── useI18n.ts         # 繁體中文 / English 翻譯
+│   │   │   ├── useServiceFilter.ts # 服務搜尋過濾邏輯
 │   │   │   ├── useTheme.ts        # 亮色 / 暗色主題
-│   │   │   └── useToast.ts        # Toast 通知狀態
+│   │   │   ├── useToast.ts        # Toast 通知狀態
+│   │   │   └── useWebSocket.ts    # WebSocket 連線管理
 │   │   ├── stores/
-│   │   │   └── auth.ts            # Pinia 認證 store
+│   │   │   ├── auth.ts            # Pinia 認證 store
+│   │   │   └── service.ts         # Pinia 服務狀態 store（WebSocket 即時同步）
 │   │   ├── api/
 │   │   │   └── client.ts          # Axios API 客戶端
 │   │   ├── router/
@@ -272,6 +303,13 @@ linux-service-manager/
 | `POST` | `/api/v1/services/{name}/start` | 啟動服務 | ✅ |
 | `POST` | `/api/v1/services/{name}/stop` | 停止服務 | ✅ |
 | `POST` | `/api/v1/services/{name}/restart` | 重啟服務 | ✅ |
+| `POST` | `/api/v1/services/{name}/enable` | 啟用服務（開機啟動） | ✅ |
+| `POST` | `/api/v1/services/{name}/disable` | 停用服務（取消開機啟動） | ✅ |
+| `POST` | `/api/v1/services/batch` | 批次操作多個服務 | ✅ |
+| `GET` | `/api/v1/services/{name}/logs/ws` | WebSocket 即時日誌串流 | ✅ |
+| `GET` | `/api/v1/ws` | WebSocket 服務狀態即時推送 | ✅ |
+| `GET` | `/api/v1/audit` | 查詢審計日誌（支援分頁、搜尋、時間範圍） | ✅ |
+| `GET` | `/api/v1/audit/export` | 匯出審計日誌（CSV） | ✅ |
 
 ### Legacy HTML 路由（htmx）
 
@@ -372,6 +410,10 @@ server {
 | 004 | Enable / Disable 服務 | — | [📄](docs/bdds/004-enable-disable-service.feature) | [📄](docs/development/004-enable-disable-service.md) | [📄](docs/test-plans/004-enable-disable-service測試計畫.md) | [📄](docs/interaction-flows/004-enable-disable-service.md) | — |
 | 005 | journalctl 日誌檢視器 | — | [📄](docs/bdds/005-journalctl-log-viewer.feature) | [📄](docs/development/005-journalctl-log-viewer.md) | [📄](docs/test-plans/005-journalctl-log-viewer測試計畫.md) | [📄](docs/interaction-flows/005-journalctl-log-viewer.md) | [📄](docs/tech-decisions/005-journalctl-log-viewer.md) |
 | 006 | PWA 支援 | — | [📄](docs/bdds/006-pwa-support.feature) | [📄](docs/development/006-pwa-support.md) | [📄](docs/test-plans/006-pwa-support測試計畫.md) | [📄](docs/interaction-flows/006-pwa-support.md) | [📄](docs/tech-decisions/006-pwa-support.md) |
+| 007 | 服務搜尋增強 | — | [📄](docs/bdds/007-service-search-enhancement.feature) | [📄](docs/development/007-service-search-enhancement.md) | [📄](docs/test-plans/007-service-search-enhancement測試計畫.md) | [📄](docs/interaction-flows/007-service-search-enhancement.md) | [📄](docs/tech-decisions/007-service-search-enhancement.md) |
+| 008 | WebSocket 狀態推送 | — | [📄](docs/bdds/008-websocket-status-push.feature) | [📄](docs/development/008-websocket-status-push.md) | [📄](docs/test-plans/008-websocket-status-push測試計畫.md) | [📄](docs/interaction-flows/008-websocket-status-push.md) | [📄](docs/tech-decisions/008-websocket-status-push.md) |
+| 009 | 審計日誌 | — | [📄](docs/bdds/009-audit-log.feature) | [📄](docs/development/009-audit-log.md) | [📄](docs/test-plans/009-audit-log測試計畫.md) | [📄](docs/interaction-flows/009-audit-log.md) | [📄](docs/tech-decisions/009-audit-log.md) |
+| 010 | 批次操作 | — | [📄](docs/bdds/010-batch-operations.feature) | [📄](docs/development/010-batch-operations.md) | [📄](docs/test-plans/010-batch-operations測試計畫.md) | [📄](docs/interaction-flows/010-batch-operations.md) | [📄](docs/tech-decisions/010-batch-operations.md) |
 
 ### 綜合文件
 

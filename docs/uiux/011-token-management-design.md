@@ -52,7 +52,7 @@ API Token 管理屬於「設定配置」而非「日常操作」：
 |---|------|------|:---:|------|
 | 1 | **AppHeader.vue** | `frontend/src/components/AppHeader.vue` | ✅ 需擴充 | `.nav-group > .nav-item.active` 模式完整（保留 Dashboard + Audit）；帳號選單新增「設定」區塊 + API Tokens menu-item |
 | 2 | **ConfirmModal.vue** | `frontend/src/components/ConfirmModal.vue` | ✅ 直接複用 | `show` / `message` / `details` props + `confirm` / `cancel` emits；取消 Token 時可傳「確定要撤銷 Token『{name}』嗎？…」 |
-| 3 | **EmptyState.vue** | `frontend/src/components/EmptyState.vue` | ✅ 需微調 | `message` prop + `showButton` + `clear` emit；Token 空狀態需改為「尚無 API Token」+「建立 Token」按鈕 |
+| 3 | **EmptyState.vue** | `frontend/src/components/EmptyState.vue` | ✅ 需微調 | `message` prop + `showButton` + `clear` emit；Token 空狀態改為「尚無 API Token」（建立按鈕僅在頁面標頭，空狀態不重複） |
 | 4 | **main.css** | `frontend/src/assets/main.css` | ✅ 完全複用 | 所有 `--lms-*` 變數已定義；`lms-modal-overlay` / `lms-modal` 樣式完整；表格 `.table-wrapper` 可直接用 |
 | 5 | **router/index.ts** | `frontend/src/router/index.ts` | ✅ 需擴充 | 現有 `/ /login /audit` 三條路由；新增 `/tokens` 路由 + lazy import |
 
@@ -167,7 +167,7 @@ API Token 管理屬於「設定配置」而非「日常操作」：
 | **Loading（提交）** | 按鈕 disabled + spinner 圖示 + 「產生中…」 | 提交後等待 API 回應期間 |
 | **Error（列表）** | 紅色錯誤訊息 + 「重試」按鈕 | 點擊重試 → 重新呼叫 `GET /api/v1/tokens` |
 | **Error（表單）** | 欄位紅框 + 表單下方紅色錯誤區塊 | 修改表單後可重新提交 |
-| **空結果** | 鑰匙圖示 + 「尚無 API Token」+ 「建立 Token」按鈕 | 點擊按鈕展開建立表單 |
+| **空結果** | 鑰匙圖示 + 「尚無 API Token」（建立按鈕僅在頁面標頭，空狀態不重複） | 可從頁面標頭「建立 Token」展開表單 |
 
 ### 4.2 Token 揭露 Modal
 
@@ -337,7 +337,7 @@ API Tokens 入口放在既有帳號選單（`.account > .menu-pop`）中：
 - [ ] 已撤銷 / 已過期行透明度降低、無撤銷按鈕
 - [ ] Token 揭露 Modal 不可點背景關閉
 - [ ] Token 值以等寬字體顯示，可選取
-- [ ] 空狀態有建立按鈕
+- [ ] 空狀態不重複建立按鈕（建立按鈕僅在頁面標頭）
 - [ ] 載入失敗有重試按鈕
 - [ ] RWD：desktop 表格 → mobile 卡片
 - [ ] Nav-group 在 desktop 三項並排不換行

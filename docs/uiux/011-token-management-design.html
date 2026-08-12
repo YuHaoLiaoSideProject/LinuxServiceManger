@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>API Token 管理 設計規格 — TokenManageView 完整規格</title>
+<title>API Token 管理 互動設計稿 — TokenManageView</title>
 <style>
 /* ════════════════════════════════════════════════════════════
    設計 Token（對應前端 --lms-* 變數）
@@ -49,15 +49,21 @@ h1 { font-size: 1.35rem; margin: 0; }
 .frame { background: var(--frame); border: 1px solid var(--border); border-radius: 14px; padding: 1.6rem 1.5rem 1.8rem; margin-bottom: 1.5rem; }
 .frame h2 { margin: 0 0 0.25rem; font-size: 1.1rem; }
 .frame .fsub { color: var(--muted); font-size: 0.82rem; margin: 0 0 1rem; line-height: 1.6; }
+.frame .fsub b { color: var(--accent); }
 .browser-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 1rem; }
 .bdot { width: 11px; height: 11px; border-radius: 50%; }
 .bdot:nth-child(1){ background:#f87171 } .bdot:nth-child(2){ background:#fbbf24 } .bdot:nth-child(3){ background:#34d399 }
-.browser-url { flex: 1; max-width: 420px; margin-left: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.75rem; color: var(--muted); }
+.browser-url { flex: 1; max-width: 460px; margin-left: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.75rem; color: var(--muted); }
 .elem-count { font-size: 0.72rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 0.2rem 0.7rem; white-space: nowrap; }
 .elem-count b { color: var(--accent); }
 
 .app-page { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); transition: background var(--transition); overflow: hidden; }
 .app-page.is-mobile { max-width: 390px; margin: 0 auto; }
+
+/* ── Focus ring（WCAG 2.4.7）── */
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
 
 /* ── AppHeader（模擬既有 .app-header + .nav-group）── */
 .mock-header { display: flex; align-items: center; justify-content: space-between; padding: 0.7rem 1.25rem; border-bottom: 1px solid var(--border); background: var(--surface); flex-wrap: wrap; gap: 0.5rem; }
@@ -66,27 +72,30 @@ h1 { font-size: 1.35rem; margin: 0; }
 .nav-group { display: flex; align-items: center; gap: 0.35rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
 .nav-item { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; font-weight: 500; padding: 0.4rem 0.85rem; border-radius: 7px; color: var(--muted); text-decoration: none; white-space: nowrap; transition: color var(--transition), background var(--transition), box-shadow var(--transition); cursor: pointer; border: none; background: none; }
 .nav-item:hover { color: var(--text); }
+.nav-item:active { transform: scale(0.96); }
 .nav-item.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
 .nav-item svg { flex-shrink: 0; }
-/* ── Account menu（模擬既有 account dropdown）── */
+/* ── Account menu（模擬既有 account dropdown，含「設定」區塊）── */
 .mock-header-right { display: flex; align-items: center; gap: 0.5rem; }
 .account { position: relative; }
 .account-btn { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; font-weight: 500; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 0.28rem 0.8rem 0.28rem 0.35rem; cursor: pointer; transition: all var(--transition); }
 .account-btn:hover { border-color: var(--accent); }
 .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; flex-shrink: 0; }
-.chevron { font-size: 0.6rem; color: var(--muted); transition: transform var(--transition); }
-.menu-pop { display: none; position: absolute; right: 0; top: calc(100% + 6px); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-lg); min-width: 200px; z-index: 100; padding: 0.4rem 0; }
+.chevron { display: inline-flex; color: var(--muted); transition: transform var(--transition); }
+.menu-pop { display: none; position: absolute; right: 0; top: calc(100% + 6px); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-lg); min-width: 210px; z-index: 100; padding: 0.4rem 0; }
 .menu-pop.open { display: block; }
-.menu-head { padding: 0.5rem 0.9rem; border-bottom: 1px solid var(--border); margin-bottom: 0.3rem; }
+.menu-head { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.9rem; border-bottom: 1px solid var(--border); margin-bottom: 0.3rem; }
 .menu-head .who { font-weight: 600; font-size: 0.85rem; }
 .menu-head .meta { font-size: 0.72rem; color: var(--muted); }
 .menu-section { padding: 0.3rem 0.9rem; font-size: 0.68rem; color: var(--muted); font-weight: 600; letter-spacing: 0.04em; }
-.menu-item { display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.45rem 0.9rem; border: none; background: none; color: var(--text); font-size: 0.82rem; cursor: pointer; transition: background var(--transition); text-align: left; font-family: inherit; }
+.menu-item { display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.45rem 0.9rem; border: none; background: none; color: var(--text); font-size: 0.82rem; cursor: pointer; transition: background var(--transition); text-align: left; font-family: inherit; min-height: 34px; }
 .menu-item:hover { background: var(--surface-2); }
 .menu-item svg { flex-shrink: 0; color: var(--muted); }
 .menu-divider { border: none; border-top: 1px solid var(--border); margin: 0.3rem 0; }
 .menu-item.danger { color: var(--danger); }
 .menu-item.danger:hover { background: var(--danger-light); }
+.num-badge { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--accent-light); color: var(--accent); font-size: 0.65rem; font-weight: 700; flex-shrink: 0; }
+.menu-item .num-badge { margin-left: auto; }
 
 /* ── 頁面標頭區 ── */
 .page-head { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem 0.75rem; flex-wrap: wrap; gap: 0.5rem; }
@@ -96,6 +105,7 @@ h1 { font-size: 1.35rem; margin: 0; }
 /* ── 按鈕 ── */
 .btn { height: var(--h); display: inline-flex; align-items: center; gap: 0.4rem; padding: 0 0.9rem; border-radius: var(--radius-sm); font-size: var(--fs); border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; transition: all var(--transition); white-space: nowrap; font-weight: 500; }
 .btn:hover { background: var(--surface-2); border-color: var(--muted); }
+.btn:active:not(:disabled) { transform: scale(0.96); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn.secondary { background: var(--surface-2); }
 .btn.accent { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -105,6 +115,8 @@ h1 { font-size: 1.35rem; margin: 0; }
 .btn .spin { display: none; width: 14px; height: 14px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: rot 0.8s linear infinite; }
 .btn.loading .spin { display: inline-block; }
 .btn.accent .spin { border-color: rgba(255,255,255,0.5); border-top-color: #fff; }
+.btn.danger .spin { border-color: rgba(197,34,31,0.4); border-top-color: var(--danger); }
+.btn.danger.loading .spin { border-color: rgba(255,255,255,0.5); border-top-color: #fff; }
 @keyframes rot { to { transform: rotate(360deg); } }
 
 /* ── Token 列表表格 ── */
@@ -119,6 +131,8 @@ h1 { font-size: 1.35rem; margin: 0; }
 .token-table tbody tr.row-expired td { opacity: 0.5; }
 .token-table .col-name { font-weight: 600; }
 .token-table .col-token { font-family: var(--mono); font-size: 0.82rem; letter-spacing: 0.04em; user-select: all; }
+.token-table .col-ops { white-space: nowrap; }
+.table-caption { display: flex; align-items: center; gap: 0.45rem; padding: 0.55rem 1.25rem 0.35rem; font-size: 0.78rem; color: var(--muted); }
 
 /* ── 狀態標籤 ── */
 .status-tag { display: inline-flex; align-items: center; gap: 0.3rem; padding: 2px 8px; border-radius: 4px; font-size: 0.78rem; font-weight: 500; white-space: nowrap; }
@@ -147,44 +161,87 @@ h1 { font-size: 1.35rem; margin: 0; }
 .form-field input.invalid { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(197,34,31,0.12); }
 .form-field .field-err { font-size: 0.72rem; color: var(--danger); }
 .form-field input[type="date"] { width: 160px; font-family: var(--mono); font-size: 0.82rem; }
-.form-field.name-field { min-width: 240px; }
+.form-field.name-field { min-width: 240px; flex: 1 1 240px; }
 .form-field.expiry-field { min-width: 180px; }
-.form-error { font-size: 0.8rem; color: var(--danger); padding: 0.5rem 0.75rem; background: var(--danger-light); border: 1px solid var(--danger-border); border-radius: var(--radius-sm); }
+.form-field.name-field input { width: 100%; }
+.form-error { font-size: 0.8rem; color: var(--danger); padding: 0.5rem 0.75rem; background: var(--danger-light); border: 1px solid var(--danger-border); border-radius: var(--radius-sm); display: flex; align-items: center; gap: 0.4rem; }
+.form-error svg { flex-shrink: 0; }
 .form-actions { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.25rem; flex-wrap: wrap; }
+#customDateRow { display: none; }
+#customDateRow.show { display: flex; }
 
-/* ── Radio group ── */
+/* ── Radio group（segmented control）── */
 .radio-group { display: flex; gap: 0.3rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px; }
 .radio-opt { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; padding: 0.35rem 0.75rem; border-radius: 4px; border: none; background: none; color: var(--muted); cursor: pointer; transition: all var(--transition); font-weight: 500; white-space: nowrap; }
 .radio-opt:hover { color: var(--text); }
+.radio-opt:active { transform: scale(0.96); }
 .radio-opt.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
 .radio-opt svg { flex-shrink: 0; }
 
-/* ── 空狀態 ── */
+/* ── 空狀態 / Loading / Error（列表狀態面板）── */
 .empty-state { text-align: center; padding: 3rem 1rem; color: var(--muted); }
-.empty-state .empty-icon { margin-bottom: 0.5rem; display: flex; justify-content: center; }
+.empty-state .empty-icon { margin-bottom: 0.5rem; display: flex; justify-content: center; color: var(--muted); }
 .empty-state p { font-size: 0.95rem; margin: 0 0 1rem; }
-
-/* ── Loading ── */
 .loading-state { text-align: center; padding: 3rem 1rem; color: var(--muted); }
 .loading-state .spinner-lg { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: rot 0.8s linear infinite; margin: 0 auto 0.75rem; }
-
-/* ── Error state ── */
 .error-state { text-align: center; padding: 2.5rem 1rem; }
 .error-state p { color: var(--danger); font-size: 0.9rem; margin: 0 0 0.75rem; }
+.p-center { min-height: 320px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 
-/* ── Token 揭露 Modal ── */
-.token-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 10000; display: flex; align-items: center; justify-content: center; animation: overlayIn 0.2s ease-out; padding: 0 0.75rem; }
+/* ── 狀態面板切換 ── */
+.state-panel { display: none; }
+.state-panel.show { display: block; }
+.form-panel { display: none; }
+.form-panel.show { display: block; }
+.list-panel { display: none; }
+.list-panel.show { display: block; }
+.switch-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.switch-row .sw-label { font-size: 0.78rem; color: var(--muted); font-weight: 600; }
+.switch-row .hint { font-size: 0.74rem; color: var(--muted); }
+
+/* ── 揭露 Modal（固定 overlay，不可背景關閉）── */
+.lms-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 10000; display: none; align-items: center; justify-content: center; animation: overlayIn 0.2s ease-out; padding: 0 0.75rem; }
+.lms-overlay.show { display: flex; }
 @keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
-.token-modal { background: var(--surface); border-radius: 14px; padding: 1.75rem; max-width: 520px; width: 100%; box-shadow: var(--shadow-lg); animation: modalIn 0.25s ease-out; }
 @keyframes modalIn { from { opacity: 0; transform: scale(0.92) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+.token-modal { background: var(--surface); border-radius: 14px; padding: 1.75rem; max-width: 520px; width: 100%; box-shadow: var(--shadow-lg); animation: modalIn 0.25s ease-out; }
 .token-modal h3 { margin: 0 0 0.5rem; font-size: 1.1rem; display: flex; align-items: center; gap: 0.4rem; }
 .token-modal .warning-box { background: #fff3e0; border: 1px solid #ff9800; border-radius: var(--radius-sm); padding: 0.75rem 1rem; margin-bottom: 1rem; color: #e65100; font-size: 0.85rem; font-weight: 500; display: flex; align-items: flex-start; gap: 0.5rem; line-height: 1.5; }
 [data-theme="dark"] .token-modal .warning-box { background: rgba(227,116,0,0.18); border-color: rgba(227,116,0,0.4); color: #ffb74d; }
 .token-modal .token-value { width: 100%; padding: 0.7rem 0.9rem; font-family: var(--mono); font-size: 0.92rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); resize: none; user-select: all; word-break: break-all; color: var(--text); margin-bottom: 1rem; }
-.token-modal .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; flex-wrap: wrap; }
+.token-modal .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+.token-modal .bg-lock-note { font-size: 0.72rem; color: var(--muted); display: flex; align-items: center; gap: 0.35rem; }
 .token-modal .btn-copy { background: var(--accent); border-color: var(--accent); color: #fff; }
 .token-modal .btn-copy:hover { background: var(--accent-hover); }
 .token-modal .btn-copied { background: var(--success); border-color: var(--success); color: #fff; }
+
+/* ── 撤銷 ConfirmModal ── */
+.confirm-modal { background: var(--surface); border-radius: 14px; padding: 1.4rem 1.5rem; max-width: 440px; width: 100%; box-shadow: var(--shadow-lg); animation: modalIn 0.25s ease-out; }
+.confirm-modal h3 { margin: 0 0 0.6rem; font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem; }
+.confirm-modal .cm-ico { color: var(--warning); flex-shrink: 0; display: inline-flex; }
+.confirm-modal .cm-msg { font-size: 0.92rem; line-height: 1.6; margin: 0 0 0.5rem; }
+.confirm-modal .cm-msg b { color: var(--text); }
+.confirm-modal .cm-details { font-size: 0.8rem; color: var(--muted); line-height: 1.6; margin: 0 0 1rem; }
+.confirm-modal .cm-actions { display: flex; justify-content: flex-end; gap: 0.5rem; flex-wrap: wrap; }
+.cm-error { display: none; font-size: 0.8rem; color: var(--danger); background: var(--danger-light); border: 1px solid var(--danger-border); border-radius: var(--radius-sm); padding: 0.5rem 0.75rem; margin: 0 0 0.75rem; align-items: center; gap: 0.4rem; }
+.cm-error.show { display: flex; }
+.cm-error svg { flex-shrink: 0; }
+
+/* ── 揭露 Modal Demo（in-frame）── */
+.modal-demo { display: none; }
+.modal-demo.show { display: flex; }
+.modal-demo .token-modal-overlay { position: static; background: transparent; padding: 0; }
+.modal-demo .token-modal { box-shadow: var(--shadow); }
+.modal-demo .confirm-modal { box-shadow: var(--shadow); }
+.reveal-closed-note { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; padding: 1rem 1.25rem; background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; font-size: 0.82rem; color: var(--muted); }
+.reveal-closed-note b { color: var(--accent); }
+
+/* ── Toast ── */
+.toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-90px); z-index: 20000; display: flex; align-items: center; gap: 0.5rem; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-lg); padding: 0.6rem 1rem; font-size: 0.85rem; font-weight: 500; opacity: 0; transition: transform 0.25s ease, opacity 0.25s ease; pointer-events: none; }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast svg { flex-shrink: 0; }
+.toast.success svg { color: var(--success); }
+.toast.error svg { color: var(--danger); }
 
 /* ── 元件解剖 ── */
 .anatomy { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-top: 1.1rem; }
@@ -196,7 +253,7 @@ h1 { font-size: 1.35rem; margin: 0; }
 .anat-dims { font-size: 0.74rem; color: var(--muted); line-height: 1.8; }
 .anat-dims b { color: var(--accent); font-family: var(--mono); }
 
-/* ── 狀態矩陣表 ── */
+/* ── 規格表（輔助）── */
 .states { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 1rem; }
 .states th, .states td { border: 1px solid var(--border); padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
 .states th { background: var(--surface-2); font-size: 0.74rem; color: var(--muted); font-weight: 700; }
@@ -204,18 +261,17 @@ h1 { font-size: 1.35rem; margin: 0; }
 .states .demo-cell { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .states code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0.05rem 0.35rem; font-size: 0.72rem; font-family: var(--mono); }
 
-.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.5rem 1.5rem; margin-top: 1rem; }
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.5rem 1.5rem; margin-top: 1rem; padding: 0 1.25rem 1rem; }
 .anno { display: flex; gap: 0.55rem; font-size: 0.8rem; color: var(--muted); align-items: flex-start; line-height: 1.55; }
 .anno .num { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-light); color: var(--accent); font-size: 0.7rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
 .anno b { color: var(--text); }
 
 .note { font-size: 0.78rem; color: var(--muted); margin-top: 1rem; line-height: 1.7; background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; padding: 0.6rem 0.9rem; }
 .note b { color: var(--accent); }
-
 .demo-hint { font-size: 0.78rem; color: var(--muted); margin-top: 0.7rem; line-height: 1.6; }
 .demo-hint b { color: var(--accent); }
 
-/* ── Token 卡片 ── */
+/* ── Token 卡片（規格摘要用）── */
 .tokens { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; margin-top: 1rem; }
 .tcard { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.8rem 0.95rem; }
 .tcard .tk { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.4px; }
@@ -224,21 +280,30 @@ h1 { font-size: 1.35rem; margin: 0; }
 .tcard .tv.accent { color: var(--accent); }
 
 .footnote { margin-top: 2rem; font-size: 0.72rem; color: var(--muted); border-top: 1px dashed var(--border); padding-top: 0.75rem; line-height: 1.7; }
+.hidden { display: none; }
 
-/* ── RWD: Mobile ── */
+/* ── RWD: Mobile ≤767px（卡片布局）── */
 .frame.mobile-frame { display: none; }
 body.view-mobile .frame.mobile-frame { display: block; }
 body.view-mobile .frame.desktop-frame { display: none; }
 .mobile-frame .app-page { max-width: 390px; margin: 0 auto; }
+.mobile-frame .btn,
+.mobile-frame .form-field input,
+.mobile-frame .form-field select { height: var(--h-mobile); }
+.mobile-frame .radio-opt { padding: 0.55rem 0.9rem; }
+.mobile-frame .account-btn { padding: 0.3rem 0.7rem 0.3rem 0.32rem; }
+.m-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 0.9rem; box-shadow: var(--shadow); }
+.m-card.is-muted { opacity: 0.5; }
+.m-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; gap: 0.5rem; }
+.m-card-head .m-name { font-weight: 700; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem 0.8rem; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.65rem; }
+.m-meta .k { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.03em; }
+.m-meta .v { color: var(--text); font-weight: 500; word-break: break-all; }
+.m-meta .v.mono { font-family: var(--mono); }
 
-/* ── Token 揭露 Modal Demo ── */
-.modal-demo { display: none; }
-.modal-demo.show { display: flex; }
-.modal-demo .token-modal-overlay { position: static; padding: 0; }
-.modal-demo .token-modal { box-shadow: var(--shadow); }
-
-/* ── 標籤平衡檢查用交互 ── */
-.hidden { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
 </style>
 </head>
 <body data-theme="light">
@@ -247,7 +312,7 @@ body.view-mobile .frame.desktop-frame { display: none; }
   <div class="topbar">
     <div>
       <h1>🔑 API Token 管理 — TokenManageView</h1>
-      <div class="sub">完整規格（無比較） · 對應功能 #011 API Token Auth · 編號 015</div>
+      <div class="sub">互動設計稿（畫面為主，規格為輔）· 對應功能 #011 API Token Auth · 可切換主題／裝置 · 各狀態可直接操作</div>
     </div>
     <div class="controls">
       <div class="segmented" id="devSwitch">
@@ -258,32 +323,18 @@ body.view-mobile .frame.desktop-frame { display: none; }
     </div>
   </div>
 
-  <!-- ══════════ 設計 Token ══════════ -->
-  <div class="frame">
-    <h2>1️⃣ 設計 Token</h2>
-    <p class="fsub">所有數值對齊前端 --lms-* CSS 變數系統，與 Dashboard / Audit 共用。</p>
-    <div class="tokens">
-      <div class="tcard"><div class="tk">控制高度</div><div class="tv accent">36 / 44px</div><div class="td">desktop 36px · mobile ≤767px 44px（WCAG 2.5.5）</div></div>
-      <div class="tcard"><div class="tk">字級</div><div class="tv">14 / 13 / 12px</div><div class="td">按鈕輸入 14px · 表格 13px · 標籤 meta 12px</div></div>
-      <div class="tcard"><div class="tk">圓角</div><div class="tv">6 / 10 / 14px</div><div class="td">控制元件 6px · 卡片 10px · Modal 14px</div></div>
-      <div class="tcard"><div class="tk">間距</div><div class="tv">8 / 16px</div><div class="td">群組內 8px · 群組間 16px</div></div>
-      <div class="tcard"><div class="tk">動畫</div><div class="tv">200ms ease</div><div class="td">過渡動畫 · 尊重 prefers-reduced-motion</div></div>
-      <div class="tcard"><div class="tk">狀態色彩</div><div class="tv">4 色標籤</div><div class="td">🟢 使用中 · 🟡 即將過期 · 🔴 已過期 · ⚫ 已撤銷</div></div>
-    </div>
-  </div>
-
-  <!-- ══════════ 完整畫面（Desktop） ══════════ -->
+  <!-- ══════════ 1. 完整畫面 — Token 列表（Idle） ══════════ -->
   <div class="frame desktop-frame">
-    <h2>2️⃣ 完整畫面 — Token 列表（已有 Token）</h2>
-    <p class="fsub">包含 AppHeader 擴充、Token 表格、建立表單區域、Token 揭露 Modal、撤銷 ConfirmModal。<br><b>互動：</b>點選右上角帳號選單中的「API Tokens」進入管理頁面、點「複製」按鈕看 copied 回饋。</p>
+    <h2>1️⃣ 完整畫面 — Token 列表（Idle）</h2>
+    <p class="fsub">AppHeader 擴充（主導航僅 服務管理＋稽核記錄，Token 由帳號選單進入）＋ 頁面標頭 ＋ 建立表單 ＋ 8 欄 Token 表格。<br><b>互動：</b>帳號選單開關 ・ 建立表單折疊 ・ 權限 radio ・ 產生 Token（含驗證）・ 表格撤銷（真實 ConfirmModal overlay）・ 複製回饋。</p>
     <div class="browser-bar">
       <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
       <span class="browser-url">https://linux-service-manager/tokens</span>
-      <span class="elem-count">互動：<b>主題 / 裝置 / 狀態切換</b></span>
+      <span class="elem-count">互動：<b>帳號選單 / 建立 / 撤銷 / 複製</b></span>
     </div>
-    <div class="app-page" id="desktopPage">
+    <div class="app-page" id="mainPage">
 
-      <!-- Header（模擬 AppHeader：主導航無 Token，改由帳號選單進入。編號 ①） -->
+      <!-- AppHeader（模擬 .app-header + .nav-group + account menu） -->
       <div class="mock-header">
         <div class="brand">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
@@ -295,39 +346,44 @@ body.view-mobile .frame.desktop-frame { display: none; }
             服務管理
           </a>
           <a class="nav-item" href="#" onclick="switchNav(this);return false;">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
             稽核記錄
           </a>
         </nav>
         <div class="mock-header-right">
-          <div class="account" id="accountMenu">
-            <button class="account-btn" id="accountBtn" type="button" aria-haspopup="menu" aria-expanded="false" onclick="toggleAccountMenu()">
+          <div class="account">
+            <button class="account-btn" id="accountBtn" type="button" aria-haspopup="menu" aria-expanded="false" onclick="toggleMenu('menuPop','accountBtn')">
               <span class="avatar" aria-hidden="true">A</span>
               <span class="account-name">admin</span>
-              <span class="chevron" aria-hidden="true">▾</span>
+              <span class="chevron" aria-hidden="true">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
             </button>
-            <div class="menu-pop" id="menuPop" role="menu">
+            <div class="menu-pop" id="menuPop" role="menu" aria-label="帳號選單">
               <div class="menu-head">
-                <div class="who">👤 admin</div>
-                <div class="meta">已登入</div>
+                <span class="avatar" aria-hidden="true">A</span>
+                <div>
+                  <div class="who">admin</div>
+                  <div class="meta">已登入</div>
+                </div>
               </div>
               <div class="menu-section">設定</div>
-              <button class="menu-item" role="menuitem" type="button" onclick="highlightMenuEntry(this);">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+              <button class="menu-item" role="menuitem" type="button" onclick="highlightMenuEntry(this)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
                 API Tokens
-                <span class="num" style="width:18px;height:18px;font-size:0.65rem;display:inline-flex;align-items:center;justify-content:center;margin-left:auto;">①</span>
+                <span class="num-badge">①</span>
               </button>
-              <button class="menu-item" role="menuitem" type="button" onclick="alert('切換主題')">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-                外觀：淺色
+              <button class="menu-item" role="menuitem" type="button" onclick="handleMenuTheme()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                外觀：<span id="menuThemeLabel">淺色</span>
               </button>
-              <button class="menu-item" role="menuitem" type="button" onclick="alert('切換語言')">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              <button class="menu-item" role="menuitem" type="button" onclick="showToast('Demo：切換語言','success')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                 語言：中文
               </button>
               <hr class="menu-divider">
-              <button class="menu-item danger" role="menuitem" type="button" onclick="alert('登出')">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              <button class="menu-item danger" role="menuitem" type="button" onclick="showToast('Demo：登出','error')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 登出
               </button>
             </div>
@@ -335,9 +391,10 @@ body.view-mobile .frame.desktop-frame { display: none; }
         </div>
       </div>
 
-      <!-- 頁面標頭（編號 ②） -->
+      <!-- 頁面標頭 -->
       <div class="page-head">
         <h3>
+          <span class="num-badge" style="margin-right:0.1rem;">②</span>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
           API Tokens
         </h3>
@@ -347,21 +404,25 @@ body.view-mobile .frame.desktop-frame { display: none; }
         </button>
       </div>
 
-      <!-- 建立 Token 表單（可折疊，編號 ③） -->
+      <!-- 建立 Token 表單（可折疊） -->
       <div class="create-card hidden" id="createFormCard">
         <div class="create-card-header">
           <h4>
+            <span class="num-badge" style="width:20px;height:20px;">③</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             建立新 API Token
           </h4>
-          <span class="num" style="margin-left:auto;width:18px;height:18px;font-size:0.65rem;background:var(--accent-light);color:var(--accent);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;">③</span>
         </div>
         <div class="create-card-body">
           <div class="form-row">
             <!-- 名稱 -->
             <div class="form-field name-field">
               <label for="tokenName">名稱 <span style="color:var(--danger)">*</span></label>
-              <input type="text" id="tokenName" placeholder="例如：Jenkins CI" value="Jenkins CI">
+              <input type="text" id="tokenName" placeholder="例如：Jenkins CI" value="Jenkins CI" autocomplete="off">
+              <span class="field-err hidden" id="nameError">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                名稱為必填
+              </span>
             </div>
             <!-- 過期時間 -->
             <div class="form-field expiry-field">
@@ -373,39 +434,54 @@ body.view-mobile .frame.desktop-frame { display: none; }
                 <option value="180">180 天</option>
                 <option value="365">365 天</option>
                 <option value="-1">永不過期</option>
-                <option value="0">自訂日期</option>
+                <option value="custom">自訂日期</option>
               </select>
+            </div>
+            <!-- 自訂日期（僅選「自訂日期」時顯示） -->
+            <div class="form-field" id="customDateRow">
+              <label for="tokenCustomDate">自訂日期 <span style="color:var(--danger)">*</span></label>
+              <input type="date" id="tokenCustomDate">
             </div>
             <!-- 權限範圍 -->
             <div class="form-field">
               <label>權限範圍 <span style="color:var(--danger)">*</span></label>
-              <div class="radio-group" id="scopeGroup">
-                <button class="radio-opt" data-scope="read" onclick="switchScope(this)">
+              <div class="radio-group" id="scopeGroup" role="group" aria-label="權限範圍">
+                <button class="radio-opt" data-scope="read" type="button" aria-pressed="false" onclick="switchScope(this,'scopeGroup')">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                   唯讀
                 </button>
-                <button class="radio-opt active" data-scope="full" onclick="switchScope(this)">
+                <button class="radio-opt active" data-scope="full" type="button" aria-pressed="true" onclick="switchScope(this,'scopeGroup')">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                   完整操作
                 </button>
               </div>
             </div>
           </div>
-          <!-- 名稱空白時的驗證錯誤（可切換） -->
-          <div class="form-error hidden" id="nameError">名稱為必填</div>
-          <!-- 後端錯誤（可切換） -->
-          <div class="form-error hidden" id="serverError">此名稱已存在，請使用其他名稱</div>
+          <!-- 名稱空白驗證錯誤 -->
+          <div class="form-error hidden" id="nameErrorBlock">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            名稱為必填
+          </div>
+          <!-- 後端錯誤（名稱重複） -->
+          <div class="form-error hidden" id="serverError">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            此名稱已存在，請使用其他名稱
+          </div>
           <div class="form-actions">
-            <button class="btn accent" id="btnGenerate" onclick="simulateGenerate()">
+            <button class="btn accent" id="btnGenerate" onclick="generateToken()">
               <span class="spin"></span>
-              產生 Token
+              <span class="lbl">產生 Token</span>
             </button>
-            <button class="btn secondary" onclick="toggleCreateForm()">取消</button>
+            <button class="btn secondary" onclick="toggleCreateForm(false)">取消</button>
           </div>
         </div>
       </div>
 
-      <!-- Token 列表表格（編號 ④） -->
+      <!-- Token 列表表格（8 欄） -->
+      <div class="table-caption">
+        <span class="num-badge">④</span>
+        <span>Token 列表 — 8 欄（16 / 18 / 10 / 10 / 10 / 10 / 12 / 14%）· 遮罩值等寬可選取 · 撤銷僅顯示於 使用中／即將過期</span>
+      </div>
       <div class="token-table-wrap" id="tokenTable">
         <table class="token-table">
           <thead>
@@ -421,216 +497,442 @@ body.view-mobile .frame.desktop-frame { display: none; }
             </tr>
           </thead>
           <tbody>
-            <!-- 使用中 Token -->
-            <tr>
+            <!-- 使用中 -->
+            <tr data-name="Jenkins CI">
               <td class="col-name">Jenkins CI</td>
               <td class="col-token">lsm_****a3eU9</td>
               <td>2025-08-10</td>
               <td>2025-11-08</td>
               <td>2025-08-10 14:30</td>
               <td>完整操作</td>
-              <td><span class="status-tag st-active">
+              <td class="col-status"><span class="status-tag st-active">
                 <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#2e7d32"/></svg>
                 使用中
               </span></td>
-              <td><button class="btn danger" onclick="showRevokeConfirm('Jenkins CI')">
+              <td class="col-ops"><button class="btn danger" type="button" onclick="showRevokeConfirm(this)">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                 撤銷
               </button></td>
             </tr>
-            <!-- 即將過期 Token -->
-            <tr>
+            <!-- 即將過期 -->
+            <tr data-name="Monitoring Script">
               <td class="col-name">Monitoring Script</td>
               <td class="col-token">lsm_****b7F2d</td>
               <td>2025-05-15</td>
               <td>2025-08-20</td>
               <td>2025-08-12 09:15</td>
               <td>唯讀</td>
-              <td><span class="status-tag st-expiring">
+              <td class="col-status"><span class="status-tag st-expiring">
                 <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#e65100"/></svg>
                 即將過期
               </span></td>
-              <td><button class="btn danger" onclick="showRevokeConfirm('Monitoring Script')">
+              <td class="col-ops"><button class="btn danger" type="button" onclick="showRevokeConfirm(this)">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                 撤銷
               </button></td>
             </tr>
-            <!-- 已過期 Token（灰色、無撤銷按鈕） -->
-            <tr class="row-expired">
+            <!-- 已過期（無撤銷按鈕 → —） -->
+            <tr class="row-expired" data-name="Old Backup Script">
               <td class="col-name">Old Backup Script</td>
               <td class="col-token">lsm_****c9D1e</td>
               <td>2025-01-20</td>
               <td>2025-07-20</td>
               <td>2025-06-30</td>
               <td>唯讀</td>
-              <td><span class="status-tag st-expired">
+              <td class="col-status"><span class="status-tag st-expired">
                 <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#c62828"/></svg>
                 已過期
               </span></td>
-              <td>—</td>
+              <td class="col-ops">—</td>
             </tr>
-            <!-- 已撤銷 Token（灰色、無撤銷按鈕） -->
-            <tr class="row-revoked">
+            <!-- 已撤銷（無撤銷按鈕 → —） -->
+            <tr class="row-revoked" data-name="Test Deploy Token">
               <td class="col-name">Test Deploy Token</td>
               <td class="col-token">lsm_****e2F8a</td>
               <td>2025-03-12</td>
               <td>永不過期</td>
               <td>2025-04-05</td>
               <td>完整操作</td>
-              <td><span class="status-tag st-revoked">
+              <td class="col-status"><span class="status-tag st-revoked">
                 <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#9e9e9e"/></svg>
                 已撤銷
               </span></td>
-              <td>—</td>
+              <td class="col-ops">—</td>
             </tr>
           </tbody>
         </table>
       </div>
 
       <!-- 註記編號 -->
-      <div class="legend" style="padding:0 1.25rem 1rem;">
-        <div class="anno"><span class="num">②</span><span>頁面標頭：<b>「API Tokens」標題</b> + 建立 Token 按鈕（accent 主色）</span></div>
-        <div class="anno"><span class="num">③</span><span>建立表單卡片：可折疊，展開時邊框 accent 色。含名稱 / 過期下拉 / 權限 radio group</span></div>
-        <div class="anno"><span class="num">④</span><span>Token 列表表格：遮罩值等寬字體、狀態標籤四色、撤銷按鈕僅顯示於 active/expiring_soon</span></div>
+      <div class="legend" style="padding-top:0;">
+        <div class="anno"><span class="num">①</span><span><b>AppHeader：</b>主導航僅 服務管理＋稽核記錄；「設定」區塊新增 <b>API Tokens</b> menu-item（.md §1 帳號選單結構）</span></div>
+        <div class="anno"><span class="num">②</span><span><b>頁面標頭：</b>「API Tokens」標題 ＋ 建立 Token 按鈕（accent 主色）</span></div>
+        <div class="anno"><span class="num">③</span><span><b>建立表單：</b>名稱（placeholder「例如：Jenkins CI」）／過期下拉（30…365／永不過期／自訂日期）／權限 segmented radio</span></div>
+        <div class="anno"><span class="num">④</span><span><b>Token 表格：</b>8 欄寬度比 16/18/10/10/10/10/12/14%；遮罩 <code>lsm_****a3eU9</code> 等寬可選取；四色狀態標籤；撤銷僅 active/expiring_soon，其餘顯示「—」</span></div>
       </div>
-
     </div>
 
     <!-- 元件解剖 -->
     <div class="anatomy">
       <div class="anat-card">
-        <h4>狀態標籤 <span class="tag">Token Status Tag</span></h4>
+        <h4>狀態標籤 <span class="tag">四色 · §3.2</span></h4>
         <div class="anat-stage">
           <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-            <span class="status-tag st-active">
-              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#2e7d32"/></svg>
-              使用中
-            </span>
-            <span class="status-tag st-expiring">
-              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#e65100"/></svg>
-              即將過期
-            </span>
-            <span class="status-tag st-expired">
-              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#c62828"/></svg>
-              已過期
-            </span>
-            <span class="status-tag st-revoked">
-              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#9e9e9e"/></svg>
-              已撤銷
-            </span>
+            <span class="status-tag st-active"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#2e7d32"/></svg>使用中</span>
+            <span class="status-tag st-expiring"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#e65100"/></svg>即將過期</span>
+            <span class="status-tag st-expired"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#c62828"/></svg>已過期</span>
+            <span class="status-tag st-revoked"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#9e9e9e"/></svg>已撤銷</span>
           </div>
         </div>
         <div class="anat-dims">
-          內距 <b>2px 8px</b> · 圓角 <b>4px</b> · 字級 <b>0.78rem</b><br>
-          色彩：success #2e7d32 · warning #e65100 · danger #c62828 · muted #9e9e9e
+          底/字：<b>#e8f5e9/#2e7d32</b> ・ <b>#fff3e0/#e65100</b> ・ <b>#fbe9e7/#c62828</b> ・ <b>#f5f5f5/#9e9e9e</b><br>
+          內距 <b>2px 8px</b> ・ 圓角 <b>4px</b> ・ 圓點 <b>SVG circle 10px</b> ・ 深色主題有對應變體
         </div>
       </div>
       <div class="anat-card">
-        <h4>Token 建立表單 <span class="tag">CreateCard</span></h4>
+        <h4>遮罩 Token 值 <span class="tag">§3.3</span></h4>
         <div class="anat-stage">
-          <div class="form-row" style="background:var(--frame);border-radius:8px;padding:0.75rem;">
-            <div class="form-field name-field">
-              <label>名稱 <span style="color:var(--danger)">*</span></label>
-              <input type="text" value="Jenkins CI" readonly style="width:100%;">
-            </div>
-            <div style="display:flex;gap:0.5rem;align-items:flex-end;">
-              <div class="form-field" style="min-width:130px;">
-                <label>過期時間 <span style="color:var(--danger)">*</span></label>
-                <select style="width:100%;"><option>90 天</option></select>
-              </div>
-              <div class="radio-group">
-                <button class="radio-opt" style="font-size:0.78rem;">唯讀</button>
-                <button class="radio-opt active" style="font-size:0.78rem;">完整操作</button>
-              </div>
-            </div>
-          </div>
+          <div style="font-family:var(--mono);font-size:0.85rem;letter-spacing:0.04em;user-select:all;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.6rem 0.8rem;">lsm_****a3eU9</div>
         </div>
         <div class="anat-dims">
-          欄位高度 <b>36px</b> · 圓角 <b>6px</b> · Radio group 以 segmented control 呈現<br>
-          Focus ring：<b>3px var(--accent-light)</b>
+          前 4 + 後 4 字元，中間 <b>****</b> ・ 字體 <b>ui-monospace…</b> ・ <code>user-select: all</code><br>
+          Focus ring：<b>2px accent outline + offset</b>（WCAG 2.4.7）・ 按鈕按下 <b>scale(0.96)</b>
         </div>
       </div>
     </div>
-
-    <!-- 狀態矩陣 -->
-    <table class="states">
-      <tr><th style="width:140px;">狀態</th><th>視覺</th><th>互動</th></tr>
-      <tr>
-        <td>Idle（預設）</td>
-        <td class="demo-cell">Token 列表完整顯示，表格行正常透明度</td>
-        <td>可點擊「建立 Token」展開表單、可點擊撤銷按鈕</td>
-      </tr>
-      <tr>
-        <td>Hover</td>
-        <td class="demo-cell">表格行 hover 背景 <code>var(--accent-light)</code></td>
-        <td>游標指向行時整列反白，按鈕 hover 變色</td>
-      </tr>
-      <tr>
-        <td>Focus</td>
-        <td class="demo-cell">輸入框 / 按鈕 / radio 有 <b>3px accent 光圈</b></td>
-        <td>Tab 鍵遍歷：名稱 → 過期 → 權限 → 產生 → 取消 → 表格撤銷按鈕</td>
-      </tr>
-      <tr>
-        <td>Active</td>
-        <td class="demo-cell">按鈕按下 scale(0.96)、nav-item active 白底 accent 字</td>
-        <td>點擊瞬間縮放回饋</td>
-      </tr>
-      <tr>
-        <td>Disabled</td>
-        <td class="demo-cell">
-          <button class="btn danger" disabled style="opacity:0.5;">撤銷</button>
-          <span class="status-tag st-revoked" style="font-size:0.72rem;">
-            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#9e9e9e"/></svg>已撤銷
-          </span>
-        </td>
-        <td>已撤銷/已過期 Token 的撤銷按鈕消失（非 disabled）· 提交中表單按鈕 disabled + spinner</td>
-      </tr>
-      <tr>
-        <td>Loading</td>
-        <td class="demo-cell">
-          <div class="loading-state" style="padding:1rem; text-align:left;">
-            <div class="spinner-lg" style="margin:0;"></div>
-            <span style="margin-left:0.5rem;color:var(--muted);">載入中...</span>
-          </div>
-        </td>
-        <td>頁面初始化 / 重整列表時顯示 spinner</td>
-      </tr>
-      <tr>
-        <td>Error</td>
-        <td class="demo-cell">
-          <div class="error-state" style="padding:1rem;text-align:left;">
-            <p style="margin:0 0 0.5rem;color:var(--danger);">載入失敗，請稍後重試</p>
-            <button class="btn secondary" style="height:var(--h);">重試</button>
-          </div>
-        </td>
-        <td>API 失敗時顯示錯誤訊息 + 重試按鈕；表單驗證錯誤顯示紅框 + 提示文字</td>
-      </tr>
-      <tr>
-        <td>空結果</td>
-        <td class="demo-cell">
-          <div class="empty-state" style="padding:1.5rem;text-align:center;">
-            <div class="empty-icon">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-            </div>
-            <p>尚無 API Token</p>
-            <button class="btn accent">建立 Token</button>
-          </div>
-        </td>
-        <td>列表為空時顯示空狀態 + 建立按鈕（點擊展開表單）</td>
-      </tr>
-    </table>
-
-    <div class="note">
-      <b>無障礙：</b>表格使用 <code>&lt;table&gt;</code> 語意標籤 · 狀態以文字 + 色彩雙重傳達（WCAG 1.4.1）· 所有互動元件有 focus ring（WCAG 2.4.7）· 按鈕最小 36px desktop / 44px mobile（WCAG 2.5.5）· nav-item 使用 <code>aria-label="主導航"</code> 與 <code>aria-current="page"</code>
-    </div>
   </div>
 
-  <!-- ══════════ Token 揭露 Modal（Desktop） ══════════ -->
+  <!-- ══════════ 2. 列表狀態矩陣 — 畫面 Demo ══════════ -->
   <div class="frame desktop-frame">
-    <h2>3️⃣ Token 揭露 Modal（一次性顯示）</h2>
-    <p class="fsub">建立成功後彈出，不可點背景關閉（防止誤關遺失 Token）。<br><b>互動：</b>點擊「複製到剪貼簿」按鈕看 copied 回饋狀態變化。</p>
-    <div class="modal-demo show">
-      <div class="token-modal-overlay" style="position:static;background:transparent;">
+    <h2>2️⃣ 列表狀態矩陣 — 完整畫面 Demo（§5 4.1）</h2>
+    <p class="fsub">同一 app 畫面切換 4 種列表狀態：<b>Idle</b>（有資料）／<b>空結果</b>／<b>Loading</b>／<b>Error</b>。Header 與頁面標頭保持不變，僅內容區替換，重現真實頁面行為。</p>
+    <div class="switch-row">
+      <span class="sw-label">狀態切換：</span>
+      <div class="segmented" id="listStateSwitch">
+        <button data-state="idle" class="active" onclick="switchListState('idle')">列表 Idle</button>
+        <button data-state="empty" onclick="switchListState('empty')">空結果</button>
+        <button data-state="loading" onclick="switchListState('loading')">Loading</button>
+        <button data-state="error" onclick="switchListState('error')">Error</button>
+      </div>
+      <span class="hint">👉 列表 4 態切換；Error 的「重試」會重跑載入。建立 Token 按鈕僅在頁面標頭（空狀態不重複）。</span>
+    </div>
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url">https://linux-service-manager/tokens</span>
+      <span class="elem-count">狀態 Demo：<b>4 態</b></span>
+    </div>
+    <div class="app-page" id="statePage">
+      <!-- 共用 Header -->
+      <div class="mock-header">
+        <div class="brand">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          Linux Service Manager
+        </div>
+        <nav class="nav-group" aria-label="主導航">
+          <a class="nav-item" href="#" onclick="switchNav(this);return false;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            服務管理
+          </a>
+          <a class="nav-item" href="#" onclick="switchNav(this);return false;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            稽核記錄
+          </a>
+        </nav>
+      </div>
+      <div class="page-head">
+        <h3>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+          API Tokens
+        </h3>
+        <button class="btn accent" onclick="toggleCreateForm(true);document.getElementById('mainPage').scrollIntoView({behavior:'smooth'});">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          建立 Token
+        </button>
+      </div>
+
+      <!-- Idle：已有 Token -->
+      <div class="list-panel show" id="lp-idle">
+        <div class="token-table-wrap" style="margin-top:0.25rem;">
+          <table class="token-table">
+            <thead>
+              <tr>
+                <th style="width:16%">名稱</th>
+                <th style="width:18%">Token</th>
+                <th style="width:10%">建立日期</th>
+                <th style="width:10%">過期時間</th>
+                <th style="width:10%">最後使用</th>
+                <th style="width:10%">權限範圍</th>
+                <th style="width:12%">狀態</th>
+                <th style="width:14%">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-name="Jenkins CI">
+                <td class="col-name">Jenkins CI</td>
+                <td class="col-token">lsm_****a3eU9</td>
+                <td>2025-08-10</td>
+                <td>2025-11-08</td>
+                <td>2025-08-10 14:30</td>
+                <td>完整操作</td>
+                <td class="col-status"><span class="status-tag st-active"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#2e7d32"/></svg>使用中</span></td>
+                <td class="col-ops"><button class="btn danger" type="button" onclick="showRevokeConfirm(this)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>撤銷</button></td>
+              </tr>
+              <tr data-name="Monitoring Script">
+                <td class="col-name">Monitoring Script</td>
+                <td class="col-token">lsm_****b7F2d</td>
+                <td>2025-05-15</td>
+                <td>2025-08-20</td>
+                <td>2025-08-12 09:15</td>
+                <td>唯讀</td>
+                <td class="col-status"><span class="status-tag st-expiring"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#e65100"/></svg>即將過期</span></td>
+                <td class="col-ops"><button class="btn danger" type="button" onclick="showRevokeConfirm(this)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>撤銷</button></td>
+              </tr>
+              <tr class="row-expired" data-name="Old Backup Script">
+                <td class="col-name">Old Backup Script</td>
+                <td class="col-token">lsm_****c9D1e</td>
+                <td>2025-01-20</td>
+                <td>2025-07-20</td>
+                <td>2025-06-30</td>
+                <td>唯讀</td>
+                <td class="col-status"><span class="status-tag st-expired"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#c62828"/></svg>已過期</span></td>
+                <td class="col-ops">—</td>
+              </tr>
+              <tr class="row-revoked" data-name="Test Deploy Token">
+                <td class="col-name">Test Deploy Token</td>
+                <td class="col-token">lsm_****e2F8a</td>
+                <td>2025-03-12</td>
+                <td>永不過期</td>
+                <td>2025-04-05</td>
+                <td>完整操作</td>
+                <td class="col-status"><span class="status-tag st-revoked"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#9e9e9e"/></svg>已撤銷</span></td>
+                <td class="col-ops">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 空結果 -->
+      <div class="list-panel" id="lp-empty">
+        <div class="p-center">
+          <div class="empty-state">
+            <div class="empty-icon">
+              <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+            </div>
+            <p>尚無 API Token</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div class="list-panel" id="lp-loading">
+        <div class="p-center">
+          <div class="loading-state">
+            <div class="spinner-lg" role="status" aria-label="載入中"></div>
+            <span style="font-size:0.85rem;">載入中…</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Error -->
+      <div class="list-panel" id="lp-error">
+        <div class="p-center">
+          <div class="error-state">
+            <p>載入失敗，請稍後重試</p>
+            <button class="btn secondary" type="button" onclick="retryList()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 3v6h-6"/></svg>
+              重試
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="demo-hint">👉 <b>狀態說明：</b>Loading 為頁面中央 <b>32px spinner（accent 頂邊）</b>；Error 顯示紅色錯誤訊息＋重試；空結果顯示鑰匙圖示＋「尚無 API Token」（建立按鈕僅在頁面標頭）。表格行 hover 反白 <code>var(--accent-light)</code>、已撤銷/已過期列透明度 0.5 均在 Idle 面板可直接觀察。</p>
+  </div>
+
+  <!-- ══════════ 3. 建立表單 — 驗證狀態 Demo ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>3️⃣ 建立表單 — 驗證狀態 Demo（§3.4）</h2>
+    <p class="fsub">同一表單的 4 種呈現：<b>正常</b>／<b>名稱空白</b>（前端：紅框＋「名稱為必填」）／<b>名稱重複</b>（後端：紅色錯誤區塊）／<b>自訂日期</b>（選擇「自訂日期」時顯示 date input，最短為明天）。</p>
+    <div class="switch-row">
+      <span class="sw-label">狀態切換：</span>
+      <div class="segmented" id="formStateSwitch">
+        <button data-state="normal" class="active" onclick="switchFormState('normal')">正常</button>
+        <button data-state="blank" onclick="switchFormState('blank')">名稱空白</button>
+        <button data-state="dup" onclick="switchFormState('dup')">名稱重複（後端）</button>
+        <button data-state="custom" onclick="switchFormState('custom')">自訂日期</button>
+      </div>
+    </div>
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url">https://linux-service-manager/tokens · 建立 Token</span>
+      <span class="elem-count">驗證狀態：<b>4 態</b></span>
+    </div>
+    <div class="app-page" id="formPage">
+      <div class="page-head" style="padding-top:1.25rem;">
+        <h3 style="font-size:1.05rem;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+          建立新 API Token
+        </h3>
+      </div>
+
+      <!-- 正常 -->
+      <div class="form-panel show" id="fp-normal">
+        <div class="create-card" style="margin:0 1.25rem 1.25rem;">
+          <div class="create-card-body">
+            <div class="form-row">
+              <div class="form-field name-field">
+                <label>名稱 <span style="color:var(--danger)">*</span></label>
+                <input type="text" placeholder="例如：Jenkins CI" value="Jenkins CI">
+              </div>
+              <div class="form-field expiry-field">
+                <label>過期時間 <span style="color:var(--danger)">*</span></label>
+                <select><option>30 天</option><option>60 天</option><option selected>90 天</option><option>180 天</option><option>365 天</option><option>永不過期</option><option>自訂日期</option></select>
+              </div>
+              <div class="form-field">
+                <label>權限範圍 <span style="color:var(--danger)">*</span></label>
+                <div class="radio-group">
+                  <button class="radio-opt" type="button" aria-pressed="false">唯讀</button>
+                  <button class="radio-opt active" type="button" aria-pressed="true">完整操作</button>
+                </div>
+              </div>
+            </div>
+            <div class="form-actions">
+              <button class="btn accent" type="button">產生 Token</button>
+              <button class="btn secondary" type="button">取消</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 名稱空白 -->
+      <div class="form-panel" id="fp-blank">
+        <div class="create-card" style="margin:0 1.25rem 1.25rem;">
+          <div class="create-card-body">
+            <div class="form-row">
+              <div class="form-field name-field">
+                <label>名稱 <span style="color:var(--danger)">*</span></label>
+                <input type="text" placeholder="例如：Jenkins CI" class="invalid" value="">
+                <span class="field-err">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  名稱為必填
+                </span>
+              </div>
+              <div class="form-field expiry-field">
+                <label>過期時間 <span style="color:var(--danger)">*</span></label>
+                <select><option>30 天</option><option>60 天</option><option selected>90 天</option><option>180 天</option><option>365 天</option><option>永不過期</option><option>自訂日期</option></select>
+              </div>
+              <div class="form-field">
+                <label>權限範圍 <span style="color:var(--danger)">*</span></label>
+                <div class="radio-group">
+                  <button class="radio-opt active" type="button" aria-pressed="true">唯讀</button>
+                  <button class="radio-opt" type="button" aria-pressed="false">完整操作</button>
+                </div>
+              </div>
+            </div>
+            <div class="form-error">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              名稱為必填
+            </div>
+            <div class="form-actions">
+              <button class="btn accent" type="button">產生 Token</button>
+              <button class="btn secondary" type="button">取消</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 名稱重複（後端錯誤） -->
+      <div class="form-panel" id="fp-dup">
+        <div class="create-card" style="margin:0 1.25rem 1.25rem;">
+          <div class="create-card-body">
+            <div class="form-row">
+              <div class="form-field name-field">
+                <label>名稱 <span style="color:var(--danger)">*</span></label>
+                <input type="text" placeholder="例如：Jenkins CI" value="Jenkins CI">
+              </div>
+              <div class="form-field expiry-field">
+                <label>過期時間 <span style="color:var(--danger)">*</span></label>
+                <select><option>30 天</option><option>60 天</option><option selected>90 天</option><option>180 天</option><option>365 天</option><option>永不過期</option><option>自訂日期</option></select>
+              </div>
+              <div class="form-field">
+                <label>權限範圍 <span style="color:var(--danger)">*</span></label>
+                <div class="radio-group">
+                  <button class="radio-opt" type="button" aria-pressed="false">唯讀</button>
+                  <button class="radio-opt active" type="button" aria-pressed="true">完整操作</button>
+                </div>
+              </div>
+            </div>
+            <div class="form-error">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              此名稱已存在，請使用其他名稱
+            </div>
+            <div class="form-actions">
+              <button class="btn accent" type="button">產生 Token</button>
+              <button class="btn secondary" type="button">取消</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 自訂日期 -->
+      <div class="form-panel" id="fp-custom">
+        <div class="create-card" style="margin:0 1.25rem 1.25rem;">
+          <div class="create-card-body">
+            <div class="form-row">
+              <div class="form-field name-field">
+                <label>名稱 <span style="color:var(--danger)">*</span></label>
+                <input type="text" placeholder="例如：Jenkins CI" value="Deploy Script">
+              </div>
+              <div class="form-field expiry-field">
+                <label>過期時間 <span style="color:var(--danger)">*</span></label>
+                <select><option>30 天</option><option>60 天</option><option>90 天</option><option>180 天</option><option>365 天</option><option>永不過期</option><option selected>自訂日期</option></select>
+              </div>
+              <div class="form-field">
+                <label>自訂日期 <span style="color:var(--danger)">*</span></label>
+                <input type="date" value="2025-12-31" style="width:160px;font-family:var(--mono);font-size:0.82rem;height:var(--h);">
+              </div>
+              <div class="form-field">
+                <label>權限範圍 <span style="color:var(--danger)">*</span></label>
+                <div class="radio-group">
+                  <button class="radio-opt" type="button" aria-pressed="false">唯讀</button>
+                  <button class="radio-opt active" type="button" aria-pressed="true">完整操作</button>
+                </div>
+              </div>
+            </div>
+            <div class="form-actions">
+              <button class="btn accent" type="button">產生 Token</button>
+              <button class="btn secondary" type="button">取消</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="demo-hint">👉 <b>驗證規則（§3.4）：</b>名稱空白 → 前端 submit 攔截（紅框＋「名稱為必填」）；名稱重複 → 後端回應「此名稱已存在，請使用其他名稱」；自訂日期最短為明天（<code>min</code> 屬性）。Tab 順序：名稱 → 過期 → 權限 → 產生 → 取消。</p>
+  </div>
+
+  <!-- ══════════ 4. Token 揭露 Modal Demo ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>4️⃣ Token 揭露 Modal Demo（§4.2）</h2>
+    <p class="fsub">建立成功後一次性顯示。黃色警告區塊＋等寬 token textarea＋複製按鈕＋「我已複製，關閉」。<b>不可點背景關閉</b>（防止誤關遺失 Token）。</p>
+    <div class="switch-row">
+      <span class="sw-label">操作：</span>
+      <button class="btn secondary" type="button" onclick="replayRevealDemo()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.6-6.3"/><path d="M3 3v6h6"/></svg>
+        重播 Modal
+      </button>
+      <span class="hint">👉 點「複製到剪貼簿」看 ✓ 已複製回饋（1.5s 恢復）；點「我已複製，關閉」模擬關閉行為。</span>
+    </div>
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url">https://linux-service-manager/tokens · 建立成功</span>
+      <span class="elem-count">互動：<b>複製回饋 / 關閉</b></span>
+    </div>
+
+    <div class="modal-demo show" id="revealDemo">
+      <div class="token-modal-overlay">
         <div class="token-modal">
           <h3>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
@@ -638,61 +940,107 @@ body.view-mobile .frame.desktop-frame { display: none; }
           </h3>
           <div class="warning-box">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e65100" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            <span><b>請立即複製此 Token</b>，關閉此視窗後將無法再次查看。<br>請將 Token 安全地儲存在密碼管理工具中。</span>
+            <span><b>請立即複製此 Token</b>，關閉後無法再次查看。<br>請將 Token 安全地儲存在密碼管理工具中。</span>
           </div>
-          <textarea class="token-value" rows="2" readonly id="tokenValue">lsm_k3F8aB2xQ9vR7mW1pL5nY6dC0jH4tG8sA3eU9</textarea>
+          <textarea class="token-value" rows="2" readonly id="revealDemoValue">lsm_k3F8aB2xQ9vR7mW1pL5nY6dC0jH4tG8sA3eU9</textarea>
           <div class="modal-actions">
-            <button class="btn btn-copy" id="btnCopyToken" onclick="simulateCopy()">
+            <span class="bg-lock-note">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              此視窗無法點背景關閉
+            </span>
+            <button class="btn btn-copy" id="btnCopyDemo" type="button" onclick="handleCopy('btnCopyDemo','revealDemoValue')">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               複製到剪貼簿
             </button>
-            <button class="btn secondary" id="btnCloseReveal" onclick="simulateCloseReveal()">
-              我已複製，關閉
-            </button>
+            <button class="btn secondary" type="button" onclick="closeRevealDemo()">我已複製，關閉</button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 解剖 -->
-    <div class="anatomy" style="margin-top:1rem;">
-      <div class="anat-card">
-        <h4>警告區塊 <span class="tag">WarningBox</span></h4>
-        <div class="anat-stage">
-          <div class="warning-box" style="margin:0;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e65100" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;margin-top:2px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            <span style="font-size:0.82rem;"><b>請立即複製此 Token</b></span>
-          </div>
-        </div>
-        <div class="anat-dims">
-          背景 <b>#fff3e0</b> · 邊框 <b>#ff9800 1px</b> · 圓角 <b>6px</b> · 文字 <b>#e65100</b>
-        </div>
-      </div>
-      <div class="anat-card">
-        <h4>Token 值文字框 <span class="tag">Mono Textarea</span></h4>
-        <div class="anat-stage">
-          <textarea class="token-value" rows="2" readonly style="margin:0;font-size:0.82rem;">lsm_k3F8aB2xQ9vR7mW1pL5nY6dC0jH4tG8sA3eU9</textarea>
-        </div>
-        <div class="anat-dims">
-          字體 <b>ui-monospace</b> · <code>user-select: all</code> · <code>readonly</code> · <code>word-break: break-all</code><br>
-          背景 <b>var(--surface-2)</b> · 圓角 <b>6px</b>
-        </div>
-      </div>
+    <div class="reveal-closed-note hidden" id="revealClosedNote">
+      <span><b>已關閉：</b>Token 值已從前端記憶體清除（<code>revealToken = null</code>），列表重整後新 Token 以遮罩形式顯示。</span>
+      <button class="btn secondary" type="button" onclick="replayRevealDemo()">重播</button>
     </div>
 
     <table class="states">
       <tr><th style="width:140px;">狀態</th><th>視覺</th><th>互動</th></tr>
-      <tr><td>Idle</td><td class="demo-cell">Modal 完整顯示，複製按鈕 accent 色</td><td>可點複製、可點關閉</td></tr>
-      <tr><td>已複製</td><td class="demo-cell">複製按鈕變為 success 綠色 + 「✓ 已複製」文字</td><td>按鈕短暫顯示已複製狀態（1.5s 後恢復）</td></tr>
-      <tr><td>關閉</td><td class="demo-cell">Modal 淡出，Token 值從前端記憶體清除</td><td>不可再查看；列表重整，新 Token 以遮罩顯示</td></tr>
+      <tr><td>Idle</td><td class="demo-cell">黃色警告區塊＋token textarea＋複製按鈕（accent）</td><td>可點複製或「我已複製，關閉」；點背景不關閉</td></tr>
+      <tr><td>已複製</td><td class="demo-cell">複製按鈕變 success 綠＋「✓ 已複製」</td><td><b>1.5s</b> 後自動恢復原樣</td></tr>
+      <tr><td>關閉</td><td class="demo-cell">Modal 淡出，token 值從記憶體清除</td><td>不可再查看；列表重整，新 Token 遮罩顯示</td></tr>
     </table>
-    <div class="note"><b>關鍵行為：</b>Modal 不可點擊背景關閉（<code>@click.self</code> 不觸發 close）· 關閉後 <code>revealToken</code> state 設為 null · 如需 Token 值只能撤銷後重新建立</div>
+    <div class="note"><b>關鍵行為（§7.4）：</b>overlay <code>@click.self</code> 不觸發 close（僅「我已複製，關閉」可關閉）・ token textarea <code>font-family: monospace</code> ＋ <code>user-select: all</code> ＋ <code>readonly</code>。</div>
   </div>
 
-  <!-- ══════════ Mobile ══════════ -->
+  <!-- ══════════ 5. 撤銷 ConfirmModal Demo ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>5️⃣ 撤銷 ConfirmModal Demo（§4.3）</h2>
+    <p class="fsub">完整複用既有 <code>ConfirmModal.vue</code>（show / message / details + confirm / cancel emits）。此處示範三種狀態：<b>Idle</b>（warning 訊息＋取消／確認撤銷）→ <b>撤銷中</b>（按鈕 disabled＋spinner）→ <b>成功</b>（Toast「Token 已撤銷」）或 <b>失敗</b>（Modal 內紅字「撤銷失敗，請重試」）。</p>
+    <div class="switch-row">
+      <span class="sw-label">流程 Demo：</span>
+      <button class="btn secondary" type="button" onclick="startConfirmDemo('success')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+        成功流程
+      </button>
+      <button class="btn secondary" type="button" onclick="startConfirmDemo('fail')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        失敗流程
+      </button>
+      <span class="hint">👉 成功流程：確認 → 撤銷中 → Toast；失敗流程：確認 → 撤銷中 → 紅字錯誤（可重試或取消）。</span>
+    </div>
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url">https://linux-service-manager/tokens · 撤銷確認</span>
+      <span class="elem-count">互動：<b>確認 / 取消 / 重試</b></span>
+    </div>
+
+    <div class="modal-demo" id="confirmDemo">
+      <div class="token-modal-overlay">
+        <div class="confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="cmDemoTitle">
+          <h3 id="cmDemoTitle">
+            <span class="cm-ico">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </span>
+            撤銷 Token
+          </h3>
+          <p class="cm-msg">確定要撤銷 Token「<b>Jenkins CI</b>」嗎？</p>
+          <p class="cm-details">使用此 Token 的服務將立即失去存取權。此操作無法復原。</p>
+          <div class="cm-error" id="cmErrorDemo">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            撤銷失敗，請重試
+          </div>
+          <div class="cm-actions">
+            <button class="btn secondary" type="button" onclick="cancelConfirmDemo()">取消</button>
+            <button class="btn danger" id="btnConfirmDemo" type="button" onclick="doConfirmDemo()">
+              <span class="spin"></span>
+              <span class="lbl">確認撤銷</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="reveal-closed-note" id="confirmDemoClosed">
+      <span><b>示範說明：</b>點上方「成功流程」或「失敗流程」開始。失敗狀態可再次按「確認撤銷」重試，或按「取消」離開。</span>
+    </div>
+
+    <table class="states">
+      <tr><th style="width:140px;">狀態</th><th>視覺</th><th>互動</th></tr>
+      <tr><td>Idle</td><td class="demo-cell">warning 圖示＋訊息「確定要撤銷 Token『{name}』嗎？」＋取消／確認撤銷（danger）</td><td>點取消 → 關閉；點確認 → 呼叫 API</td></tr>
+      <tr><td>撤銷中</td><td class="demo-cell">確認撤銷按鈕 disabled＋spinner＋「撤銷中…」</td><td>等待回應期間不可操作</td></tr>
+      <tr><td>成功</td><td class="demo-cell">Modal 關閉＋Toast「Token 已撤銷」</td><td>Token 狀態變「已撤銷」灰色，撤銷按鈕消失</td></tr>
+      <tr><td>失敗</td><td class="demo-cell">Modal 內紅色錯誤「撤銷失敗，請重試」</td><td>可重試或取消</td></tr>
+    </table>
+  </div>
+
+  <!-- ══════════ 6. Mobile（≤767px） ══════════ -->
   <div class="frame mobile-frame">
-    <h2>4️⃣ Mobile（≤767px）</h2>
-    <p class="fsub">Header sticky + blur · nav-group 變為 50/50 grid · 帳號選單右上角 · 表格轉卡片 · 表單全寬堆疊 · 觸控目標 44px</p>
+    <h2>6️⃣ Mobile（≤767px）— 卡片布局（§6 5.1）</h2>
+    <p class="fsub">表格轉為卡片：標頭（名稱＋狀態標籤）、2 欄 meta grid（Token／權限、建立／過期）、全寬 44px 撤銷按鈕；已過期／已撤銷卡片 <b>opacity 0.5</b> 且無按鈕。觸控目標一律 44px（WCAG 2.5.5）。</p>
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url">mobile · 390px</span>
+      <span class="elem-count">觸控目標 <b>44px</b></span>
+    </div>
     <div class="app-page is-mobile">
       <!-- Header -->
       <div class="mock-header" style="flex-direction:column;align-items:stretch;">
@@ -701,140 +1049,295 @@ body.view-mobile .frame.desktop-frame { display: none; }
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
             LSM
           </div>
-          <button class="account-btn" style="font-size:0.75rem;padding:0.25rem 0.6rem 0.25rem 0.3rem;" onclick="toggleAccountMenu()">
-            <span class="avatar" style="width:22px;height:22px;font-size:0.7rem;" aria-hidden="true">A</span>
-          </button>
+          <div class="account">
+            <button class="account-btn" id="accountBtnM" type="button" aria-haspopup="menu" aria-expanded="false" onclick="toggleMenu('menuPopM','accountBtnM')">
+              <span class="avatar" style="width:22px;height:22px;font-size:0.7rem;" aria-hidden="true">A</span>
+              <span class="chevron" aria-hidden="true">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </button>
+            <div class="menu-pop" id="menuPopM" role="menu" aria-label="帳號選單">
+              <div class="menu-head">
+                <span class="avatar" style="width:22px;height:22px;font-size:0.7rem;" aria-hidden="true">A</span>
+                <div>
+                  <div class="who">admin</div>
+                  <div class="meta">已登入</div>
+                </div>
+              </div>
+              <div class="menu-section">設定</div>
+              <button class="menu-item" role="menuitem" type="button" onclick="highlightMenuEntry(this)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                API Tokens
+              </button>
+              <hr class="menu-divider">
+              <button class="menu-item danger" role="menuitem" type="button" onclick="showToast('Demo：登出','error')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                登出
+              </button>
+            </div>
+          </div>
         </div>
         <nav class="nav-group" style="display:grid;grid-template-columns:1fr 1fr;width:100%;" aria-label="主導航">
-          <a class="nav-item" style="justify-content:center;padding:0.55rem 0.4rem;">服務</a>
-          <a class="nav-item" style="justify-content:center;padding:0.55rem 0.4rem;">稽核</a>
+          <a class="nav-item" style="justify-content:center;padding:0.55rem 0.4rem;">服務管理</a>
+          <a class="nav-item" style="justify-content:center;padding:0.55rem 0.4rem;">稽核記錄</a>
         </nav>
       </div>
 
       <!-- 頁面標頭 -->
       <div class="page-head">
         <h3 style="font-size:1.05rem;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
           API Tokens
         </h3>
-        <button class="btn accent" style="height:var(--h-mobile);font-size:0.9rem;">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <button class="btn accent" type="button" onclick="toggleCreateFormM()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           建立
         </button>
       </div>
 
+      <!-- Mobile 建立表單（折疊） -->
+      <div class="create-card hidden" id="createFormCardM" style="margin:0 0.75rem 0.75rem;">
+        <div class="create-card-header"><h4>建立新 API Token</h4></div>
+        <div class="create-card-body" style="gap:0.75rem;">
+          <div class="form-field">
+            <label>名稱 <span style="color:var(--danger)">*</span></label>
+            <input type="text" placeholder="例如：Jenkins CI">
+          </div>
+          <div class="form-field">
+            <label>過期時間 <span style="color:var(--danger)">*</span></label>
+            <select>
+              <option>30 天</option><option>60 天</option><option selected>90 天</option><option>180 天</option><option>365 天</option><option>永不過期</option><option>自訂日期</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>權限範圍 <span style="color:var(--danger)">*</span></label>
+            <div class="radio-group" style="width:100%;">
+              <button class="radio-opt" style="flex:1;justify-content:center;" type="button">唯讀</button>
+              <button class="radio-opt active" style="flex:1;justify-content:center;" type="button">完整操作</button>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn accent" style="flex:1;justify-content:center;" type="button">產生 Token</button>
+            <button class="btn secondary" type="button" onclick="toggleCreateFormM()">取消</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Mobile 卡片列表 -->
       <div style="padding:0 0.75rem 1rem;display:flex;flex-direction:column;gap:0.75rem;">
-        <!-- 卡片 1 -->
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:0.9rem;box-shadow:var(--shadow);">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
-            <span style="font-weight:700;font-size:0.95rem;">Jenkins CI</span>
+        <!-- 卡片 1：使用中（有撤銷按鈕） -->
+        <div class="m-card">
+          <div class="m-card-head">
+            <span class="m-name">Jenkins CI</span>
             <span class="status-tag st-active" style="font-size:0.72rem;">
               <svg width="8" height="8" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#2e7d32"/></svg>
               使用中
             </span>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem 0.8rem;font-size:0.78rem;color:var(--muted);margin-bottom:0.6rem;">
-            <div><span style="font-size:0.7rem;text-transform:uppercase;">Token</span><br><span style="font-family:var(--mono);color:var(--text);">lsm_****a3eU9</span></div>
-            <div><span style="font-size:0.7rem;text-transform:uppercase;">權限</span><br><span style="color:var(--text);">完整操作</span></div>
-            <div><span style="font-size:0.7rem;text-transform:uppercase;">建立</span><br><span style="color:var(--text);">2025-08-10</span></div>
-            <div><span style="font-size:0.7rem;text-transform:uppercase;">過期</span><br><span style="color:var(--text);">2025-11-08</span></div>
+          <div class="m-meta">
+            <div><div class="k">Token</div><div class="v mono">lsm_****a3eU9</div></div>
+            <div><div class="k">權限</div><div class="v">完整操作</div></div>
+            <div><div class="k">建立</div><div class="v">2025-08-10</div></div>
+            <div><div class="k">過期</div><div class="v">2025-11-08</div></div>
           </div>
-          <button class="btn danger" style="width:100%;height:var(--h-mobile);justify-content:center;">撤銷 Token</button>
+          <button class="btn danger" type="button" style="width:100%;justify-content:center;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            撤銷 Token
+          </button>
         </div>
-        <!-- 卡片 2：即將過期 -->
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:0.9rem;box-shadow:var(--shadow);">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
-            <span style="font-weight:700;font-size:0.95rem;">Monitoring</span>
+        <!-- 卡片 2：即將過期（有撤銷按鈕） -->
+        <div class="m-card">
+          <div class="m-card-head">
+            <span class="m-name">Monitoring Script</span>
             <span class="status-tag st-expiring" style="font-size:0.72rem;">
               <svg width="8" height="8" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#e65100"/></svg>
               即將過期
             </span>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem 0.8rem;font-size:0.78rem;color:var(--muted);margin-bottom:0.6rem;">
-            <div><span style="font-size:0.7rem;text-transform:uppercase;">Token</span><br><span style="font-family:var(--mono);color:var(--text);">lsm_****b7F2d</span></div>
-            <div><span style="font-size:0.7rem;text-transform:uppercase;">權限</span><br><span style="color:var(--text);">唯讀</span></div>
-            <div><span style="font-size:0.7rem;text-transform:uppercase;">建立</span><br><span style="color:var(--text);">2025-05-15</span></div>
-            <div><span style="font-size:0.7rem;text-transform:uppercase;">過期</span><br><span style="color:var(--text);">2025-08-20</span></div>
+          <div class="m-meta">
+            <div><div class="k">Token</div><div class="v mono">lsm_****b7F2d</div></div>
+            <div><div class="k">權限</div><div class="v">唯讀</div></div>
+            <div><div class="k">建立</div><div class="v">2025-05-15</div></div>
+            <div><div class="k">過期</div><div class="v">2025-08-20</div></div>
           </div>
-          <button class="btn danger" style="width:100%;height:var(--h-mobile);justify-content:center;">撤銷 Token</button>
+          <button class="btn danger" type="button" style="width:100%;justify-content:center;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            撤銷 Token
+          </button>
         </div>
-        <!-- 卡片 3：已過期（無按鈕） -->
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:0.9rem;box-shadow:var(--shadow);opacity:0.5;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
-            <span style="font-weight:700;font-size:0.95rem;">Old Backup</span>
+        <!-- 卡片 3：已過期（opacity 0.5、無按鈕） -->
+        <div class="m-card is-muted">
+          <div class="m-card-head">
+            <span class="m-name">Old Backup Script</span>
             <span class="status-tag st-expired" style="font-size:0.72rem;">
               <svg width="8" height="8" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#c62828"/></svg>
               已過期
             </span>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem 0.8rem;font-size:0.78rem;color:var(--muted);">
-            <div><span style="font-size:0.7rem;text-transform:uppercase;">Token</span><br><span style="font-family:var(--mono);color:var(--text);">lsm_****c9D1e</span></div>
-            <div><span style="font-size:0.7rem;text-transform:uppercase;">權限</span><br><span style="color:var(--text);">唯讀</span></div>
+          <div class="m-meta" style="margin-bottom:0;">
+            <div><div class="k">Token</div><div class="v mono">lsm_****c9D1e</div></div>
+            <div><div class="k">權限</div><div class="v">唯讀</div></div>
+            <div><div class="k">建立</div><div class="v">2025-01-20</div></div>
+            <div><div class="k">過期</div><div class="v">2025-07-20</div></div>
+          </div>
+        </div>
+        <!-- 卡片 4：已撤銷（opacity 0.5、無按鈕） -->
+        <div class="m-card is-muted">
+          <div class="m-card-head">
+            <span class="m-name">Test Deploy Token</span>
+            <span class="status-tag st-revoked" style="font-size:0.72rem;">
+              <svg width="8" height="8" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#9e9e9e"/></svg>
+              已撤銷
+            </span>
+          </div>
+          <div class="m-meta" style="margin-bottom:0;">
+            <div><div class="k">Token</div><div class="v mono">lsm_****e2F8a</div></div>
+            <div><div class="k">權限</div><div class="v">完整操作</div></div>
+            <div><div class="k">建立</div><div class="v">2025-03-12</div></div>
+            <div><div class="k">過期</div><div class="v">永不過期</div></div>
           </div>
         </div>
       </div>
     </div>
-    <p class="note" style="margin-top:1rem;">
-      <b>Mobile 規範：</b>觸控目標一律 <b>44px</b>（WCAG 2.5.5）· nav-group 變為 3 欄等分 grid · Token 列表轉為卡片布局（含 meta grid）· 表單欄位全寬堆疊 · 建立表單為可折疊卡片
-    </p>
+    <p class="note"><b>Mobile 規範（§6）：</b>卡片 <code>border-radius: 14px</code>＋<code>box-shadow: var(--shadow)</code>・meta 2 欄 grid ・撤銷按鈕全寬 <b>44px</b> danger 色 ・已過期／已撤銷卡片 <code>opacity: 0.5</code> 且無撤銷按鈕 ・ nav-group 2 欄等分 grid（兩項）・建立表單欄位全寬堆疊。</p>
   </div>
 
-  <!-- ══════════ 規格摘要 ══════════ -->
+  <!-- ══════════ 7. 規格摘要（輔助） ══════════ -->
   <div class="frame">
-    <h2>5️⃣ 規格摘要 — CSS 變數對應與實作結構</h2>
-    <p class="fsub">實作時直接套用下列變數與元件結構，所有數值與現有 main.css 對齊。</p>
+    <h2>7️⃣ 規格摘要 — CSS 變數對應與實作結構（輔助）</h2>
+    <p class="fsub">畫面已於上方完整示範，此處僅收錄實作時需要的變數對應與元件結構。</p>
     <table class="states">
-      <tr><th style="width:220px;">項目</th><th>值 / 變數</th><th>備註</th></tr>
-      <tr><td>按鈕高度</td><td><code>var(--lms-h)</code> = 36px · mobile <code>--lms-h-mobile</code> = 44px</td><td>main.css 已定義</td></tr>
-      <tr><td>輸入框高度</td><td><code>var(--lms-h)</code> = 36px</td><td>與搜尋框一致</td></tr>
-      <tr><td>表格圓角</td><td><code>var(--lms-radius)</code> = 10px</td><td>.table-wrapper 沿用</td></tr>
-      <tr><td>控制元件圓角</td><td><code>var(--lms-radius-sm)</code> = 6px</td><td>按鈕 / 輸入框 / select</td></tr>
-      <tr><td>Modal 圓角</td><td>14px</td><td>.lms-modal 沿用</td></tr>
-      <tr><td>狀態標籤色彩</td><td>success <code>#2e7d32</code> · warning <code>#e65100</code> · danger <code>#c62828</code> · muted <code>#9e9e9e</code></td><td>四色狀態標籤</td></tr>
-      <tr><td>狀態標籤淡底</td><td><code>--lms-success-light</code> / <code>--lms-warning-light</code> / <code>--lms-danger-light</code></td><td>main.css 已定義</td></tr>
-      <tr><td>Focus ring</td><td><code>0 0 0 3px var(--lms-accent-light)</code></td><td>WCAG 2.4.7</td></tr>
-      <tr><td>動畫</td><td><code>var(--lms-transition)</code> = 0.2s ease</td><td>尊重 prefers-reduced-motion</td></tr>
-      <tr><td>遮罩 Token 字體</td><td><code>ui-monospace, SFMono-Regular, Menlo, Consolas, monospace</code></td><td>.token-masked</td></tr>
-      <tr><td>Nav-item active</td><td><code>.nav-item.active</code> — 白底 accent 字 shadow</td><td>main.css 已定義</td></tr>
-      <tr><td>Modal overlay</td><td><code>.lms-modal-overlay</code> — rgba(0,0,0,0.45) + flex center</td><td>main.css 已定義</td></tr>
+      <tr><th style="width:200px;">項目</th><th>值 / 變數</th><th>備註</th></tr>
+      <tr><td>按鈕高度</td><td><code>var(--h)</code> = 36px ・ mobile <code>--h-mobile</code> = 44px</td><td>WCAG 2.5.5</td></tr>
+      <tr><td>輸入框高度</td><td><code>var(--h)</code> = 36px</td><td>與搜尋框一致</td></tr>
+      <tr><td>表格圓角</td><td><code>var(--radius)</code> = 10px</td><td>.table-wrapper 沿用</td></tr>
+      <tr><td>控制元件圓角</td><td><code>var(--radius-sm)</code> = 6px</td><td>按鈕 / 輸入框 / select</td></tr>
+      <tr><td>Modal 圓角</td><td>14px</td><td>揭露 Modal 與 ConfirmModal</td></tr>
+      <tr><td>狀態標籤色彩</td><td>success <code>#2e7d32</code> ・ warning <code>#e65100</code> ・ danger <code>#c62828</code> ・ muted <code>#9e9e9e</code></td><td>四色狀態標籤（§3.2）</td></tr>
+      <tr><td>Focus ring</td><td><code>0 0 0 3px var(--accent-light)</code> 或 2px outline</td><td>WCAG 2.4.7</td></tr>
+      <tr><td>動畫</td><td><code>var(--transition)</code> = 0.2s ease</td><td>尊重 prefers-reduced-motion</td></tr>
+      <tr><td>遮罩 Token 字體</td><td><code>ui-monospace, SFMono-Regular, Menlo, Consolas, monospace</code></td><td><code>user-select: all</code></td></tr>
+      <tr><td>表格欄寬</td><td>16 / 18 / 10 / 10 / 10 / 10 / 12 / 14%</td><td>§3.3 定義</td></tr>
+      <tr><td>揭露 Modal 警告框</td><td><code>#fff3e0</code> 底 ・ <code>#ff9800</code> 邊框 ・ <code>#e65100</code> 字</td><td>§7.1 token-reveal-warning</td></tr>
     </table>
-  </div>
 
-  <div class="frame">
-    <h2>6️⃣ 元件結構與複用對照</h2>
-    <p class="fsub">註明哪些元件複用既有程式碼、哪些需新建。</p>
+    <h3 style="font-size:0.95rem;margin:1.4rem 0 0;">狀態標籤規格（§3.2）</h3>
     <table class="states">
-      <tr><th style="width:200px;">元件</th><th>複用來源</th><th>新建</th></tr>
-      <tr><td>AppHeader 導航</td><td><code>AppHeader.vue</code> — .nav-group > .nav-item.active（僅 Dashboard + Audit）</td><td>不變更主導航</td></tr>
-      <tr><td>帳號選單（Token 入口）</td><td><code>AppHeader.vue</code> — .account > .menu-pop > .menu-item</td><td>新增「設定」區塊 + API Tokens menu-item</td></tr>
-      <tr><td>撤銷 ConfirmModal</td><td><code>ConfirmModal.vue</code> — 完整複用（show/message/details + confirm/cancel emits）</td><td>—</td></tr>
-      <tr><td>空狀態</td><td><code>EmptyState.vue</code> — message prop + 自訂 slot 按鈕</td><td>調整為「尚無 API Token」+「建立 Token」</td></tr>
-      <tr><td>Token 管理頁面</td><td>—</td><td><code>TokenManageView.vue</code> — 全新頁面</td></tr>
-      <tr><td>建立 Token 表單</td><td>—</td><td><code>TokenCreateForm.vue</code> — 全新元件</td></tr>
-      <tr><td>Token 揭露 Modal</td><td>—</td><td><code>TokenRevealModal.vue</code> — 全新元件（不可背景關閉）</td></tr>
-      <tr><td>Token 管理邏輯</td><td>—</td><td><code>useTokenManager.ts</code> — composable</td></tr>
-      <tr><td>API client</td><td><code>api/client.ts</code> — 擴充</td><td>listTokens / createToken / revokeToken</td></tr>
-      <tr><td>Router</td><td><code>router/index.ts</code> — 擴充</td><td>/tokens 路由 + lazy import</td></tr>
-      <tr><td>型別</td><td><code>types/service.ts</code> — 擴充</td><td>Token 相關 interface</td></tr>
+      <tr><th style="width:140px;">狀態</th><th>API 值</th><th>標籤文字</th><th>色彩（底 / 字）</th><th>觸發條件</th></tr>
+      <tr><td><span class="status-tag st-active"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#2e7d32"/></svg>使用中</span></td><td><code>active</code></td><td>使用中</td><td><code>#e8f5e9</code> / <code>#2e7d32</code></td><td>未過期、未撤銷、非 7 天內過期</td></tr>
+      <tr><td><span class="status-tag st-expiring"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#e65100"/></svg>即將過期</span></td><td><code>expiring_soon</code></td><td>即將過期</td><td><code>#fff3e0</code> / <code>#e65100</code></td><td>過期時間在 7 天內</td></tr>
+      <tr><td><span class="status-tag st-expired"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#c62828"/></svg>已過期</span></td><td><code>expired</code></td><td>已過期</td><td><code>#fbe9e7</code> / <code>#c62828</code></td><td>過期時間已過</td></tr>
+      <tr><td><span class="status-tag st-revoked"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#9e9e9e"/></svg>已撤銷</span></td><td><code>revoked</code></td><td>已撤銷</td><td><code>#f5f5f5</code> / <code>#9e9e9e</code></td><td>管理員手動撤銷</td></tr>
     </table>
+
+    <h3 style="font-size:0.95rem;margin:1.4rem 0 0;">狀態矩陣速覽（Demo 位置對照 §5）</h3>
+    <table class="states">
+      <tr><th style="width:150px;">狀態</th><th>Demo 畫面</th><th>互動</th></tr>
+      <tr><td>列表 Idle / Hover</td><td>區段 1️⃣ 完整畫面（4 筆 Token）</td><td>行 hover 反白；可撤銷、可建立</td></tr>
+      <tr><td>列表 Loading</td><td>區段 2️⃣ 狀態切換 → Loading</td><td>32px spinner（accent 頂邊），頁面中央</td></tr>
+      <tr><td>列表 Error</td><td>區段 2️⃣ 狀態切換 → Error</td><td>紅色訊息＋重試（重試 → 回到 Idle）</td></tr>
+      <tr><td>空結果</td><td>區段 2️⃣ 狀態切換 → 空結果</td><td>鑰匙圖示＋「尚無 API Token」（建立按鈕僅在頁面標頭）</td></tr>
+      <tr><td>表單驗證（空白／重複）</td><td>區段 3️⃣ 狀態切換</td><td>紅框＋必填；後端紅色區塊；自訂日期條件顯示</td></tr>
+      <tr><td>揭露 Modal（複製／關閉）</td><td>區段 4️⃣</td><td>複製 1.5s 回饋；不可背景關閉</td></tr>
+      <tr><td>撤銷 ConfirmModal（確認／撤銷中／成功／失敗）</td><td>區段 5️⃣ 成功／失敗流程</td><td>danger 確認鈕＋spinner＋toast／紅字</td></tr>
+      <tr><td>Mobile 卡片布局</td><td>區段 6️⃣（📱 切換）</td><td>44px 觸控目標；已過期／已撤銷 opacity 0.5</td></tr>
+    </table>
+
+    <h3 style="font-size:0.95rem;margin:1.4rem 0 0;">元件結構與複用對照</h3>
+    <table class="states">
+      <tr><th style="width:210px;">元件</th><th>複用來源</th><th>新建</th></tr>
+      <tr><td>AppHeader 導航</td><td><code>AppHeader.vue</code> — .nav-group 僅 服務管理＋稽核記錄</td><td>不變更主導航</td></tr>
+      <tr><td>帳號選單（Token 入口）</td><td><code>AppHeader.vue</code> — .account > .menu-pop</td><td>新增「設定」區塊＋API Tokens menu-item</td></tr>
+      <tr><td>撤銷 ConfirmModal</td><td><code>ConfirmModal.vue</code> — 完整複用</td><td>—</td></tr>
+      <tr><td>空狀態</td><td><code>EmptyState.vue</code> — 微調</td><td>「尚無 API Token」（建立按鈕僅在頁面標頭，不重複）</td></tr>
+      <tr><td>Token 管理頁面</td><td>—</td><td><code>TokenManageView.vue</code></td></tr>
+      <tr><td>建立 Token 表單</td><td>—</td><td><code>TokenCreateForm.vue</code></td></tr>
+      <tr><td>Token 揭露 Modal</td><td>—</td><td><code>TokenRevealModal.vue</code>（不可背景關閉）</td></tr>
+      <tr><td>狀態邏輯 / API</td><td><code>api/client.ts</code>、<code>router/index.ts</code> 擴充</td><td><code>useTokenManager.ts</code>＋/tokens 路由</td></tr>
+    </table>
+
+    <div class="note">
+      <b>無障礙（§7）：</b>表格使用 <code>&lt;table&gt;</code> 語意標籤 ・ 狀態以文字＋色彩雙重傳達（WCAG 1.4.1）・ 所有互動元件有 focus ring（WCAG 2.4.7）・ 按鈕最小 36px desktop / 44px mobile（WCAG 2.5.5）・ ConfirmModal <code>role="alertdialog" aria-modal="true"</code> ・ nav <code>aria-label="主導航"</code> ・ radio group 以 <code>&lt;button&gt;</code>＋<code>aria-pressed</code> 呈現 ・ 動畫尊重 prefers-reduced-motion。
+    </div>
   </div>
 
   <div class="footnote">
-    📄 設計文件：<b>docs/uiux/011-token-management-design.md</b> ・ 本文件：<b>docs/uiux/011-token-management-design.html</b><br>
+    設計文件：<b>docs/uiux/011-token-management-design.md</b> ・ 本文件：<b>docs/uiux/011-token-management-design.html</b><br>
     對應功能：<b>#011 API Token Auth</b> ・ 上游：<b>docs/interaction-flows/011-api-token-auth.md</b> ・ <b>docs/bdds/011-api-token-auth.feature</b> ・ <b>docs/tech-decisions/011-api-token-auth.md</b><br>
-    實作範圍：<b>TokenManageView.vue</b> + <b>TokenCreateForm.vue</b> + <b>TokenRevealModal.vue</b> + <b>useTokenManager.ts</b> + AppHeader / router / client 擴充
+    實作範圍：<b>TokenManageView.vue</b> ＋ <b>TokenCreateForm.vue</b> ＋ <b>TokenRevealModal.vue</b> ＋ <b>useTokenManager.ts</b> ＋ AppHeader / router / client 擴充
+  </div>
+</div>
+
+<!-- ══════════ 全域 Overlay：Toast / 揭露 / 撤銷 ══════════ -->
+<div id="toast" class="toast" role="status" aria-live="polite">
+  <span class="t-ico"></span><span class="t-msg"></span>
+</div>
+
+<!-- 揭露 Modal（產生成功後出現，固定 overlay） -->
+<div class="lms-overlay" id="revealOverlay">
+  <div class="token-modal" role="dialog" aria-modal="true" aria-labelledby="revealTitle">
+    <h3 id="revealTitle">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+      Token 已建立
+    </h3>
+    <div class="warning-box">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e65100" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span><b>請立即複製此 Token</b>，關閉後無法再次查看。<br>請將 Token 安全地儲存在密碼管理工具中。</span>
+    </div>
+    <textarea class="token-value" rows="2" readonly id="revealTokenValue"></textarea>
+    <div class="modal-actions">
+      <span class="bg-lock-note">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        此視窗無法點背景關閉
+      </span>
+      <button class="btn btn-copy" id="btnCopyMain" type="button" onclick="handleCopy('btnCopyMain','revealTokenValue')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        複製到剪貼簿
+      </button>
+      <button class="btn secondary" type="button" onclick="closeRevealOverlay()">我已複製，關閉</button>
+    </div>
+  </div>
+</div>
+
+<!-- 撤銷 ConfirmModal（固定 overlay） -->
+<div class="lms-overlay" id="revokeOverlay">
+  <div class="confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="revokeTitle">
+    <h3 id="revokeTitle">
+      <span class="cm-ico">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </span>
+      撤銷 Token
+    </h3>
+    <p class="cm-msg">確定要撤銷 Token「<b id="revokeName">—</b>」嗎？</p>
+    <p class="cm-details">使用此 Token 的服務將立即失去存取權。此操作無法復原。</p>
+    <div class="cm-actions">
+      <button class="btn secondary" type="button" onclick="revokeCancel()">取消</button>
+      <button class="btn danger" id="btnRevokeConfirm" type="button" onclick="revokeConfirm()">
+        <span class="spin"></span>
+        <span class="lbl">確認撤銷</span>
+      </button>
+    </div>
   </div>
 </div>
 
 <script>
-// ── 通用切換（模板內建）──
+/* ────────────────────────────────────────────────
+   通用：主題切換（topbar + 帳號選單共用）
+   ──────────────────────────────────────────────── */
 const themeBtn = document.getElementById('themeToggle');
-themeBtn.addEventListener('click', () => {
-  const dark = document.documentElement.dataset.theme === 'dark';
-  document.documentElement.dataset.theme = dark ? 'light' : 'dark';
-  themeBtn.textContent = dark ? '🌙 切換深色' : '☀️ 切換淺色';
-});
+function applyTheme(dark) {
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  themeBtn.textContent = dark ? '☀️ 切換淺色' : '🌙 切換深色';
+  const lbl = document.getElementById('menuThemeLabel');
+  if (lbl) lbl.textContent = dark ? '深色' : '淺色';
+}
+themeBtn.addEventListener('click', () => applyTheme(document.documentElement.dataset.theme !== 'dark'));
+function handleMenuTheme() {
+  applyTheme(document.documentElement.dataset.theme !== 'dark');
+  closeMenus();
+}
+
+/* ── 裝置切換 ── */
 const devSwitch = document.getElementById('devSwitch');
 devSwitch.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
   devSwitch.querySelectorAll('button').forEach(x => x.classList.remove('active'));
@@ -842,88 +1345,338 @@ devSwitch.querySelectorAll('button').forEach(b => b.addEventListener('click', ()
   document.body.classList.toggle('view-mobile', b.dataset.dev === 'mobile');
 }));
 
-// ── Nav 切換 ──
+/* ── 主導航切換 ── */
 function switchNav(el) {
   document.querySelectorAll('.nav-item').forEach(x => x.classList.remove('active'));
   el.classList.add('active');
 }
 
-// ── 帳號選單切換 ──
-function toggleAccountMenu() {
-  const pop = document.getElementById('menuPop');
-  const btn = document.getElementById('accountBtn');
-  pop.classList.toggle('open');
-  btn.setAttribute('aria-expanded', pop.classList.contains('open'));
+/* ── 帳號選單 ── */
+function toggleMenu(popId, btnId) {
+  const pop = document.getElementById(popId);
+  const btn = document.getElementById(btnId);
+  const open = pop.classList.toggle('open');
+  btn.setAttribute('aria-expanded', String(open));
 }
+function closeMenus() {
+  document.querySelectorAll('.menu-pop.open').forEach(p => p.classList.remove('open'));
+  document.querySelectorAll('.account-btn[aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.account')) closeMenus();
+});
 function highlightMenuEntry(el) {
   el.style.background = 'var(--accent-light)';
   setTimeout(() => { el.style.background = ''; }, 600);
-  document.getElementById('menuPop').classList.remove('open');
-  document.getElementById('accountBtn').setAttribute('aria-expanded', 'false');
+  closeMenus();
+  showToast('已進入 API Tokens（Demo）');
 }
-// 點選單外部關閉
-document.addEventListener('click', (e) => {
-  const menu = document.getElementById('accountMenu');
-  if (menu && !menu.contains(e.target)) {
-    const pop = document.getElementById('menuPop');
-    const btn = document.getElementById('accountBtn');
-    if (pop) pop.classList.remove('open');
-    if (btn) btn.setAttribute('aria-expanded', 'false');
-  }
+
+/* ── Toast ── */
+const TOAST_OK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+const TOAST_ERR = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
+let toastTimer = null;
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.className = 'toast ' + (type === 'error' ? 'error' : 'success');
+  t.querySelector('.t-ico').innerHTML = type === 'error' ? TOAST_ERR : TOAST_OK;
+  t.querySelector('.t-msg').textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+/* ────────────────────────────────────────────────
+   建立表單（主畫面）
+   ──────────────────────────────────────────────── */
+const createCard = document.getElementById('createFormCard');
+const btnCreate = document.getElementById('btnCreate');
+const nameInput = document.getElementById('tokenName');
+const expirySelect = document.getElementById('tokenExpiry');
+const customDateRow = document.getElementById('customDateRow');
+const dateInput = document.getElementById('tokenCustomDate');
+const nameErrorBlock = document.getElementById('nameErrorBlock');
+const serverError = document.getElementById('serverError');
+const btnGenerate = document.getElementById('btnGenerate');
+const BTN_CREATE_HTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 建立 Token';
+
+// 自訂日期：最短為明天
+(function () {
+  const d = new Date(); d.setDate(d.getDate() + 1);
+  if (dateInput) dateInput.min = d.toISOString().split('T')[0];
+})();
+
+function toggleCreateForm(forceOpen) {
+  const open = forceOpen !== undefined ? forceOpen : createCard.classList.contains('hidden');
+  createCard.classList.toggle('hidden', !open);
+  btnCreate.innerHTML = open ? '取消建立' : BTN_CREATE_HTML;
+}
+function toggleCreateFormM() {
+  document.getElementById('createFormCardM').classList.toggle('hidden');
+}
+function handleExpiryChange() {
+  customDateRow.classList.toggle('show', expirySelect.value === 'custom');
+}
+expirySelect.addEventListener('change', handleExpiryChange);
+nameInput.addEventListener('input', () => {
+  nameInput.classList.remove('invalid');
+  nameErrorBlock.classList.add('hidden');
+  serverError.classList.add('hidden');
 });
-
-// ── 建立表單切換 ──
-function toggleCreateForm() {
-  const card = document.getElementById('createFormCard');
-  const btn = document.getElementById('btnCreate');
-  card.classList.toggle('hidden');
-  if (!card.classList.contains('hidden')) {
-    btn.textContent = '取消建立';
-  } else {
-    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 建立 Token';
+function switchScope(el, groupId) {
+  document.querySelectorAll('#' + groupId + ' .radio-opt').forEach(x => {
+    x.classList.remove('active'); x.setAttribute('aria-pressed', 'false');
+  });
+  el.classList.add('active'); el.setAttribute('aria-pressed', 'true');
+}
+function nameExists(name) {
+  const existing = [...document.querySelectorAll('#tokenTable tbody tr .col-name')]
+    .map(td => td.textContent.trim().toLowerCase());
+  return existing.includes(name.trim().toLowerCase());
+}
+function randStr(len) {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let s = '';
+  for (let i = 0; i < (len || 40); i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+function esc(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function generateToken() {
+  const name = nameInput.value.trim();
+  nameInput.classList.remove('invalid');
+  nameErrorBlock.classList.add('hidden');
+  serverError.classList.add('hidden');
+  // 前端驗證：名稱空白
+  if (!name) {
+    nameInput.classList.add('invalid');
+    nameErrorBlock.classList.remove('hidden');
+    nameInput.focus();
+    return;
   }
-}
-
-// ── 權限範圍 Radio 切換 ──
-function switchScope(el) {
-  document.querySelectorAll('#scopeGroup .radio-opt').forEach(x => x.classList.remove('active'));
-  el.classList.add('active');
-}
-
-// ── 模擬產生 Token（切換 loading 狀態） ──
-function simulateGenerate() {
-  const btn = document.getElementById('btnGenerate');
-  btn.classList.add('loading');
-  btn.querySelector('.spin').style.display = 'inline-block';
+  // 後端錯誤：名稱重複（不區分大小寫）
+  if (nameExists(name)) {
+    serverError.classList.remove('hidden');
+    return;
+  }
+  // 提交中
+  btnGenerate.classList.add('loading');
+  btnGenerate.disabled = true;
+  btnGenerate.querySelector('.lbl').textContent = '產生中…';
   setTimeout(() => {
-    btn.classList.remove('loading');
-    btn.querySelector('.spin').style.display = 'none';
-    // 顯示成功：關閉表單，顯示 modal demo
-    toggleCreateForm();
-    alert('Token 建立成功！查看下方「Token 揭露 Modal」區塊的互動示範。');
+    btnGenerate.classList.remove('loading');
+    btnGenerate.disabled = false;
+    btnGenerate.querySelector('.lbl').textContent = '產生 Token';
+    openRevealOverlay('lsm_' + randStr(40));
   }, 1200);
 }
 
-// ── 模擬複製 ──
-function simulateCopy() {
-  const btn = document.getElementById('btnCopyToken');
-  const origHTML = btn.innerHTML;
+/* ────────────────────────────────────────────────
+   揭露 Modal（主流程 overlay，不可背景關閉）
+   ──────────────────────────────────────────────── */
+const revealOverlay = document.getElementById('revealOverlay');
+const revealTokenValue = document.getElementById('revealTokenValue');
+let pendingToken = null;
+
+function openRevealOverlay(token) {
+  pendingToken = token;
+  revealTokenValue.value = token;
+  resetCopyBtn('btnCopyMain');
+  revealOverlay.classList.add('show');
+}
+function closeRevealOverlay() {
+  revealOverlay.classList.remove('show');
+  addTokenRow();
+  showToast('Token 已建立');
+  // 重置表單
+  nameInput.value = '';
+  expirySelect.value = '90';
+  customDateRow.classList.remove('show');
+  toggleCreateForm(false);
+  nameInput.classList.remove('invalid');
+  nameErrorBlock.classList.add('hidden');
+  serverError.classList.add('hidden');
+}
+// 不可點背景關閉（§7.4）：@click.self 不觸發 close
+revealOverlay.addEventListener('click', (e) => {
+  if (e.target === revealOverlay) { /* no-op */ }
+});
+
+function addTokenRow() {
+  const name = nameInput.value.trim();
+  const scope = document.querySelector('#scopeGroup .radio-opt.active').dataset.scope === 'read' ? '唯讀' : '完整操作';
+  const exp = expirySelect.value;
+  const today = new Date();
+  const fmt = d => d.toISOString().slice(0, 10);
+  let expiresTxt;
+  if (exp === '-1') expiresTxt = '永不過期';
+  else if (exp === 'custom') expiresTxt = dateInput.value || '自訂日期';
+  else { const d = new Date(); d.setDate(d.getDate() + parseInt(exp, 10)); expiresTxt = fmt(d); }
+  const masked = pendingToken.slice(0, 4) + '****' + pendingToken.slice(-4);
+  const tr = document.createElement('tr');
+  tr.dataset.name = name;
+  tr.innerHTML =
+    '<td class="col-name">' + esc(name) + '</td>' +
+    '<td class="col-token">' + masked + '</td>' +
+    '<td>' + fmt(today) + '</td>' +
+    '<td>' + expiresTxt + '</td>' +
+    '<td>從未使用</td>' +
+    '<td>' + scope + '</td>' +
+    '<td class="col-status"><span class="status-tag st-active"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#2e7d32"/></svg>使用中</span></td>' +
+    '<td class="col-ops"><button class="btn danger" type="button" onclick="showRevokeConfirm(this)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>撤銷</button></td>';
+  document.querySelector('#tokenTable tbody').appendChild(tr);
+}
+
+/* ── 複製（含回饋）── */
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).catch(() => {});
+    return;
+  }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+}
+function handleCopy(btnId, textId) {
+  const el = document.getElementById(textId);
+  const val = el.value !== undefined ? el.value : el.textContent;
+  copyText(val);
+  const btn = document.getElementById(btnId);
   btn.classList.add('btn-copied');
   btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> ✓ 已複製';
+  setTimeout(() => { resetCopyBtn(btnId); }, 1500); // §4.2：1.5s 後自動恢復
+}
+function resetCopyBtn(btnId) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  btn.classList.remove('btn-copied');
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> 複製到剪貼簿';
+}
+
+/* ────────────────────────────────────────────────
+   撤銷 ConfirmModal（主流程 overlay）
+   ──────────────────────────────────────────────── */
+const revokeOverlay = document.getElementById('revokeOverlay');
+const revokeNameEl = document.getElementById('revokeName');
+const btnRevokeConfirm = document.getElementById('btnRevokeConfirm');
+let revokeRow = null;
+
+function showRevokeConfirm(btnEl) {
+  const row = btnEl.closest('tr');
+  revokeRow = row;
+  revokeNameEl.textContent = row.dataset.name || '—';
+  revokeOverlay.classList.add('show');
+  revokeReset();
+}
+function revokeReset() {
+  btnRevokeConfirm.classList.remove('loading');
+  btnRevokeConfirm.disabled = false;
+  btnRevokeConfirm.querySelector('.lbl').textContent = '確認撤銷';
+}
+function revokeCancel() {
+  revokeOverlay.classList.remove('show');
+  revokeReset();
+}
+function revokeConfirm() {
+  if (btnRevokeConfirm.disabled) return;
+  btnRevokeConfirm.classList.add('loading');
+  btnRevokeConfirm.disabled = true;
+  btnRevokeConfirm.querySelector('.lbl').textContent = '撤銷中…';
   setTimeout(() => {
-    btn.classList.remove('btn-copied');
-    btn.innerHTML = origHTML;
-  }, 2000);
+    revokeOverlay.classList.remove('show');
+    revokeReset();
+    showToast('Token 已撤銷');
+    if (revokeRow) markRevoked(revokeRow);
+  }, 1200);
+}
+function markRevoked(row) {
+  row.classList.add('row-revoked');
+  const st = row.querySelector('.col-status');
+  if (st) {
+    st.innerHTML = '<span class="status-tag st-revoked"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#9e9e9e"/></svg>已撤銷</span>';
+  }
+  const ops = row.querySelector('.col-ops');
+  if (ops) ops.textContent = '—';
 }
 
-// ── 模擬關閉揭露 Modal ──
-function simulateCloseReveal() {
-  alert('Modal 關閉。Token 值已從前端記憶體清除，列表重整，新 Token 以遮罩形式顯示。');
+/* ────────────────────────────────────────────────
+   列表狀態切換（區段 2）
+   ──────────────────────────────────────────────── */
+function switchListState(state) {
+  document.querySelectorAll('#listStateSwitch button').forEach(b => b.classList.toggle('active', b.dataset.state === state));
+  document.querySelectorAll('.list-panel').forEach(p => p.classList.toggle('show', p.id === 'lp-' + state));
+}
+function retryList() {
+  switchListState('loading');
+  setTimeout(() => switchListState('idle'), 1200);
+}
+/* 空結果面板：不重複放置建立按鈕（按鈕僅在頁面標頭） */
+
+/* ────────────────────────────────────────────────
+   表單狀態切換（區段 3）
+   ──────────────────────────────────────────────── */
+function switchFormState(s) {
+  document.querySelectorAll('#formStateSwitch button').forEach(b => b.classList.toggle('active', b.dataset.state === s));
+  document.querySelectorAll('.form-panel').forEach(p => p.classList.toggle('show', p.id === 'fp-' + s));
 }
 
-// ── 模擬撤銷確認 ──
-function showRevokeConfirm(name) {
-  alert('顯示 ConfirmModal：\n\n確定要撤銷 Token「' + name + '」嗎？\n使用此 Token 的服務將立即失去存取權。\n此操作無法復原。');
+/* ────────────────────────────────────────────────
+   揭露 Modal Demo（區段 4）
+   ──────────────────────────────────────────────── */
+function replayRevealDemo() {
+  document.getElementById('revealDemo').classList.add('show');
+  document.getElementById('revealClosedNote').classList.add('hidden');
+  resetCopyBtn('btnCopyDemo');
+}
+function closeRevealDemo() {
+  document.getElementById('revealDemo').classList.remove('show');
+  document.getElementById('revealClosedNote').classList.remove('hidden');
+}
+
+/* ────────────────────────────────────────────────
+   撤銷 ConfirmModal Demo（區段 5：成功／失敗流程）
+   ──────────────────────────────────────────────── */
+let confirmDemoMode = 'success';
+function startConfirmDemo(mode) {
+  confirmDemoMode = mode;
+  document.getElementById('confirmDemo').classList.add('show');
+  document.getElementById('confirmDemoClosed').classList.add('hidden');
+  resetConfirmDemo();
+}
+function resetConfirmDemo() {
+  document.getElementById('cmErrorDemo').classList.remove('show');
+  const b = document.getElementById('btnConfirmDemo');
+  b.classList.remove('loading');
+  b.disabled = false;
+  b.querySelector('.lbl').textContent = '確認撤銷';
+}
+function cancelConfirmDemo() {
+  document.getElementById('confirmDemo').classList.remove('show');
+  document.getElementById('confirmDemoClosed').classList.remove('hidden');
+  resetConfirmDemo();
+}
+function doConfirmDemo() {
+  const b = document.getElementById('btnConfirmDemo');
+  if (b.disabled) return;
+  b.classList.add('loading');
+  b.disabled = true;
+  b.querySelector('.lbl').textContent = '撤銷中…';
+  setTimeout(() => {
+    if (confirmDemoMode === 'success') {
+      document.getElementById('confirmDemo').classList.remove('show');
+      document.getElementById('confirmDemoClosed').classList.remove('hidden');
+      resetConfirmDemo();
+      showToast('Token 已撤銷');
+    } else {
+      resetConfirmDemo();
+      document.getElementById('cmErrorDemo').classList.add('show');
+    }
+  }, 1200);
 }
 </script>
 </body>

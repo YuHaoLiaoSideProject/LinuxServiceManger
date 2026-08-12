@@ -148,8 +148,8 @@ test.describe('API Token Auth — Happy Path', () => {
     await expect(page.locator('[data-testid="token-empty"]')).toBeVisible()
     await expect(page.locator('[data-testid="token-empty"]')).toContainText('尚無 API Token')
 
-    // Create button is present in empty state
-    await expect(page.locator('[data-testid="token-empty"] .btn-primary')).toBeVisible()
+    // Create button is NOT duplicated in empty state (page header has 建立 Token)
+    await expect(page.locator('[data-testid="token-empty"] .btn-primary')).toHaveCount(0)
   })
 
   test('AT-03: 建立 Token（完整流程含一次性揭露）', async ({ page }) => {

@@ -25,6 +25,8 @@ export function useTokenManager() {
   const createFormCustomDate: Ref<string> = ref('')  // 僅 expires_in_days=0 時
   const isSubmitting: Ref<boolean> = ref(false)
   const createError: Ref<string | null> = ref(null)
+  // 前端欄位驗證（'name' = 名稱必填紅框；null = 無欄位錯誤）
+  const createFieldError: Ref<'name' | null> = ref(null)
 
   // ── Reveal modal state ──
   const revealToken: Ref<CreateTokenResponse | null> = ref(null)
@@ -33,6 +35,7 @@ export function useTokenManager() {
   // ── Revoke confirm state ──
   const revokingToken: Ref<TokenResponse | null> = ref(null)
   const isRevoking: Ref<boolean> = ref(false)
+  const revokeError: Ref<string | null> = ref(null)
 
   // ── Computed ──
   const sortedTokens: ComputedRef<TokenResponse[]> = computed(() =>
@@ -45,6 +48,7 @@ export function useTokenManager() {
   async function fetchTokens(): Promise<void> {
     isLoading.value = true
     error.value = null
+    revokeError.value = null
     try {
       const res = await listTokens()
       tokens.value = res.data || []
@@ -61,6 +65,7 @@ export function useTokenManager() {
     createFormScope.value = 'full'
     createFormCustomDate.value = ''
     createError.value = null
+    createFieldError.value = null
   }
 
   function validateCreateForm(): string | null {
@@ -83,11 +88,14 @@ export function useTokenManager() {
     const validationError = validateCreateForm()
     if (validationError) {
       createError.value = validationError
+      // 名稱空白 → 名稱 input 紅框；其他驗證錯誤不歸屬特定欄位
+      createFieldError.value = !createFormName.value.trim() ? 'name' : null
       return
     }
 
     isSubmitting.value = true
     createError.value = null
+    createFieldError.value = null
     try {
       const req: CreateTokenRequest = {
         name: createFormName.value.trim(),
@@ -143,6 +151,7 @@ export function useTokenManager() {
 
   async function confirmRevoke(id: string): Promise<void> {
     isRevoking.value = true
+    revokeError.value = null
     try {
       await revokeToken(id)
       // Update local state
@@ -152,8 +161,10 @@ export function useTokenManager() {
       }
       showToast('Token 已撤銷')
       revokingToken.value = null
+      revokeError.value = null
     } catch (err: any) {
       const msg = err.response?.data?.error || '撤銷失敗，請重試'
+      revokeError.value = msg
       showToast(msg)
     } finally {
       isRevoking.value = false
@@ -174,10 +185,10 @@ export function useTokenManager() {
   // ── Status helpers ──
   function statusLabel(status: TokenStatus): string {
     switch (status) {
-      case 'active': return '🟢 使用中'
-      case 'expiring_soon': return '🟡 即將過期'
-      case 'expired': return '🔴 已過期'
-      case 'revoked': return '⚫ 已撤銷'
+      case 'active': return '使用中'
+      case 'expiring_soon': return '即將過期'
+      case 'expired': return '已過期'
+      case 'revoked': return '已撤銷'
       default: return status
     }
   }
@@ -186,28 +197,41 @@ export function useTokenManager() {
     return scope === 'full' ? '完整操作' : '唯讀'
   }
 
+  function pad2(n: number): string {
+    return n < 10 ? `0${n}` : String(n)
+  }
+
+  // 固定格式 YYYY-MM-DD（UTC → 本地時間，補零）
   function formatDate(iso: string | null): string {
+    if (!iso) return '—'
+    const d = new Date(iso)
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+  }
+
+  // 固定格式 YYYY-MM-DD HH:mm（最後使用）；null → 從未使用
+  function formatDateTime(iso: string | null): string {
     if (!iso) return '從未使用'
-    return new Date(iso).toLocaleString()
+    const d = new Date(iso)
+    return `${formatDate(iso)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
   }
 
   function formatExpiry(iso: string | null): string {
     if (!iso) return '永不過期'
-    return new Date(iso).toLocaleDateString()
+    return formatDate(iso)
   }
 
   return {
     // State
     tokens, isLoading, error, sortedTokens,
     showCreateForm, createFormName, createFormExpiry, createFormScope,
-    createFormCustomDate, isSubmitting, createError,
+    createFormCustomDate, isSubmitting, createError, createFieldError,
     revealToken, showRevealModal,
-    revokingToken, isRevoking,
+    revokingToken, isRevoking, revokeError,
     expiryOptions,
     // Methods
     fetchTokens, resetCreateForm, submitCreate,
     closeRevealModal, copyTokenToClipboard, confirmRevoke,
     // Helpers
-    statusLabel, scopeLabel, formatDate, formatExpiry,
+    statusLabel, scopeLabel, formatDate, formatDateTime, formatExpiry,
   }
 }

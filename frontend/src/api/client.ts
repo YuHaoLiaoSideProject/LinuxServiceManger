@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Service, LoginResponse, SessionInfo, MessageResponse, BatchRequest, BatchResponse } from '../types/service'
+import type { Service, LoginResponse, SessionInfo, MessageResponse, BatchRequest, BatchResponse, TokenListResponse, CreateTokenRequest, CreateTokenResponse, RevokeTokenResponse } from '../types/service'
 import { useAuthStore } from '../stores/auth'
 
 const api = axios.create({
@@ -76,5 +76,24 @@ export async function batchServices(req: BatchRequest): Promise<BatchResponse> {
     headers: { 'Content-Type': 'application/json' },
     timeout: 65_000,
   })
+  return data
+}
+
+// ── API Tokens ──
+
+export async function listTokens(): Promise<TokenListResponse> {
+  const { data } = await api.get<TokenListResponse>('/tokens')
+  return data
+}
+
+export async function createToken(req: CreateTokenRequest): Promise<CreateTokenResponse> {
+  const { data } = await api.post<CreateTokenResponse>('/tokens', req, {
+    headers: { 'Content-Type': 'application/json' },
+  })
+  return data
+}
+
+export async function revokeToken(id: string): Promise<RevokeTokenResponse> {
+  const { data } = await api.post<RevokeTokenResponse>(`/tokens/${encodeURIComponent(id)}/revoke`)
   return data
 }

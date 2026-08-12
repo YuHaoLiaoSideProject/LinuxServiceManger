@@ -23,23 +23,27 @@ import (
 type Action string
 
 const (
-	ActionLogin    Action = "login"
-	ActionLogout   Action = "logout"
-	ActionStart    Action = "start"
-	ActionStop     Action = "stop"
-	ActionRestart  Action = "restart"
-	ActionEnable   Action = "enable"
-	ActionDisable  Action = "disable"
+	ActionLogin       Action = "login"
+	ActionLogout      Action = "logout"
+	ActionStart       Action = "start"
+	ActionStop        Action = "stop"
+	ActionRestart     Action = "restart"
+	ActionEnable      Action = "enable"
+	ActionDisable     Action = "disable"
+	ActionTokenCreate Action = "token_create"
+	ActionTokenRevoke Action = "token_revoke"
 )
 
 var validActions = map[Action]bool{
-	ActionLogin:   true,
-	ActionLogout:  true,
-	ActionStart:   true,
-	ActionStop:    true,
-	ActionRestart: true,
-	ActionEnable:  true,
-	ActionDisable: true,
+	ActionLogin:       true,
+	ActionLogout:      true,
+	ActionStart:       true,
+	ActionStop:        true,
+	ActionRestart:     true,
+	ActionEnable:      true,
+	ActionDisable:     true,
+	ActionTokenCreate: true,
+	ActionTokenRevoke: true,
 }
 
 // actionDisplayLabels maps each audit action to its localized display label
@@ -48,13 +52,15 @@ var validActions = map[Action]bool{
 // as the raw action value — otherwise searching for the text users actually
 // see (e.g. "登入") returns no records.
 var actionDisplayLabels = map[Action]string{
-	ActionLogin:   "登入",
-	ActionLogout:  "登出",
-	ActionStart:   "啟動",
-	ActionStop:    "停止",
-	ActionRestart: "重啟",
-	ActionEnable:  "啟用",
-	ActionDisable: "停用",
+	ActionLogin:       "登入",
+	ActionLogout:      "登出",
+	ActionStart:       "啟動",
+	ActionStop:        "停止",
+	ActionRestart:     "重啟",
+	ActionEnable:      "啟用",
+	ActionDisable:     "停用",
+	ActionTokenCreate: "建立 Token",
+	ActionTokenRevoke: "撤銷 Token",
 }
 
 // Result represents the outcome of an audited operation.

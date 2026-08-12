@@ -4,6 +4,7 @@ import LoginView from '../views/LoginView.vue'
 import DashboardView from '../views/DashboardView.vue'
 
 const AuditLogView = () => import('../views/AuditLogView.vue')
+const TokenManageView = () => import('../views/TokenManageView.vue')
 
 const router = createRouter({
   history: createWebHistory(),
@@ -11,6 +12,7 @@ const router = createRouter({
     { path: '/login', name: 'login', component: LoginView, meta: { guest: true } },
     { path: '/', name: 'dashboard', component: DashboardView, meta: { auth: true } },
     { path: '/audit', name: 'audit', component: AuditLogView, meta: { auth: true } },
+    { path: '/tokens', name: 'tokens', component: TokenManageView, meta: { auth: true } },
   ],
 })
 

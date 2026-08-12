@@ -16,6 +16,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"linux-service-manager/internal/audit"
+	"linux-service-manager/internal/token"
 	wsutil "linux-service-manager/internal/websocket"
 	"linux-service-manager/internal/auth"
 	"linux-service-manager/internal/systemd"
@@ -744,4 +745,120 @@ func (h *Handler) HandleServiceLogsWS(w http.ResponseWriter, r *http.Request) {
 			log.Printf("ERROR journalctl for %s exited: %v", name, err)
 		}
 	}
+}
+
+// ============================================================
+//  Token handlers
+// ============================================================
+
+// tokenListResponse wraps token list for JSON response.
+type tokenListResponse struct {
+	Data []token.TokenResponse `json:"data"`
+}
+
+// HandleListTokens returns all API tokens via JSON.
+// GET /api/v1/tokens
+func (h *Handler) HandleListTokens(w http.ResponseWriter, r *http.Request) {
+	if h.TokenStore == nil {
+		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "token store not initialized"})
+		return
+	}
+
+	tokens := h.TokenStore.List()
+	writeJSON(w, http.StatusOK, tokenListResponse{Data: tokens})
+}
+
+// HandleCreateToken creates a new API token and returns the raw value once.
+// POST /api/v1/tokens
+func (h *Handler) HandleCreateToken(w http.ResponseWriter, r *http.Request) {
+	if h.TokenStore == nil {
+		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "token store not initialized"})
+		return
+	}
+
+	var input token.CreateTokenInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, messageJSON{Error: "invalid request body"})
+		return
+	}
+
+	resp, err := h.TokenStore.Create(input)
+	if err != nil {
+		msg, _ := token.IsTokenError(err)
+		if msg == "" {
+			log.Printf("ERROR creating token: %v", err)
+			writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "建立失敗，請稍後重試"})
+			return
+		}
+		// Map specific errors to status codes
+		status := http.StatusBadRequest
+		if msg == token.ErrNameDuplicate.Error() {
+			status = http.StatusConflict
+		}
+		writeJSON(w, status, messageJSON{Error: msg})
+		return
+	}
+
+	// Audit log
+	if h.Audit != nil {
+		username, _ := auth.GetSession(r).Values["username"].(string)
+		entry, entryErr := audit.NewEntry(username, audit.ExtractClientIP(r),
+			audit.ActionTokenCreate, resp.Name, audit.ResultSuccess, "")
+		if entryErr == nil {
+			h.Audit.Write(entry)
+		}
+	}
+
+	writeJSON(w, http.StatusCreated, resp)
+}
+
+// HandleRevokeToken revokes an API token.
+// POST /api/v1/tokens/{id}/revoke
+func (h *Handler) HandleRevokeToken(w http.ResponseWriter, r *http.Request) {
+	if h.TokenStore == nil {
+		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "token store not initialized"})
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, messageJSON{Error: "token ID is required"})
+		return
+	}
+
+	status, err := h.TokenStore.Revoke(id)
+	if err != nil {
+		msg, _ := token.IsTokenError(err)
+		if msg == token.ErrNotFound.Error() {
+			writeJSON(w, http.StatusNotFound, messageJSON{Error: msg})
+			return
+		}
+		log.Printf("ERROR revoking token %s: %v", id, err)
+		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "撤銷失敗，請重試"})
+		return
+	}
+
+	// Audit log
+	if h.Audit != nil {
+		username, _ := auth.GetSession(r).Values["username"].(string)
+		// Find token name for audit
+		tokenName := id
+		list := h.TokenStore.List()
+		for _, t := range list {
+			if t.ID == id {
+				tokenName = t.Name
+				break
+			}
+		}
+		entry, entryErr := audit.NewEntry(username, audit.ExtractClientIP(r),
+			audit.ActionTokenRevoke, tokenName, audit.ResultSuccess, "")
+		if entryErr == nil {
+			h.Audit.Write(entry)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, token.RevokeResponse{
+		Message: "Token 已撤銷",
+		Status:  status,
+	})
 }

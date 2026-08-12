@@ -337,12 +337,14 @@ test.describe('Scenario 6: 登出按鈕可訪問性 (Accessibility)', () => {
     await page.keyboard.press('Enter')
     await expect(page.locator('[data-testid="account-menu"]')).toBeVisible()
 
-    // Tab through menu items: theme → language → logout
-    await page.keyboard.press('Tab')
-    await page.keyboard.press('Tab')
-    await page.keyboard.press('Tab')
-
+    // Tab through menu items until logout is focused.
+    // Menu order: tokens → theme → lang → logout. Loop with an upper
+    // bound so the test stays robust if more menu items are added later.
     const focusedLogout = page.locator(':focus')
+    for (let i = 0; i < 10; i++) {
+      if ((await focusedLogout.getAttribute('data-testid')) === 'menu-logout') break
+      await page.keyboard.press('Tab')
+    }
     await expect(focusedLogout).toHaveAttribute('data-testid', 'menu-logout')
 
     // Press Enter to trigger logout

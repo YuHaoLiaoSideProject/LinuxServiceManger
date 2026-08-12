@@ -15,6 +15,7 @@ import (
 	"linux-service-manager/internal/middleware"
 	"linux-service-manager/internal/monitor"
 	"linux-service-manager/internal/systemd"
+	"linux-service-manager/internal/token"
 	"linux-service-manager/internal/websocket"
 
 	"github.com/go-chi/chi/v5"
@@ -41,7 +42,15 @@ func main() {
 	})
 	defer auditMod.Shutdown()
 
-	h := handler.New(templates, &systemd.DefaultManager{}, auditMod)
+	// Initialize token store
+	tokenStore := token.NewStore("/var/lib/linux-service-manager/tokens.json")
+	if err := tokenStore.Load(); err != nil {
+		log.Fatalf("failed to load token store: %v", err)
+	}
+	go tokenStore.RunLastUsedUpdater()
+	defer tokenStore.Shutdown()
+
+	h := handler.New(templates, &systemd.DefaultManager{}, auditMod, tokenStore)
 
 	// Initialize WebSocket Hub for real-time status push
 	hub := websocket.NewHub()
@@ -89,9 +98,17 @@ func main() {
 	r.Post("/api/v1/logout", h.HandleLogoutJSON)
 	r.Get("/api/v1/session", h.HandleSessionCheck)
 
-	// JSON API (Vue SPA backend) — protected
+	// Token management routes (session-only — managing tokens requires session auth)
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.AuthMiddlewareJSON)
+		r.Get("/api/v1/tokens", h.HandleListTokens)
+		r.Post("/api/v1/tokens", h.HandleCreateToken)
+		r.Post("/api/v1/tokens/{id}/revoke", h.HandleRevokeToken)
+	})
+
+	// JSON API (Vue SPA backend) — protected
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.AuthMiddlewareComposite(tokenStore))
 		r.Get("/api/v1/services", h.HandleServicesJSON)
 		r.Post("/api/v1/services/{name}/start", h.HandleStartJSON)
 		r.Post("/api/v1/services/{name}/stop", h.HandleStopJSON)

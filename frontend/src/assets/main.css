@@ -229,6 +229,15 @@ body {
   color: var(--lms-muted);
   margin-top: 0.15rem;
 }
+.menu-section {
+  padding: 0.3rem 0.9rem;
+  font-size: 0.68rem;
+  color: var(--lms-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 0.3rem;
+}
 .menu-item {
   display: flex;
   align-items: center;

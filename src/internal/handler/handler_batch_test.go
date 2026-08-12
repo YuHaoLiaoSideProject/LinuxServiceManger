@@ -104,7 +104,7 @@ func TestBatchServices_Success(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServicesForBatch()}
-	h := New(nil, mock, nil)
+	h := New(nil, mock, nil, nil)
 	router := setupTestRouterWithBatch(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -176,7 +176,7 @@ func TestBatchServices_PartialFailure(t *testing.T) {
 		services:    sampleServicesForBatch(),
 		startErrFor: map[string]error{"myapp.service": fmt.Errorf("service start failed")},
 	}
-	h := New(nil, mock, nil)
+	h := New(nil, mock, nil, nil)
 	router := setupTestRouterWithBatch(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -238,7 +238,7 @@ func TestBatchServices_AllFailure(t *testing.T) {
 		services: sampleServicesForBatch(),
 		startErr: fmt.Errorf("dbus error"),
 	}
-	h := New(nil, mock, nil)
+	h := New(nil, mock, nil, nil)
 	router := setupTestRouterWithBatch(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -289,7 +289,7 @@ func TestBatchServices_EmptyNames(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, nil)
+	h := New(nil, mock, nil, nil)
 	router := setupTestRouterWithBatch(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -316,7 +316,7 @@ func TestBatchServices_ExceedsMaxBatchSize(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, nil)
+	h := New(nil, mock, nil, nil)
 	router := setupTestRouterWithBatch(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -349,7 +349,7 @@ func TestBatchServices_InvalidAction(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, nil)
+	h := New(nil, mock, nil, nil)
 	router := setupTestRouterWithBatch(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -377,7 +377,7 @@ func TestBatchServices_LockedService(t *testing.T) {
 
 	// sampleServices includes ssh.service with Locked=true
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, nil)
+	h := New(nil, mock, nil, nil)
 	router := setupTestRouterWithBatch(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -408,7 +408,7 @@ func TestBatchServices_InvalidJSON(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, nil)
+	h := New(nil, mock, nil, nil)
 	router := setupTestRouterWithBatch(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -427,7 +427,7 @@ func TestBatchServices_InvalidJSON(t *testing.T) {
 
 func TestBatchServices_Unauthorized(t *testing.T) {
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, nil)
+	h := New(nil, mock, nil, nil)
 	router := setupTestRouterWithBatch(h)
 
 	reqBody := map[string]interface{}{
@@ -449,7 +449,7 @@ func TestBatchServices_StopAction(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServicesForBatch()}
-	h := New(nil, mock, nil)
+	h := New(nil, mock, nil, nil)
 	router := setupTestRouterWithBatch(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -490,7 +490,7 @@ func TestBatchServices_RestartAction(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServicesForBatch()}
-	h := New(nil, mock, nil)
+	h := New(nil, mock, nil, nil)
 	router := setupTestRouterWithBatch(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -529,7 +529,7 @@ func TestBatchServices_SystemdListError(t *testing.T) {
 		services: nil,
 		listErr:  fmt.Errorf("dbus connection failed"),
 	}
-	h := New(nil, mock, nil)
+	h := New(nil, mock, nil, nil)
 	router := setupTestRouterWithBatch(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -559,7 +559,7 @@ func TestBatchServices_ResponseIntegrity(t *testing.T) {
 		services:    sampleServicesForBatch(),
 		startErrFor: map[string]error{"myapp.service": fmt.Errorf("start failed for myapp")},
 	}
-	h := New(nil, mock, nil)
+	h := New(nil, mock, nil, nil)
 	router := setupTestRouterWithBatch(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")

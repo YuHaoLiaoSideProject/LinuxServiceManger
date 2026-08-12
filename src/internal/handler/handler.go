@@ -13,25 +13,27 @@ import (
 	"linux-service-manager/internal/audit"
 	"linux-service-manager/internal/auth"
 	"linux-service-manager/internal/systemd"
+	"linux-service-manager/internal/token"
 	"linux-service-manager/internal/websocket"
 )
 
 // Handler holds the parsed templates and systemd manager.
 type Handler struct {
-	tmpl    *template.Template
-	systemd systemd.ServiceManager
-	Hub     *websocket.Hub
-	Audit   *audit.Module
+	tmpl       *template.Template
+	systemd    systemd.ServiceManager
+	Hub        *websocket.Hub
+	Audit      *audit.Module
+	TokenStore *token.Store
 }
 
 // New creates a new Handler with the given template filesystem and systemd manager.
 // tplFS may be nil for JSON-only usage (e.g. tests).
-func New(tplFS fs.FS, sm systemd.ServiceManager, auditMod *audit.Module) *Handler {
+func New(tplFS fs.FS, sm systemd.ServiceManager, auditMod *audit.Module, tokenStore *token.Store) *Handler {
 	var tmpl *template.Template
 	if tplFS != nil {
 		tmpl = template.Must(template.ParseFS(tplFS, "index.html", "login.html"))
 	}
-	return &Handler{tmpl: tmpl, systemd: sm, Audit: auditMod}
+	return &Handler{tmpl: tmpl, systemd: sm, Audit: auditMod, TokenStore: tokenStore}
 }
 
 // HandleIndex serves the full HTML page.

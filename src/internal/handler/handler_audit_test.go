@@ -102,7 +102,7 @@ func TestHandleAuditQuery_Success(t *testing.T) {
 	seedAudit(t, auditMod)
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -152,7 +152,7 @@ func TestHandleAuditQuery_Empty(t *testing.T) {
 	auditMod := newTestAuditModule(t) // fresh, no data
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	// Create an authenticated session without going through login handler
@@ -192,7 +192,7 @@ func TestHandleAuditQuery_Search(t *testing.T) {
 	seedAudit(t, auditMod)
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -222,7 +222,7 @@ func TestHandleAuditQuery_SearchNoResults(t *testing.T) {
 	seedAudit(t, auditMod)
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -273,7 +273,7 @@ func TestHandleAuditQuery_SearchLocalizedAction(t *testing.T) {
 	auditMod.Shutdown()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -312,7 +312,7 @@ func TestHandleAuditQuery_DateRange(t *testing.T) {
 	seedAudit(t, auditMod)
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -341,7 +341,7 @@ func TestHandleAuditQuery_InvalidDate(t *testing.T) {
 	auditMod := newTestAuditModule(t)
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -379,7 +379,7 @@ func TestHandleAuditQuery_Pagination(t *testing.T) {
 	seedAudit(t, auditMod)
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -426,7 +426,7 @@ func TestHandleAuditQuery_PageOutOfRange(t *testing.T) {
 	seedAudit(t, auditMod)
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -455,7 +455,7 @@ func TestHandleAuditQuery_Unauthorized(t *testing.T) {
 	auditMod := newTestAuditModule(t)
 
 	mock := &mockSystemd{}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/audit?page=1&limit=50", nil)
@@ -478,7 +478,7 @@ func TestHandleAuditExport_Success(t *testing.T) {
 	seedAudit(t, auditMod)
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -541,7 +541,7 @@ func TestHandleAuditExport_BadFormat(t *testing.T) {
 	auditMod := newTestAuditModule(t)
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -575,7 +575,7 @@ func TestHandleAuditExport_Unauthorized(t *testing.T) {
 	auditMod := newTestAuditModule(t)
 
 	mock := &mockSystemd{}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/export?format=csv", nil)
@@ -595,7 +595,7 @@ func TestHandleAuditQuery_NilModule(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, nil) // no audit module
+	h := New(nil, mock, nil, nil) // no audit module
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -614,7 +614,7 @@ func TestHandleAuditExport_NilModule(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, nil) // no audit module
+	h := New(nil, mock, nil, nil) // no audit module
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -639,7 +639,7 @@ func TestAuditWrite_OnServiceStart(t *testing.T) {
 	auditMod := newTestAuditModule(t)
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -711,7 +711,7 @@ func TestAuditWrite_OnServiceStartFailure(t *testing.T) {
 	auditMod := newTestAuditModule(t)
 
 	mock := &mockSystemd{startErr: fmt.Errorf("unit not found")}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -808,7 +808,7 @@ func TestAuditWrite_AllServiceActions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			auditMod := newTestAuditModule(t)
 			mock := tt.mockFn()
-			h := New(nil, mock, auditMod)
+			h := New(nil, mock, auditMod, nil)
 			router := setupTestRouterWithAudit(h)
 
 			cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -864,7 +864,7 @@ func TestAuditWrite_OnLogin(t *testing.T) {
 	auditMod := newTestAuditModule(t)
 
 	mock := &mockSystemd{}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	form := url.Values{}
@@ -913,7 +913,7 @@ func TestAuditWrite_OnLogout(t *testing.T) {
 	auditMod := newTestAuditModule(t)
 
 	mock := &mockSystemd{}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -963,7 +963,7 @@ func TestAuditWrite_NilModuleNoPanic(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{}
-	h := New(nil, mock, nil) // no audit module
+	h := New(nil, mock, nil, nil) // no audit module
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -990,7 +990,7 @@ func TestHandleAuditExport_WithSearchFilter(t *testing.T) {
 	seedAudit(t, auditMod)
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -1029,7 +1029,7 @@ func TestHandleAuditExport_WithDateFilter(t *testing.T) {
 	seedAudit(t, auditMod)
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -1067,7 +1067,7 @@ func TestHandleAuditQuery_PageParamClamp(t *testing.T) {
 	seedAudit(t, auditMod)
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock, auditMod)
+	h := New(nil, mock, auditMod, nil)
 	router := setupTestRouterWithAudit(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")

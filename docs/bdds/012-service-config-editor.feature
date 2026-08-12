@@ -162,11 +162,19 @@ Feature: 服務設定檔編輯器
     And 編輯器維持可編輯狀態
 
   @validate @edge-case @p1
-  Scenario: systemd-analyze 輸出僅含警告時視為通過
-    Given 後端執行 systemd-analyze verify 的輸出僅包含警告（無錯誤）
+  Scenario: systemd-analyze 輸出僅含系統噪音（無行號診斷）時視為通過
+    Given 後端執行 systemd-analyze verify 的輸出僅包含無行號的系統噪音（如其他 unit 的 permission 警告）
     When 管理員點擊「Validate」按鈕
     Then 後端回傳 valid=true
     And 頁面顯示綠色提示「✅ 語法驗證通過 — 設定檔語法正確」
+
+  @validate @edge-case @p1
+  Scenario: 打錯字級別問題（Missing '=' / Unknown key）即使 exit 0 仍視為失敗
+    Given 管理員把「WantedBy=multi-user.target」改為「WantedBy multi-user.target」（漏掉等號）
+    And systemd-analyze verify 對該內容印出「Missing '=', ignoring line.」診斷但 exit 0（systemd 257 實測行為：該行會被靜默忽略）
+    When 管理員點擊「Validate」按鈕
+    Then 後端回傳 valid=false 且 errors 包含 [{ "line": 8, "message": "Missing '=', ignoring line." }]
+    And 頁面顯示紅色錯誤面板並在第 8 行標記波浪線
 
   # ══════════════════════════════════════════════════════════════
   # 前端 — 儲存（Save）
@@ -493,7 +501,7 @@ Feature: 服務設定檔編輯器
     Then 後端執行 systemd-analyze verify 並解析錯誤輸出（含行號）
     And 後端刪除暫存檔
     And 後端回傳 HTTP 200
-    And 回應 JSON 為 {"valid": false, "errors": [{"line": 12, "message": "Unknown key 'ExecStartt'"}]}
+    And 回應 JSON 為 {"valid": false, "errors": [{"line": 12, "message": "Unknown key 'ExecStartt' in section [Service], ignoring."}]}
 
   @api @error-handling @p1
   Scenario: Validate 時 systemd-analyze 不存在回傳明確錯誤

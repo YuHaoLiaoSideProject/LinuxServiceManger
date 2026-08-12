@@ -62,7 +62,7 @@
 | B. 純前端語法檢查 | 前端以 INI 正規表達式解析 section/key 格式 | 即時、零伺服器往返 | 只能檢查「格式形狀」，無法驗證 directive 名稱/值是否合法（如 `ExecStartt` 拼錯字無法偵測 — 恰好是驗收清單的範例錯誤）；假陰性高，無法取代 systemd 真實行為 |
 | C. 自製 Go 語法解析器 | 以 Go 重新實作 systemd 語法規則 | 不依賴外部指令 | 必須 mirror systemd 規則，維護成本高、必然與真實解析器產生分歧；投入產出比極差 |
 
-> **決策**：方案 A，並以「前端輕量前置檢查」為輔助。後端執行流程：`exec.LookPath("systemd-analyze")` → 不存在或執行失敗時**不回傳 500**，改回傳 `200 {valid:false, available:false, errors:[], message:"systemd-analyze 指令不存在"}`，前端顯示黃色警告（不阻塞儲存，符合 interaction flow 的 VError 分支）。輸出解析：exit code 0 → valid；否則以正規表達式萃取 `{path}:{line}: {message}` 模式（systemd-analyze 輸出格式）填入 `errors[]`。暫存檔以 `defer os.Remove` 保證刪除，檔名含 UUID 避免並發碰撞、權限 0600。
+> **決策**：方案 A，並以「前端輕量前置檢查」為輔助。後端執行流程：`exec.LookPath("systemd-analyze")` → 不存在或執行失敗時**不回傳 500**，改回傳 `200 {valid:false, available:false, errors:[], message:"systemd-analyze 指令不存在"}`，前端顯示黃色警告（不阻塞儲存，符合 interaction flow 的 VError 分支）。輸出解析：以正規表達式萃取 `{path}:{line}: {message}` 模式填入 `errors[]`；**exit 0 時亦解析** — systemd 257 實測漏 `=`、Unknown key、Failed to parse 等「打錯字」級別問題只印 path:LINE 診斷仍 exit 0（該行被 systemd 靜默忽略），必須視為 `valid:false`；僅無行號的系統噪音（其他 unit 的 permission 警告）視為 `valid:true`。暫存檔以 `defer os.Remove` 保證刪除，檔名含 UUID 避免並發碰撞、權限 0600。
 >
 > **前端輔助**：點擊 Validate 時先做空內容檢查（「設定檔內容為空」提示）與最小 INI 前置檢查（section 行需以 `[` 開頭結尾），通過才發送請求 — 這層檢查是 UX 快速回饋，不是安全/正確性依賴。儲存**不強制**要求先驗證通過（依 interaction flow，驗證失敗仍可儲存），但 ConfirmModal 中會顯示上次驗證失敗的提醒文字。
 

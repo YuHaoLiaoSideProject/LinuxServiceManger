@@ -206,8 +206,9 @@ func (s *ConfigStore) ValidateConfig(content string) (*ValidateResult, error) {
     //    message:「無法建立暫存檔進行驗證。請檢查 /tmp 目錄空間與權限。」）
     //    defer os.Remove(tmp)  ← 保證成功/失敗/逾時路徑皆清理
     // 3. ctx 10s timeout; exec.CommandContext(ctx, "systemd-analyze", "verify", tmp)
-    // 4. exit code 0 → &ValidateResult{Valid:true, Available:true, Errors:[]}
-    //    （僅含警告但 exit 0 視為通過 — BDD @edge-case「警告不構成失敗」）
+    // 4. exit code 0 → 仍解析輸出（systemd 257 實測：漏 = / Unknown key / Failed to parse
+    //    等「打錯字」級別問題只印 path:LINE 診斷但 exit 0，該行會被 systemd 靜默忽略 → 視為錯誤）；
+    //    僅無行號的系統噪音（如 Configuration file ... is marked executable）時 Valid:true
     // 5. 非 0 → 逐行以 analyzeVerifyErrRe 萃取 {line, message}；不可解析行 → 原始輸出為 message
     // 6. ctx.Err() == DeadlineExceeded → 視為失敗並 kill process
     // TODO: 完整實作
@@ -1058,7 +1059,7 @@ Auth：三端點皆在 `AuthMiddlewareComposite(tokenStore)` 保護群組內（s
 | 500 | 暫存檔建立失敗（/tmp 空間/權限） | `{"error":"無法建立暫存檔進行驗證。請檢查 /tmp 目錄空間與權限。"}` |
 | 401 | 未登入 | Auth middleware 攔截 |
 
-> 警告不構成失敗：`systemd-analyze verify` exit 0（僅警告）→ `valid:true`。
+> 警告分級：`systemd-analyze verify` exit 0 時**仍解析輸出** — 帶行號的診斷（`Missing '='`、`Unknown key`、`Failed to parse` 等「打錯字」級別，systemd 257 實測印出後 exit 0、該行被靜默忽略）視為失敗 `valid:false`；僅無行號的系統噪音（如其他 unit 的 permission 警告）才視為通過 `valid:true`。
 
 ---
 
@@ -1124,7 +1125,9 @@ POST /config/validate {config}
  1. LookPath("systemd-analyze")   不存在 → 200 {valid:false, available:false, message}
  2. 寫入 /tmp/lsm-validate-{uuid}.service（0600）；defer os.Remove
  3. systemd-analyze verify {tmp}（10s 逾時）
- 4. exit 0 → 200 {valid:true, errors:[]}（警告視同通過）
+ 4. exit 0 → 仍 regex 解析 {path}:{line}: {message}；帶行號診斷 → 200 {valid:false, errors:[{line,message}]}
+    （systemd 257 實測：Missing '=' / Unknown key / Failed to parse 等打錯字級別問題 exit 0）
+    僅無行號系統噪音 → 200 {valid:true, errors:[]}
     exit ≠ 0 → regex 解析 {path}:{line}: {message} → 200 {valid:false, errors:[{line,message}]}
  5. 完成 → 暫存檔刪除（成功/失敗/逾時皆清理）
 ```
@@ -1204,7 +1207,7 @@ POST /config/validate {config}
 | 10 | **寫入失敗還原** | 僅「檔案寫入失敗」時以備份還原（D-5）；回 500「寫入失敗」 | PUT 寫入失敗還原 | SYS-25, HDL-18, INT-06 |
 | 11 | **systemd-analyze 不存在（容器）** | `LookPath` 失敗 → **200** `{valid:false, available:false, message}`（非 500 crash）；前端黃色警告、不阻塞儲存 | Validate systemd-analyze 不存在 / 驗證服務不可用 | SYS-38, HDL-23, F-VL-06 |
 | 12 | **驗證暫存檔 /tmp 失敗或殘留** | 檔名 `lsm-validate-{uuid}.service`（UUID 防碰撞）、權限 0600、`defer os.Remove` 保證成功/失敗/逾時皆刪除；建立失敗回 500 提示檢查 /tmp | Validate 暫存檔建立失敗 / 暫存檔被刪除 | SYS-41~43, INT-05 |
-| 13 | **驗證輸出僅含警告** | exit 0 → `valid:true`（警告不構成失敗） | 輸出僅含警告視為通過 | SYS-35 |
+| 13 | **exit 0 但含行級診斷（打錯字）** | 漏 `=` / Unknown key / Failed to parse 印 `path:LINE` 診斷仍 exit 0（systemd 257 實測，該行被靜默忽略）→ `valid:false` + errors；僅無行號系統噪音 → `valid:true` | 打錯字級別問題視為失敗 / 系統噪音視為通過 | SYS-46a~46d |
 | 14 | **驗證輸出多種錯誤格式** | regex `^[^:]+:(\d+):\s*(.+)$` 萃取行號與訊息；不可解析行 → 原始輸出為 message，不 crash | 不同語法錯誤 Outline（Unknown key / Section not found / Missing '=' / Exec path） | SYS-34~37 |
 | 15 | **空內容 Validate** | 前端攔截不發請求，提示「設定檔內容為空，請先編輯或載入內容」 | 空內容點擊 Validate | F-VL-02, E2E-21 |
 | 16 | **空內容 Save** | ConfirmModal 額外顯示「⚠️ 設定檔內容為空...」；確認後仍可儲存 | 儲存內容為空額外警告 | F-SV-10, E2E-17 |

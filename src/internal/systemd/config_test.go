@@ -1,6 +1,6 @@
 package systemd
 
-// SYS-01 ~ SYS-46 單元測試（對應 docs/test-plans/012-service-config-editor測試計畫.md §2）
+// SYS-01 ~ SYS-46d 單元測試（對應 docs/test-plans/012-service-config-editor測試計畫.md §2）
 // 先寫測試（RED），再實作 ConfigStore 使其轉綠。
 
 import (
@@ -773,9 +773,14 @@ func TestValidateConfig_InvalidWithLine(t *testing.T) {
 	}
 }
 
-func TestValidateConfig_WarningsOnlyIsValid(t *testing.T) {
-	// exit 0（僅警告）→ valid=true
-	restore := mockAnalyze(t, "/tmp/x.service:3: Some warning text\n", 0)
+// SYS-46a：exit 0 但輸出僅為「無行號」的系統噪音（如其他 unit 的 permission 警告）
+// → valid=true（真正無害，修正前後皆然）。
+func TestValidateConfig_Exit0SystemNoiseIsValid(t *testing.T) {
+	output := strings.Join([]string{
+		"Configuration file /etc/systemd/system/gameplatform.service is marked executable. Please remove executable permission bits. Proceeding anyway.",
+		"Configuration file /etc/systemd/system/gameplatform.service is marked world-writable. Please remove world writability permission bits. Proceeding anyway.",
+	}, "\n") + "\n"
+	restore := mockAnalyze(t, output, 0)
 	defer restore()
 	s := NewConfigStore()
 	res, err := s.ValidateConfig("[Unit]\nDescription=x\n")
@@ -783,21 +788,23 @@ func TestValidateConfig_WarningsOnlyIsValid(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !res.Valid {
-		t.Error("warnings with exit 0 should be valid")
+		t.Error("system noise without line diagnostics should be valid")
 	}
 	if len(res.Errors) != 0 {
 		t.Errorf("errors = %v, want none", res.Errors)
 	}
 }
 
+// SYS-46b：多重「打錯字」級別問題同時印出（真實 systemd 257 訊息格式）但 exit 0
+// → 修正後必須視為 invalid，且全部診斷逐行列出。
 func TestValidateConfig_MultipleErrors(t *testing.T) {
 	output := strings.Join([]string{
-		"/tmp/lsm-validate-a.service:1: Unknown key 'ExecStartt'",
-		"/tmp/lsm-validate-a.service:3: Section [Service] not found",
-		"/tmp/lsm-validate-a.service:5: Missing '=' in key/value assignment",
-		"/tmp/lsm-validate-a.service:8: ExecStart= path does not exist: /usr/bin/not-exist",
+		"/tmp/lsm-validate-a.service:1: Missing '=', ignoring line.",
+		"/tmp/lsm-validate-a.service:3: Unknown key 'ExecStartt' in section [Service], ignoring.",
+		"/tmp/lsm-validate-a.service:5: Failed to parse TimeoutStartSec= parameter, ignoring: abc",
+		"/tmp/lsm-validate-a.service:8: Unknown key 'KillModee' in section [Service], ignoring.",
 	}, "\n") + "\n"
-	restore := mockAnalyze(t, output, 1)
+	restore := mockAnalyze(t, output, 0)
 	defer restore()
 	s := NewConfigStore()
 	res, err := s.ValidateConfig("bad")
@@ -812,10 +819,10 @@ func TestValidateConfig_MultipleErrors(t *testing.T) {
 	}
 	wantLines := []int{1, 3, 5, 8}
 	wantMsgs := []string{
-		"Unknown key 'ExecStartt'",
-		"Section [Service] not found",
-		"Missing '=' in key/value assignment",
-		"ExecStart= path does not exist: /usr/bin/not-exist",
+		"Missing '=', ignoring line.",
+		"Unknown key 'ExecStartt' in section [Service], ignoring.",
+		"Failed to parse TimeoutStartSec= parameter, ignoring: abc",
+		"Unknown key 'KillModee' in section [Service], ignoring.",
 	}
 	for i, e := range res.Errors {
 		if e.Line != wantLines[i] {
@@ -824,6 +831,104 @@ func TestValidateConfig_MultipleErrors(t *testing.T) {
 		if e.Message != wantMsgs[i] {
 			t.Errorf("errors[%d].Message = %q, want %q", i, e.Message, wantMsgs[i])
 		}
+	}
+}
+
+// SYS-46c：exit 0 但帶「行號診斷」的打錯字級別問題（真實 systemd 257 實測：
+// Missing '=' / Unknown key / Failed to parse 都只印 path:LINE 診斷、exit 0）
+// → 修正後必須視為 invalid（systemd 會靜默忽略該行）。
+func TestValidateConfig_Exit0LineDiagnosticsInvalid(t *testing.T) {
+	cases := []struct {
+		name    string
+		output  string
+		wantMsg string
+		wantLn  int
+	}{
+		{
+			"MissingEquals",
+			"/tmp/lsm-validate-a.service:8: Missing '=', ignoring line.\n",
+			"Missing '='", 8,
+		},
+		{
+			"UnknownKeyService",
+			"/tmp/lsm-validate-a.service:6: Unknown key 'TimeoutStopp' in section [Service], ignoring.\n",
+			"Unknown key 'TimeoutStopp'", 6,
+		},
+		{
+			"UnknownKeyInstall",
+			"/tmp/lsm-validate-a.service:8: Unknown key 'Wantedby' in section [Install], ignoring.\n",
+			"Unknown key 'Wantedby'", 8,
+		},
+		{
+			"UnknownKeyUnit",
+			"/tmp/lsm-validate-a.service:2: Unknown key 'Descriptionx' in section [Unit], ignoring.\n",
+			"Unknown key 'Descriptionx'", 2,
+		},
+		{
+			"FailedToParseValue",
+			"/tmp/lsm-validate-a.service:6: Failed to parse TimeoutStartSec= parameter, ignoring: abc\n",
+			"Failed to parse TimeoutStartSec", 6,
+		},
+		{
+			"FailedToParseEnum",
+			"/tmp/lsm-validate-a.service:6: Failed to parse Restart=invalid, ignoring: Invalid argument\n",
+			"Failed to parse Restart=invalid", 6,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			restore := mockAnalyze(t, tc.output, 0)
+			defer restore()
+			s := NewConfigStore()
+			res, err := s.ValidateConfig("[Service]\nExecStart=/usr/bin/true\n")
+			if err != nil {
+				t.Fatalf("ValidateConfig: %v", err)
+			}
+			if res.Valid {
+				t.Error("exit 0 with line diagnostics should be invalid (systemd 257 ignores them silently)")
+			}
+			if !res.Available {
+				t.Error("available should be true")
+			}
+			if len(res.Errors) != 1 {
+				t.Fatalf("errors = %v, want exactly 1", res.Errors)
+			}
+			if res.Errors[0].Line != tc.wantLn {
+				t.Errorf("line = %d, want %d", res.Errors[0].Line, tc.wantLn)
+			}
+			if !strings.Contains(res.Errors[0].Message, tc.wantMsg) {
+				t.Errorf("message = %q, want contains %q", res.Errors[0].Message, tc.wantMsg)
+			}
+		})
+	}
+}
+
+// SYS-46d：exit 0 輸出同時混入「無行號系統噪音」與「行級診斷」
+// → invalid，且 Errors 只保留行級診斷（噪音濾除）。
+func TestValidateConfig_Exit0MixedNoiseAndDiagnostics(t *testing.T) {
+	output := strings.Join([]string{
+		"Configuration file /etc/systemd/system/gameplatform.service is marked executable. Please remove executable permission bits. Proceeding anyway.",
+		"/tmp/lsm-validate-a.service:6: Unknown key 'TimeoutStopp' in section [Service], ignoring.",
+		"Configuration file /etc/systemd/system/gameplatform.service is marked world-writable. Please remove world writability permission bits. Proceeding anyway.",
+	}, "\n") + "\n"
+	restore := mockAnalyze(t, output, 0)
+	defer restore()
+	s := NewConfigStore()
+	res, err := s.ValidateConfig("[Service]\nExecStart=/usr/bin/true\nTimeoutStopp=5\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Valid {
+		t.Error("should be invalid (line diagnostics present despite exit 0)")
+	}
+	if len(res.Errors) != 1 {
+		t.Fatalf("errors = %v, want only the line diagnostic, got %d", res.Errors, len(res.Errors))
+	}
+	if res.Errors[0].Line != 6 {
+		t.Errorf("line = %d, want 6", res.Errors[0].Line)
+	}
+	if !strings.Contains(res.Errors[0].Message, "Unknown key 'TimeoutStopp'") {
+		t.Errorf("message = %q", res.Errors[0].Message)
 	}
 }
 

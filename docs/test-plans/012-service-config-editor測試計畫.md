@@ -124,10 +124,10 @@ BDD 與 Tech Decision 存在下列差異，本測試計畫一律**以 Tech Decis
 | # | 測試名稱 | Given | When | Then |
 |---|---------|-------|------|------|
 | SYS-33 | 語法正確回傳 valid=true | 內容合法；`systemd-analyze verify` exit 0 | 執行驗證 | `{valid:true, errors:[]}` |
-| SYS-34 | 語法錯誤回傳 valid=false + 行號 | 內容含錯誤；verify exit 非 0，輸出 `{path}:12: Unknown key 'ExecStartt'` | 執行驗證並解析輸出 | `{valid:false, errors:[{line:12, message:"Unknown key 'ExecStartt'"}]}` |
-| SYS-35 | 輸出僅含警告視為通過 | verify 輸出僅警告（無錯誤）但 exit 0 | 執行驗證 | valid=true（警告不構成失敗） |
-| SYS-36 | 錯誤行號解析 — 多種格式 | 輸出含 `Section [Service] not found`、`Missing '=' in key/value assignment` 等 | 套用解析正規表達式 | 正確萃取 `{line, message}`，行號型別為 int |
-| SYS-37 | 多筆錯誤解析 | 輸出含 4 筆不同行號錯誤（Outline 範例） | 執行驗證 | errors 陣列含 4 筆，各自 line/message 正確 |
+| SYS-34 | 語法錯誤回傳 valid=false + 行號 | 內容含錯誤；verify exit 非 0，輸出 `{path}:12: Unknown key 'ExecStartt' in section [Service], ignoring.` | 執行驗證並解析輸出 | `{valid:false, errors:[{line:12, message:"Unknown key 'ExecStartt' in section [Service], ignoring."}]}` |
+| SYS-35 | 輸出僅含系統噪音視為通過 | verify 輸出僅無行號系統噪音（其他 unit permission 警告）且 exit 0 | 執行驗證 | valid=true（無行號診斷 → 真正無害） |
+| SYS-36 | 錯誤行號解析 — 多種格式 | 輸出含 `Missing '=', ignoring line.`、`Unknown key '...' in section ..., ignoring.` 等 | 套用解析正規表達式 | 正確萃取 `{line, message}`，行號型別為 int |
+| SYS-37 | 多筆錯誤解析 | 輸出含 4 筆不同行號錯誤（真實 systemd 257 格式） | 執行驗證 | errors 陣列含 4 筆，各自 line/message 正確 |
 | SYS-38 | systemd-analyze 不存在 | `exec.LookPath("systemd-analyze")` 失敗（模擬容器環境） | 執行驗證 | 回 `{valid:false, available:false, message:"systemd-analyze 指令不存在..."}`，**非 500 crash** |
 | SYS-39 | 執行逾時 10 秒 | `systemd-analyze verify` 執行超過 10s（mock 慢指令） | 執行驗證 | 判定逾時視為失敗，回合理錯誤，process 被 kill |
 | SYS-40 | 執行失敗但輸出不可解析 | exit 非 0、輸出不含 `:line:` 模式 | 執行驗證 | 回 valid=false + 原始輸出為 message，不 crash |
@@ -144,6 +144,10 @@ BDD 與 Tech Decision 存在下列差異，本測試計畫一律**以 Tech Decis
 | SYS-44 | daemon-reload 逾時 = 10 秒 | mock `systemctl daemon-reload` 阻塞 > 10s | 執行 reload | 判定逾時並視為失敗（對應 BDD「daemon-reload 逾時設定為 10 秒」） |
 | SYS-45 | 還原裁決：寫入失敗還原、reload 失敗不還原 | (a) 寫入失敗 (b) reload 失敗兩種情境 | 執行儲存流程 | (a) 還原備份；(b) **不還原**、回 500 + `backupPath`（決策 D-4/D-5） |
 | SYS-46 | 不實作悲觀鎖定 | 兩位管理員同時編輯（模擬兩個 PUT 依序到達） | 依序執行兩次 PUT | 無 lock 檔案/狀態；先到者成功、後到者若基準不符回 409（last-write-wins + checksum 偵測） |
+| SYS-46a | exit 0 但含行級診斷視為失敗（漏 =） | mock verify 輸出 `{path}:8: Missing '=', ignoring line.` 且 exit 0（systemd 257 實測：該行被靜默忽略） | 執行驗證 | valid=false，errors 含 line:8 + 訊息 |
+| SYS-46b | exit 0 但含行級診斷視為失敗（Unknown key / Failed to parse） | 六種打錯字訊息 + exit 0（Outline：漏 = / Service 未知 key / Install 未知 key / Unit 未知 key / 值無法解析 / 列舉錯誤） | 執行驗證 | 全部 valid=false，line/message 正確 |
+| SYS-46c | 多筆打錯字診斷全部列出 | 4 筆不同行號診斷 + exit 0（真實 systemd 257 格式） | 執行驗證 | errors 含 4 筆，各自 line/message 正確 |
+| SYS-46d | exit 0 混合系統噪音與行級診斷 | 輸出同時含無行號噪音（其他 unit permission 警告）與行級診斷 | 執行驗證 | valid=false，errors **只含行級診斷**（噪音濾除） |
 
 ### 2.8 Handler 層（`internal/handler/config_handler.go`）
 

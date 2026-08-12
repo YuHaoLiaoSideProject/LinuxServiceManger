@@ -41,6 +41,8 @@ type ValidateResult struct {
 }
 
 // analyzeVerifyErrRe 解析 systemd-analyze 輸出：{path}:{line}: {message}
+// （systemd 257 實測：漏 = / Unknown key / Failed to parse 等「打錯字」級別問題
+//  會印出 path:LINE 診斷但仍 exit 0；exit 0 時必須靠行號區分診斷與系統噪音。）
 var analyzeVerifyErrRe = regexp.MustCompile(`^[^:]+:(\d+):\s*(.+)$`)
 
 // ValidateConfig 驗證 unit file 內容語法（systemd-analyze verify 暫存檔方案）。
@@ -88,8 +90,25 @@ func (s *ConfigStore) ValidateConfig(content string) (*ValidateResult, error) {
 		return nil, fmt.Errorf("語法驗證逾時（%s）", ValidateTimeout)
 	}
 
-	// 4. exit code 0 → valid（僅警告但 exit 0 視為通過）
+	// 4. exit code 0 → 仍需解析輸出：systemd 對「打錯字」級別問題（Missing '='、
+	//    Unknown key、Failed to parse 等）只印 path:LINE 診斷但仍 exit 0，
+	//    該行會被 systemd 靜默忽略——必須視為錯誤。
+	//    無行號的行是系統噪音（如 Configuration file ... is marked executable），濾除。
 	if err == nil {
+		errList := parseAnalyzeErrors(output)
+		lineErrs := make([]ValidateError, 0, len(errList))
+		for _, e := range errList {
+			if e.Line > 0 {
+				lineErrs = append(lineErrs, e)
+			}
+		}
+		if len(lineErrs) > 0 {
+			return &ValidateResult{
+				Valid:     false,
+				Available: true,
+				Errors:    lineErrs,
+			}, nil
+		}
 		return &ValidateResult{
 			Valid:     true,
 			Available: true,

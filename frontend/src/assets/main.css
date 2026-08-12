@@ -268,6 +268,7 @@ body {
   flex-wrap: wrap;
   gap: 0.6rem;
   margin-bottom: 1rem;
+  box-shadow: none;
 }
 .stat-card {
   flex: 1;
@@ -284,6 +285,7 @@ body {
   color: inherit;
   text-align: left;
   cursor: pointer;
+  outline: none;
   transition: transform var(--lms-transition), box-shadow var(--lms-transition), border-color var(--lms-transition), background var(--lms-transition);
 }
 .stat-card:hover {
@@ -293,7 +295,7 @@ body {
 }
 .stat-card:focus-visible {
   outline: 2px solid var(--lms-accent);
-  outline-offset: 2px;
+  outline-offset: 0;
 }
 .stat-card:disabled {
   opacity: 0.5;
@@ -1726,7 +1728,7 @@ tbody tr:last-child td {
   .actions .action-slot {
     display: contents;
   }
-  /* Primary Start / Stop：flex 撐滿剩餘寬度，成功/危險色 */
+  /* Primary Start / Stop：flex 撐滿剩餘寬度，顏色樣式與桌機一致（Pico outline secondary） */
   .actions .btn-act-start,
   .actions .btn-act-stop {
     flex: 1 1 auto;
@@ -1735,17 +1737,8 @@ tbody tr:last-child td {
     font-size: 1rem;
     font-weight: 700;
     justify-content: center;
-    border: none;
-    color: #fff;
     border-radius: var(--lms-radius);
-    transition: background var(--lms-transition), transform 0.1s;
   }
-  .actions .btn-act-start { background: var(--lms-success); box-shadow: 0 2px 8px rgba(24,128,56,0.3); }
-  .actions .btn-act-stop  { background: var(--lms-danger);  box-shadow: 0 2px 8px rgba(197,34,31,0.3); }
-  .actions .btn-act-start:hover { background: #12632e; }
-  .actions .btn-act-stop:hover  { background: #a71d1a; }
-  .actions .btn-act-start:active,
-  .actions .btn-act-stop:active { transform: scale(0.97); }
   /* Secondary Restart / Logs：48px 圖示按鈕 */
   .actions .btn-act-restart,
   .actions .btn-logs {
@@ -1800,8 +1793,7 @@ tbody tr:last-child td {
   [data-theme="dark"] .table-wrapper .service-table td:nth-child(4) .status-inactive { background: var(--lms-surface-2); }
   [data-theme="dark"] .table-wrapper .service-table td:nth-child(4) .status-failed   { background: rgba(197, 34, 31, 0.22); }
   [data-theme="dark"] .table-wrapper .service-table td:nth-child(4) .status-other    { background: var(--lms-warning-light); }
-  [data-theme="dark"] .actions .btn-act-start { background: var(--lms-success); }
-  [data-theme="dark"] .actions .btn-act-stop  { background: var(--lms-danger); }
+
 }
 
 /* ============================================================

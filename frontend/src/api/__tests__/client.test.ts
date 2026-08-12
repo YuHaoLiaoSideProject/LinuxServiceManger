@@ -8,6 +8,13 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import api, { batchServices } from '../client'
 
 describe('batchServices — 批次操作 API', () => {
+  beforeEach(() => {
+    // 預設 mock，避免任何測試意外發出真實 HTTP 請求
+    vi.spyOn(api, 'post').mockResolvedValue({
+      data: { summary: { total: 1, success: 1, failed: 0 }, results: [] },
+    })
+  })
+
   afterEach(() => {
     vi.restoreAllMocks()
   })

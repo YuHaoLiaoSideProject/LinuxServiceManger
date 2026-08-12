@@ -275,6 +275,10 @@ function ariaLabel(action: ServiceAction): string {
 
 /* ── RWD mobile（≤767px）：44px 觸控目標 ── */
 @media (max-width: 767px) {
+  /* 手機版：隱藏 idle 提示區塊（☑ 勾選服務後…），勾選服務後工具列才出現 */
+  .batchbar:not(.batch-selected):not(.batch-executing) {
+    display: none;
+  }
   .batchbar {
     padding: 0.6rem 0.75rem;
     flex-direction: column;

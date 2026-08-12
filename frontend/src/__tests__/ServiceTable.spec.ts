@@ -14,9 +14,10 @@ const tMapZH: Record<string, string> = {
   'caption.sub': '— 點擊操作按鈕管理服務',
   'empty.state': '找不到任何服務，或無法連線至 systemd。',
   'search.empty': '沒有符合「{term}」的服務',
-  'action.start': 'Start',
-  'action.stop': 'Stop',
-  'action.restart': 'Restart',
+  'action.start': '啟動',
+  'action.stop': '停止',
+  'action.restart': '重啟',
+  'action.logs': '日誌',
   'action.start.aria': '啟動 {name}',
   'action.stop.aria': '停止 {name}',
   'action.restart.aria': '重啟 {name}',
@@ -43,6 +44,7 @@ const tMapEN: Record<string, string> = {
   'action.start': 'Start',
   'action.stop': 'Stop',
   'action.restart': 'Restart',
+  'action.logs': 'Logs',
   'action.start.aria': 'Start {name}',
   'action.stop.aria': 'Stop {name}',
   'action.restart.aria': 'Restart {name}',
@@ -187,8 +189,8 @@ describe('服務列表 — 使用者瀏覽與操作', () => {
     })
 
     const actions = wrapper.find('.actions')
-    expect(actions.text()).toContain('Start')
-    expect(actions.text()).not.toContain('Stop')
+    expect(actions.text()).toContain('啟動')
+    expect(actions.text()).not.toContain('停止')
   })
 
   it('執行中的服務，使用者應看到 Stop 和 Restart 按鈕，不應看到 Start', () => {
@@ -198,9 +200,9 @@ describe('服務列表 — 使用者瀏覽與操作', () => {
     })
 
     const actions = wrapper.find('.actions')
-    expect(actions.text()).toContain('Stop')
-    expect(actions.text()).toContain('Restart')
-    expect(actions.text()).not.toContain('Start')
+    expect(actions.text()).toContain('停止')
+    expect(actions.text()).toContain('重啟')
+    expect(actions.text()).not.toContain('啟動')
   })
 
   it('鎖定的服務，使用者看到「已鎖定」且僅有 Logs 按鈕', () => {
@@ -213,7 +215,7 @@ describe('服務列表 — 使用者瀏覽與操作', () => {
     // Only the Logs button should be present
     const buttons = actions.findAll('button')
     expect(buttons.length).toBe(1)
-    expect(buttons[0].text()).toContain('📋 Logs')
+    expect(buttons[0].text()).toContain('📋 日誌')
   })
 
   it('點擊服務名稱的排序表頭，可以排序', async () => {

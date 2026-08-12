@@ -34,7 +34,7 @@ describe('useI18n — 多語言', () => {
     expect(t('stats.total')).toBe('總服務數')
     expect(t('stats.running')).toBe('執行中')
     expect(t('search.placeholder')).toBe('搜尋服務名稱...')
-    expect(t('action.start')).toBe('Start')
+    expect(t('action.start')).toBe('啟動')
   })
 
   it('t() 回傳 en 翻譯', async () => {
@@ -142,9 +142,9 @@ describe('列表相關語系 keys', () => {
     expect(t('empty.state')).toBe('找不到任何服務，或無法連線至 systemd。')
 
     // 操作按鈕
-    expect(t('action.start')).toBe('Start')
-    expect(t('action.stop')).toBe('Stop')
-    expect(t('action.restart')).toBe('Restart')
+    expect(t('action.start')).toBe('啟動')
+    expect(t('action.stop')).toBe('停止')
+    expect(t('action.restart')).toBe('重啟')
 
     // 鎖定相關
     expect(t('locked.badge')).toBe('🔒 已鎖定')
@@ -219,7 +219,7 @@ describe('列表相關語系 keys', () => {
     expect(t('empty.state')).toBe('找不到任何服務，或無法連線至 systemd。')
     expect(t('locked.badge')).toBe('🔒 已鎖定')
     expect(t('tab.my')).toBe('我的服務')
-    expect(t('action.stop')).toBe('Stop')
+    expect(t('action.stop')).toBe('停止')
 
     // 切到 en
     setLang('en')
@@ -254,6 +254,7 @@ describe('所有 component 用到的 key 皆存在於翻譯檔（不存在 = 紅
     // 操作按鈕
     'action.start', 'action.stop', 'action.restart',
     'action.start.aria', 'action.stop.aria', 'action.restart.aria',
+    'action.logs', 'action.logs.aria',
     // 鎖定
     'locked.badge', 'locked.tooltip',
     // 頁籤
@@ -292,9 +293,11 @@ describe('所有 component 用到的 key 皆存在於翻譯檔（不存在 = 紅
     'search.clear.aria': '清除搜尋內容',
     'search.clear.title': '清除搜尋',
     'empty.state': '找不到任何服務，或無法連線至 systemd。',
-    'action.start': 'Start',
-    'action.stop': 'Stop',
-    'action.restart': 'Restart',
+    'action.start': '啟動',
+    'action.stop': '停止',
+    'action.restart': '重啟',
+    'action.logs': '日誌',
+    'action.logs.aria': '查看 {name} 日誌',
     'action.start.aria': '啟動 {name}',
     'action.stop.aria': '停止 {name}',
     'action.restart.aria': '重啟 {name}',
@@ -379,6 +382,8 @@ describe('所有 component 用到的 key 皆存在於翻譯檔（不存在 = 紅
     'action.start.aria': 'Start {name}',
     'action.stop.aria': 'Stop {name}',
     'action.restart.aria': 'Restart {name}',
+    'action.logs': 'Logs',
+    'action.logs.aria': 'View logs for {name}',
     'locked.badge': '🔒 Locked',
     'locked.tooltip': 'This service is protected. Set the UNLOCKED_SERVICES environment variable to unlock.',
     'tab.my': 'My Services',

@@ -136,8 +136,8 @@ function doToggle() {
         </span>
         <!-- Slot 3: Logs -->
         <span class="action-slot">
-          <button class="btn-logs outline secondary btn-act-logs" :aria-label="t('action.logs.aria', { name: service.name })" title="查看日誌" @click.stop="$emit('open-logs', service.name)">
-            📋 <span class="btn-label">Logs</span>
+          <button class="btn-logs outline secondary btn-act-logs" :aria-label="t('action.logs.aria', { name: service.name })" :title="t('action.logs.aria', { name: service.name })" @click.stop="$emit('open-logs', service.name)">
+            📋 <span class="btn-label">{{ t('action.logs') }}</span>
           </button>
         </span>
       </div>

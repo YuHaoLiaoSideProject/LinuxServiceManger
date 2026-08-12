@@ -63,16 +63,18 @@ on('status_change', (msg: any) => {
   // Suppress WebSocket updates during batch execution
   if (batchExecuting.value) return
 
-  serviceStore.updateService(msg.name, {
-    active: msg.active,
-    sub: msg.sub,
-    unitFileState: msg.unitFileState,
-  })
+  // start/stop/restart 不會改變開機啟動（enable）狀態；
+  // 這些動作的 D-Bus signal 只帶 active/sub，unitFileState 欄位會被 JSON omitempty 省略。
+  // 若直接覆蓋會把原本的 enabled 清掉 → 開機啟動被關閉（手機版 Bug #3）
+  const updates: Partial<Service> = { active: msg.active, sub: msg.sub }
+  if (msg.unitFileState) {
+    updates.unitFileState = msg.unitFileState
+  }
+  serviceStore.updateService(msg.name, updates)
   // Sync local ref for useServiceFilter
   const idx = services.value.findIndex(s => s.name === msg.name)
   if (idx !== -1) {
-    const svc = services.value[idx]
-    services.value[idx] = { ...svc, active: msg.active, sub: msg.sub, unitFileState: msg.unitFileState }
+    services.value[idx] = { ...services.value[idx], ...updates }
   }
 })
 
@@ -81,7 +83,7 @@ on('service_added', (msg: any) => {
     name: msg.name,
     active: msg.active,
     sub: msg.sub,
-    unitFileState: msg.unitFileState,
+    unitFileState: msg.unitFileState || 'unknown',
     load: 'loaded',
     locked: false,
     fragmentPath: '',

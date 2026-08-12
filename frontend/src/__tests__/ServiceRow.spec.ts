@@ -113,16 +113,17 @@ describe('ServiceRow — 服務列表列', () => {
     expect(actions.text()).not.toContain('停止')
   })
 
-  it('locked=true → 顯示 🔒 鎖定圖示，僅有 Logs 按鈕', () => {
+  it('locked=true → 顯示 🔒 鎖定圖示 + Logs + View Config（012 新功能）', () => {
     const service = makeService({ locked: true })
     const wrapper = mount(ServiceRow, { props: { service } })
 
     const actions = wrapper.find('.actions')
     expect(actions.text()).toContain('🔒 已鎖定')
-    // Only the Logs button should be present for locked services
+    // 鎖定服務：Logs + View Config（唯讀檢視入口，012）
     const buttons = actions.findAll('button')
-    expect(buttons.length).toBe(1)
+    expect(buttons.length).toBe(2)
     expect(buttons[0].text()).toContain('📋 日誌')
+    expect(wrapper.find('button.btn-act-config.btn-view-config').exists()).toBe(true)
   })
 
   // --- 確認對話框行為 ---

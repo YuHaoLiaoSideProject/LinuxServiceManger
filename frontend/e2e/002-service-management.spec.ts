@@ -197,9 +197,10 @@ test.describe('Scenario 5: 鎖定服務', () => {
     await expect(sshdRow.locator('.locked-badge').first()).toBeVisible()
     await expect(sshdRow.locator('.locked-badge').first()).toContainText('🔒')
 
-    // 僅保留 Logs 按鈕（無 Start/Stop/Restart）
-    await expect(sshdRow.locator('button')).toHaveCount(1)
+    // Logs + View Config（012：鎖定服務提供唯讀檢視入口，無 Start/Stop/Restart）
+    await expect(sshdRow.locator('button')).toHaveCount(2)
     await expect(sshdRow.locator('button.btn-act-logs')).toBeVisible()
+    await expect(sshdRow.locator('button.btn-view-config')).toBeVisible()
   })
 })
 

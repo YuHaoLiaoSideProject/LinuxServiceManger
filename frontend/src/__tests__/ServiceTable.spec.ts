@@ -205,17 +205,18 @@ describe('服務列表 — 使用者瀏覽與操作', () => {
     expect(actions.text()).not.toContain('啟動')
   })
 
-  it('鎖定的服務，使用者看到「已鎖定」且僅有 Logs 按鈕', () => {
+  it('鎖定的服務，使用者看到「已鎖定」+ Logs + View Config（012 新功能）', () => {
     const wrapper = mount(ServiceTable, {
       props: { filteredServices: makeServices(), tab: 'system', loading: false },
     })
 
     const actions = wrapper.find('.actions')
     expect(actions.text()).toContain('已鎖定')
-    // Only the Logs button should be present
+    // 鎖定服務：Logs + View Config（012 唯讀檢視入口）
     const buttons = actions.findAll('button')
-    expect(buttons.length).toBe(1)
+    expect(buttons.length).toBe(2)
     expect(buttons[0].text()).toContain('📋 日誌')
+    expect(wrapper.find('button.btn-act-config.btn-view-config').exists()).toBe(true)
   })
 
   it('點擊服務名稱的排序表頭，可以排序', async () => {

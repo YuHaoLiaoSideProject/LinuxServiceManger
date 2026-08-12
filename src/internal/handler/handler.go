@@ -24,6 +24,7 @@ type Handler struct {
 	Hub        *websocket.Hub
 	Audit      *audit.Module
 	TokenStore *token.Store
+	Config     systemd.ConfigAPI // service config store（GET/PUT/validate config API）
 }
 
 // New creates a new Handler with the given template filesystem and systemd manager.
@@ -33,7 +34,7 @@ func New(tplFS fs.FS, sm systemd.ServiceManager, auditMod *audit.Module, tokenSt
 	if tplFS != nil {
 		tmpl = template.Must(template.ParseFS(tplFS, "index.html", "login.html"))
 	}
-	return &Handler{tmpl: tmpl, systemd: sm, Audit: auditMod, TokenStore: tokenStore}
+	return &Handler{tmpl: tmpl, systemd: sm, Audit: auditMod, TokenStore: tokenStore, Config: systemd.NewConfigStore()}
 }
 
 // HandleIndex serves the full HTML page.

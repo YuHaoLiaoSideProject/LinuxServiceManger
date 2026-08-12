@@ -120,6 +120,10 @@ func main() {
 		r.Get("/api/v1/ws", h.HandleStatusWS)
 		r.Get("/api/v1/audit", h.HandleAuditQuery)
 		r.Get("/api/v1/audit/export", h.HandleAuditExport)
+		// Service config editor (012)
+		r.Get("/api/v1/services/{name}/config", h.HandleGetServiceConfig)
+		r.Put("/api/v1/services/{name}/config", h.HandleSaveServiceConfig)
+		r.Post("/api/v1/services/{name}/config/validate", h.HandleValidateServiceConfig)
 	})
 
 	// HTML routes (legacy htmx) — protected

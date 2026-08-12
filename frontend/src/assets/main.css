@@ -937,9 +937,9 @@ thead th {
 .service-table th:nth-child(2) { width: 22%; }  /* Name */
 .service-table th:nth-child(3) { width: 9%; }   /* Load */
 .service-table th:nth-child(4) { width: 11%; }  /* Active */
-.service-table th:nth-child(5) { width: 9%; }   /* Sub */
-.service-table th:nth-child(6) { width: 15%; }  /* AutoStart */
-.service-table th:nth-child(7) { width: 29%; }  /* Actions */
+.service-table th:nth-child(5) { width: 7%; }   /* Sub */
+.service-table th:nth-child(6) { width: 13%; }  /* AutoStart */
+.service-table th:nth-child(7) { width: 33%; }  /* Actions */
 
 /* ── Sortable headers ── */
 th.sortable {
@@ -986,7 +986,7 @@ tbody tr:last-child td {
 }
 .actions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.3rem;
   align-items: center;
 }
@@ -1018,6 +1018,30 @@ tbody tr:last-child td {
   min-height: 32px;
 }
 
+/* ── Config editor entry button（012，UIUX：icon-only 36px / mobile 48px）── */
+.btn-act-config {
+  width: 36px !important;
+  min-width: 36px;
+  height: var(--lms-h, 36px);
+  padding: 0 !important;
+  color: var(--lms-muted);
+}
+.btn-act-config:hover {
+  color: var(--lms-accent);
+  border-color: var(--lms-accent);
+}
+.btn-icon-svg {
+  display: block;
+  flex-shrink: 0;
+}
+@media (max-width: 767px) {
+  .btn-act-config {
+    width: 48px !important;
+    min-width: 48px;
+    height: var(--lms-h-mobile, 44px);
+  }
+}
+
 /* ── Locked badge ── */
 .locked-badge {
   display: inline-flex;
@@ -1043,6 +1067,48 @@ tbody tr:last-child td {
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
+
+/* ── Validation banner（012，三態：綠/紅/黃）── */
+.validation-banner {
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--lms-radius-sm);
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.validation-banner.success {
+  background: var(--lms-success-light);
+  color: var(--lms-success);
+  border: 1px solid var(--lms-success-border);
+}
+.validation-banner.error {
+  background: var(--lms-danger-light, #fff0f0);
+  color: var(--lms-danger, #c62828);
+  border: 1px solid var(--lms-danger-border, #ef9a9a);
+}
+.validation-banner.warning {
+  background: var(--lms-warning-light);
+  color: #8a6d00;
+  border: 1px solid var(--lms-warning-border, #ffe082);
+}
+[data-theme="dark"] .validation-banner.warning {
+  color: #ffd54f;
+}
+.validation-error-item {
+  margin: 0.15rem 0;
+  font-family: var(--lms-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+/* dirty dot（未儲存變更指示） */
+.dirty-dot {
+  color: var(--lms-warning);
+  font-size: 1rem;
+  vertical-align: middle;
+  margin-left: 0.3rem;
+  animation: none;
+}
+/* ── End Validation banner ── */
 
 /* ── Toast notifications ── */
 #toast-container {
@@ -1305,7 +1371,7 @@ tbody tr:last-child td {
   .service-table th:nth-child(7) { width: 22%; }  /* Actions */
 
   /* Grid columns equal width, force no content-based sizing */
-  .actions { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
+  .actions { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
 
   .actions button { padding: 0.35rem 0.5rem; }
   .actions button .btn-icon { margin: 0; }

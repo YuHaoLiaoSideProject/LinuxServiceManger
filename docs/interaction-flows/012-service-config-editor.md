@@ -50,8 +50,8 @@ flowchart TD
     或開啟全螢幕 Modal
     顯示 loading spinner]
 
-    LoadEditor --> FetchConfig[GET /api/v1/services/{name}/config
-    取得 unit file 原始內容]
+    LoadEditor --> FetchConfig["GET /api/v1/services/{name}/config
+    取得 unit file 原始內容"]
 
     FetchConfig --> CheckFetch{API 回應?}
 
@@ -96,22 +96,22 @@ flowchart TD
     VerifyFail --> UserEdits
     VerifyError --> UserEdits
 
-    SaveFlow --> ConfirmSave[彈出 ConfirmModal：
+    SaveFlow --> ConfirmSave["彈出 ConfirmModal：
     「確定要儲存 {name} 的
     設定檔變更嗎？
     儲存後將執行
-    systemctl daemon-reload」]
+    systemctl daemon-reload」"]
 
     ConfirmSave -- 取消 --> ShowEditor
-    ConfirmSave -- 確認儲存 --> ExecSave[PUT /api/v1/services/{name}/config
+    ConfirmSave -- 確認儲存 --> ExecSave["PUT /api/v1/services/{name}/config
     顯示 save spinner
-    編輯器唯讀]
+    編輯器唯讀"]
 
     ExecSave --> CheckSave{儲存結果?}
-    CheckSave -- 成功 --> SaveSuccess[Toast 綠色通知：
+    CheckSave -- 成功 --> SaveSuccess["Toast 綠色通知：
     「{name} 設定檔已儲存」
     編輯器標記清除
-    回到 Dashboard]
+    回到 Dashboard"]
     CheckSave -- 失敗 --> SaveFail[Toast 紅色錯誤：
     錯誤原因
     編輯器恢復可編輯]
@@ -134,8 +134,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    SaveReq[接收 PUT /api/v1/services/{name}/config
-    Body: { config: &lt;unit file 內容&gt; }]
+    SaveReq["接收 PUT /api/v1/services/{name}/config
+    Body: { config: &lt;unit file 內容&gt; }"]
 
     SaveReq --> ValidateName[驗證服務名稱
     格式與安全性檢查]
@@ -151,8 +151,8 @@ flowchart TD
     PathValid -- 否（鎖定服務或路徑不符）--> Reject403[回傳 403
     不允許編輯此服務設定檔]
 
-    PathValid -- 是 --> Backup[建立備份
-    {name}.service.bak.{timestamp}]
+    PathValid -- 是 --> Backup["建立備份
+    {name}.service.bak.{timestamp}"]
 
     Backup --> WriteFile[寫入新設定檔內容]
 
@@ -173,8 +173,8 @@ flowchart TD
     action=config_edit /
     config_save]
 
-    AuditWrite --> Return200[回傳 200
-    { message, backupPath }]
+    AuditWrite --> Return200["回傳 200
+    { message, backupPath }"]
 
     style Return200 fill:#e8f5e9,stroke:#2e7d32
     style Reject400 fill:#fff0f0,stroke:#e00
@@ -197,10 +197,10 @@ flowchart TD
     請先編輯或載入內容」]
     VEmpty --> VDone([回到編輯器])
 
-    VCheck -- 否 --> VSending[發送 POST
+    VCheck -- 否 --> VSending["發送 POST
     /api/v1/services/{name}/config/validate
     Body: { config: &lt;目前編輯內容&gt; }
-    編輯器顯示 verifying 狀態]
+    編輯器顯示 verifying 狀態"]
 
     VSending --> VResp{後端回應?}
 
@@ -209,10 +209,10 @@ flowchart TD
     設定檔語法正確」
     清除編輯器錯誤標記]
 
-    VResp -- 200 valid=false + errors --> VFail[顯示紅色錯誤面板：
+    VResp -- 200 valid=false + errors --> VFail["顯示紅色錯誤面板：
     逐條列出錯誤
     {line}: {message}
-    編輯器對應行標紅波浪線]
+    編輯器對應行標紅波浪線"]
 
     VResp -- 400 / 422 --> VBadReq[顯示錯誤：
     請求格式錯誤]

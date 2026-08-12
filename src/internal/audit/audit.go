@@ -32,6 +32,8 @@ const (
 	ActionDisable     Action = "disable"
 	ActionTokenCreate Action = "token_create"
 	ActionTokenRevoke Action = "token_revoke"
+	ActionConfigView  Action = "config_view" // GET config 成功時（含鎖定服務唯讀檢視）
+	ActionConfigSave  Action = "config_save" // PUT config 成功（含 reload 失敗已寫入之半成功）
 )
 
 var validActions = map[Action]bool{
@@ -44,6 +46,8 @@ var validActions = map[Action]bool{
 	ActionDisable:     true,
 	ActionTokenCreate: true,
 	ActionTokenRevoke: true,
+	ActionConfigView:  true,
+	ActionConfigSave:  true,
 }
 
 // actionDisplayLabels maps each audit action to its localized display label
@@ -61,6 +65,8 @@ var actionDisplayLabels = map[Action]string{
 	ActionDisable:     "停用",
 	ActionTokenCreate: "建立 Token",
 	ActionTokenRevoke: "撤銷 Token",
+	ActionConfigView:  "檢視設定檔",
+	ActionConfigSave:  "儲存設定檔",
 }
 
 // Result represents the outcome of an audited operation.

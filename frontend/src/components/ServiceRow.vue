@@ -140,6 +140,32 @@ function doToggle() {
             📋 <span class="btn-label">{{ t('action.logs') }}</span>
           </button>
         </span>
+        <!-- Slot 4: Edit/View Config（012 — UIUX：icon-only + tooltip/aria-label） -->
+        <span class="action-slot">
+          <button
+            v-if="service.fragmentPath && !service.locked"
+            class="outline secondary btn-act-config btn-edit-config"
+            :aria-label="t('action.config.edit.aria', { name: service.name })"
+            :title="t('action.config.edit.aria', { name: service.name })"
+            @click.stop="$router.push({ name: 'config-editor', params: { name: service.name } })"
+          >
+            <svg class="btn-icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+            </svg>
+          </button>
+          <button
+            v-else-if="service.fragmentPath && service.locked"
+            class="outline secondary btn-act-config btn-view-config"
+            :aria-label="t('action.config.view.aria', { name: service.name })"
+            :title="t('action.config.view.aria', { name: service.name })"
+            @click.stop="$router.push({ name: 'config-editor', params: { name: service.name }, query: { readonly: '1' } })"
+          >
+            <svg class="btn-icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </span>
       </div>
     </td>
   </tr>

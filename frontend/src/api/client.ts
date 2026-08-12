@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Service, LoginResponse, SessionInfo, MessageResponse, BatchRequest, BatchResponse, TokenListResponse, CreateTokenRequest, CreateTokenResponse, RevokeTokenResponse } from '../types/service'
+import type { Service, LoginResponse, SessionInfo, MessageResponse, BatchRequest, BatchResponse, TokenListResponse, CreateTokenRequest, CreateTokenResponse, RevokeTokenResponse, ServiceConfigResponse, SaveConfigRequest, SaveConfigResponse, ValidateResponse } from '../types/service'
 import { useAuthStore } from '../stores/auth'
 
 const api = axios.create({
@@ -95,5 +95,28 @@ export async function createToken(req: CreateTokenRequest): Promise<CreateTokenR
 
 export async function revokeToken(id: string): Promise<RevokeTokenResponse> {
   const { data } = await api.post<RevokeTokenResponse>(`/tokens/${encodeURIComponent(id)}/revoke`)
+  return data
+}
+
+// ── Service Config Editor (012) ──
+
+export async function getServiceConfig(name: string): Promise<ServiceConfigResponse> {
+  const { data } = await api.get<ServiceConfigResponse>(`/services/${encodeURIComponent(name)}/config`)
+  return data
+}
+
+export async function saveServiceConfig(name: string, req: SaveConfigRequest): Promise<SaveConfigResponse> {
+  const { data } = await api.put<SaveConfigResponse>(`/services/${encodeURIComponent(name)}/config`, req, {
+    headers: { 'Content-Type': 'application/json' },
+  })
+  return data
+}
+
+export async function validateServiceConfig(name: string, config: string): Promise<ValidateResponse> {
+  const { data } = await api.post<ValidateResponse>(
+    `/services/${encodeURIComponent(name)}/config/validate`,
+    { config },
+    { headers: { 'Content-Type': 'application/json' } },
+  )
   return data
 }

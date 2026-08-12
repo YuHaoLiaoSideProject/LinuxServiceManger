@@ -100,3 +100,35 @@ export interface RevokeTokenResponse {
   message: string
   status: 'revoked' | 'already_revoked'
 }
+
+// ── Service Config Editor (012) ──
+
+export interface ServiceConfigResponse {
+  name: string
+  fragmentPath: string
+  config: string
+  size: number
+  checksum: string // SHA-256 hex，供 PUT baseChecksum
+}
+
+export interface SaveConfigRequest {
+  config: string
+  baseChecksum: string
+}
+
+export interface SaveConfigResponse {
+  message: string
+  backupPath: string
+}
+
+export interface ValidateError {
+  line: number
+  message: string
+}
+
+export interface ValidateResponse {
+  valid: boolean
+  available: boolean // false = systemd-analyze 不可用（黃色警告）
+  errors: ValidateError[]
+  message?: string
+}

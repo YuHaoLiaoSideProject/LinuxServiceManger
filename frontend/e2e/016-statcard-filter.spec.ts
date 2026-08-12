@@ -440,7 +440,7 @@ test.describe('手機版 Stat Card — tap 過濾', () => {
     await loginViaUI(page)
 
     await statCard(page, 'Failed').tap()
-    await page.waitForTimeout(200)
+    await page.waitForURL(/(\?|&)status=failed/, { timeout: 5000 })
     expect(new URL(page.url()).searchParams.get('status')).toBe('failed')
   })
 

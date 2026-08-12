@@ -574,7 +574,7 @@ test.describe('Scenario 8: 手機版特殊狀態', () => {
 test.describe('Scenario 11: 平板操作欄 grid 排版對齊', () => {
   test.use({ viewport: { width: 900, height: 800 } })
 
-  test('actions 應為 grid 佈局，3 欄', async ({ page }) => {
+  test('actions 應為 grid 佈局，4 欄（012 新增 View/Edit Config slot）', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
@@ -587,10 +587,10 @@ test.describe('Scenario 11: 平板操作欄 grid 排版對齊', () => {
     const cols = await actions.evaluate((el: Element) =>
       window.getComputedStyle(el).gridTemplateColumns,
     )
-    expect(cols.split(' ').length).toBe(3)
+    expect(cols.split(' ').length).toBe(4)
   })
 
-  test('每個 row 操作欄都有 3 個 action-slot', async ({ page }) => {
+  test('每個 row 操作欄都有 4 個 action-slot', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
@@ -599,7 +599,7 @@ test.describe('Scenario 11: 平板操作欄 grid 排版對齊', () => {
 
     for (let i = 0; i < count; i++) {
       const slots = rows.nth(i).locator('.action-slot')
-      await expect(slots).toHaveCount(3)
+      await expect(slots).toHaveCount(4)
     }
   })
 
@@ -676,7 +676,7 @@ test.describe('Scenario 11: 平板操作欄 grid 排版對齊', () => {
 test.describe('Scenario 12: 桌面版操作欄 grid 排版對齊', () => {
   test.use({ viewport: { width: 1280, height: 800 } })
 
-  test('actions 應為 grid 佈局，3 欄', async ({ page }) => {
+  test('actions 應為 grid 佈局，4 欄（012 新增 View/Edit Config slot）', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
@@ -689,10 +689,10 @@ test.describe('Scenario 12: 桌面版操作欄 grid 排版對齊', () => {
     const cols = await actions.evaluate((el: Element) =>
       window.getComputedStyle(el).gridTemplateColumns,
     )
-    expect(cols.split(' ').length).toBe(3)
+    expect(cols.split(' ').length).toBe(4)
   })
 
-  test('每個 row 都有 3 個 action-slot', async ({ page }) => {
+  test('每個 row 都有 4 個 action-slot', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
@@ -700,7 +700,7 @@ test.describe('Scenario 12: 桌面版操作欄 grid 排版對齊', () => {
     const count = await rows.count()
 
     for (let i = 0; i < count; i++) {
-      await expect(rows.nth(i).locator('.action-slot')).toHaveCount(3)
+      await expect(rows.nth(i).locator('.action-slot')).toHaveCount(4)
     }
   })
 
@@ -738,7 +738,7 @@ test.describe('Scenario 12: 桌面版操作欄 grid 排版對齊', () => {
     expect(display).not.toBe('none')
   })
 
-  test('鎖定服務 slot 2 為空但保留空間，Logs 仍在 slot 3', async ({ page }) => {
+  test('鎖定服務 slot 2 為空、Logs 在 slot 3、View Config 在 slot 4（012）', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
@@ -746,7 +746,7 @@ test.describe('Scenario 12: 桌面版操作欄 grid 排版對齊', () => {
 
     const sshdRow = getServiceRow(page, 'sshd.service')
     const slots = sshdRow.locator('.action-slot')
-    await expect(slots).toHaveCount(3)
+    await expect(slots).toHaveCount(4)
 
     // Slot 1: locked badge
     await expect(slots.nth(0).locator('.locked-badge')).toBeVisible()
@@ -754,6 +754,8 @@ test.describe('Scenario 12: 桌面版操作欄 grid 排版對齊', () => {
     await expect(slots.nth(1).locator('button')).toHaveCount(0)
     // Slot 3: Logs button
     await expect(slots.nth(2).locator('button')).toBeVisible()
+    // Slot 4: View Config（唯讀檢視入口，012）
+    await expect(slots.nth(3).locator('button.btn-view-config')).toBeVisible()
   })
 })
 

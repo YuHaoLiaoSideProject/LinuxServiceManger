@@ -283,10 +283,11 @@ test.describe('Scenario 4: 手機版 Actions 按鈕', () => {
       window.getComputedStyle(el).width,
     )
     expect(parseFloat(stopW)).toBeGreaterThan(120)
+    // Background 使用 Pico outline secondary，為透明底（非 danger 紅色）
     const stopBg = await stopBtn.evaluate((el: Element) =>
       window.getComputedStyle(el).backgroundColor,
     )
-    expect(stopBg).toContain('197, 34, 31')
+    expect(stopBg).toBe('rgba(0, 0, 0, 0)')
 
     // Secondary Restart / Logs：48px 圖示按鈕
     const restartBtn = nginxRow.locator('.actions button.btn-act-restart')

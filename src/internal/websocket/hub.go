@@ -51,13 +51,15 @@ type Hub struct {
 	SessionTTL time.Duration // 0 means use DefaultSessionTTL
 }
 
+const channelBufferSize = 256
+
 // NewHub creates a new Hub with the default session TTL.
 func NewHub() *Hub {
 	return &Hub{
 		Clients:    make(map[*Client]bool),
-		Broadcast:  make(chan []byte, 256),
-		Register:   make(chan *Client),
-		Unregister: make(chan *Client),
+		Broadcast:  make(chan []byte, channelBufferSize),
+		Register:   make(chan *Client, channelBufferSize),
+		Unregister: make(chan *Client, channelBufferSize),
 		SessionTTL: DefaultSessionTTL,
 	}
 }
@@ -94,16 +96,19 @@ func (h *Hub) Run() {
 			}
 			h.mu.Unlock()
 		case message := <-h.Broadcast:
+			var deadClients []*Client
 			h.mu.RLock()
 			for client := range h.Clients {
 				select {
 				case client.Send <- message:
 				default:
-					close(client.Send)
-					delete(h.Clients, client)
+					deadClients = append(deadClients, client)
 				}
 			}
 			h.mu.RUnlock()
+			for _, client := range deadClients {
+				h.Unregister <- client
+			}
 		case <-heartbeat.C:
 			now := time.Now()
 

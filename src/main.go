@@ -82,7 +82,10 @@ func main() {
 	r.Use(chimw.Recoverer)
 
 	// JSON API (Vue SPA backend) — public
-	r.Post("/api/v1/login", h.HandleLoginJSON)
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RateLimit(5, time.Minute)) // 5 attempts per minute per IP
+		r.Post("/api/v1/login", h.HandleLoginJSON)
+	})
 	r.Post("/api/v1/logout", h.HandleLogoutJSON)
 	r.Get("/api/v1/session", h.HandleSessionCheck)
 

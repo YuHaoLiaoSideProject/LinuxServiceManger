@@ -23,6 +23,8 @@ func init() {
 		Path:     "/",
 		MaxAge:   1800, // 30 minutes
 		HttpOnly: true,
+		Secure:   os.Getenv("SECURE_COOKIE") != "false",
+		SameSite: http.SameSiteLaxMode,
 	}
 
 	AdminUser = os.Getenv("ADMIN_USER")

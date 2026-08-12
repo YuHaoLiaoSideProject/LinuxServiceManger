@@ -2,7 +2,6 @@ package websocket
 
 import (
 	"log"
-	"net/http"
 	"time"
 
 	gorilla "github.com/gorilla/websocket"
@@ -19,7 +18,7 @@ const (
 var Upgrader = gorilla.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	CheckOrigin:     func(r *http.Request) bool { return true },
+	CheckOrigin:     CheckOrigin(),
 }
 
 // ReadPump reads messages from the WebSocket connection.

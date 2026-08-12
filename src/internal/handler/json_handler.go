@@ -16,6 +16,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"linux-service-manager/internal/audit"
+	wsutil "linux-service-manager/internal/websocket"
 	"linux-service-manager/internal/auth"
 	"linux-service-manager/internal/systemd"
 )
@@ -651,7 +652,7 @@ var wsLookPath = exec.LookPath
 
 // wsUpgrader is the WebSocket upgrader for the log streaming endpoint.
 var wsUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: wsutil.CheckOrigin(),
 }
 
 // HandleServiceLogsWS handles WebSocket connections for streaming service logs.

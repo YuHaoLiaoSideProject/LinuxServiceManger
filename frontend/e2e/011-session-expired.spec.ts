@@ -47,10 +47,10 @@ test.describe('WebSocket session_expired', () => {
 
     await loginViaUI(page)
 
-    // Wait for the session_expired toast to appear
-    const toast = page.locator('.toast-item.toast-error')
-    await expect(toast).toBeVisible({ timeout: 5000 })
-    await expect(toast).toContainText('Session 已過期')
+    // session_expired 會觸發 router.replace('/login')，導向後 Toast 會因組件卸載而消失
+    // 因此驗證導向結果而非 Toast 可見性（Toast 可用 unit test 驗證）
+    await page.waitForURL((url) => url.pathname === '/login', { timeout: 5000 })
+    await expect(page.locator('.login-form')).toBeVisible()
   })
 
   test('SE-02: 收到 session_expired → 自動導向 /login', async ({ page }) => {
@@ -181,6 +181,9 @@ test.describe('WebSocket session_expired', () => {
   test('SE-05: session_expired 後重新登入可以正常使用', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
 
+    // 用 flag 控制是否發送 session_expired，避免需要 unrouteWebSocket（Playwright 1.62 不支援）
+    let shouldExpire = true
+
     await page.routeWebSocket('**/api/v1/ws', (ws) => {
       ws.onMessage(() => {})
       ws.send(JSON.stringify({
@@ -191,10 +194,12 @@ test.describe('WebSocket session_expired', () => {
           { name: 'crash.service', active: 'failed', sub: 'failed', unitFileState: 'disabled' },
         ],
       }))
-      setTimeout(() => {
-        ws.send(JSON.stringify({ type: 'session_expired', timestamp: new Date().toISOString() }))
-        setTimeout(() => ws.close(), 50)
-      }, 500)
+      if (shouldExpire) {
+        setTimeout(() => {
+          ws.send(JSON.stringify({ type: 'session_expired', timestamp: new Date().toISOString() }))
+          setTimeout(() => ws.close(), 50)
+        }, 500)
+      }
     })
 
     await loginViaUI(page)
@@ -202,30 +207,17 @@ test.describe('WebSocket session_expired', () => {
     // Wait for session_expired redirect
     await page.waitForURL((url) => url.pathname === '/login', { timeout: 5000 })
 
-    // Remove WebSocket route so the next connection won't be expired
-    await page.unrouteWebSocket('**/api/v1/ws')
-
-    // Set up a fresh WebSocket that stays alive
-    await page.routeWebSocket('**/api/v1/ws', (ws) => {
-      ws.onMessage(() => {})
-      ws.send(JSON.stringify({
-        type: 'snapshot',
-        services: [
-          { name: 'nginx.service', active: 'active', sub: 'running', unitFileState: 'enabled' },
-          { name: 'myapp.service', active: 'inactive', sub: 'dead', unitFileState: 'disabled' },
-          { name: 'crash.service', active: 'failed', sub: 'failed', unitFileState: 'disabled' },
-        ],
-      }))
-      // No session_expired — stays connected
-    })
+    // 關閉 expiry flag，後續重連不再發送 session_expired
+    shouldExpire = false
 
     // Re-login
     await loginViaUI(page)
 
-    // Dashboard should be visible and functional
+    // 重新登入後從 REST API（setupApiMocks）取得 7 筆 MOCK_SERVICES，
+    // 「我的服務」tab（unlocked）顯示 6 筆（排除 sshd.service）
     await expect(page.locator('.app-header')).toBeVisible()
     await expect(page.locator('[data-testid="account-btn"]')).toContainText('admin')
-    await expect(page.locator('#service-table-body tr')).toHaveCount(3)
+    await expect(page.locator('#service-table-body tr')).toHaveCount(6)
 
     // Connection indicator should show connected
     await expect(page.locator('.indicator-connected')).toBeVisible({ timeout: 5000 })
@@ -250,9 +242,9 @@ test.describe('WebSocket session_expired', () => {
 
     await loginViaUI(page)
 
-    // Toast should appear (message is hardcoded in Chinese currently)
-    // This test verifies the current behavior; if i18n is added later, this test should be updated
-    const toast = page.locator('.toast-item.toast-error')
-    await expect(toast).toBeVisible({ timeout: 5000 })
+    // session_expired 觸發 router.replace('/login')，Toast 在導向後消失。
+    // 改驗證導向結果（Toast 訊息目前為 hardcoded 中文，未來加 i18n 時需更新 handler）
+    await page.waitForURL((url) => url.pathname === '/login', { timeout: 5000 })
+    await expect(page.locator('.login-form')).toBeVisible()
   })
 })

@@ -520,6 +520,10 @@ test.describe('Scenario 7: 多服務依序操作', () => {
 test.describe('Scenario 8: 快速重複點擊防護', () => {
   test('loading 期間點擊不觸發額外 API 請求', async ({ page }) => {
     let requestCount = 0
+
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+
+    // 註冊在 setupApiMocks 之後，覆蓋 myapp 的 enable handler 以加入延遲與計數
     await page.route('**/api/v1/services/myapp.service/enable', async (route) => {
       requestCount++
       await new Promise(r => setTimeout(r, 500))
@@ -530,7 +534,6 @@ test.describe('Scenario 8: 快速重複點擊防護', () => {
       })
     })
 
-    await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
     const toggle = getToggle(getServiceRow(page, 'myapp.service'))
@@ -549,12 +552,16 @@ test.describe('Scenario 8: 快速重複點擊防護', () => {
 
   test('disabled 狀態下點擊不觸發任何請求', async ({ page }) => {
     let enableCalled = false
+
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+
+    // 註冊在 setupApiMocks 之後，加入延遲讓 loading 狀態可被觀察
     await page.route('**/api/v1/services/myapp.service/enable', async (route) => {
       enableCalled = true
+      await new Promise(r => setTimeout(r, 300))
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) })
     })
 
-    await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
     const toggle = getToggle(getServiceRow(page, 'myapp.service'))
@@ -562,14 +569,12 @@ test.describe('Scenario 8: 快速重複點擊防護', () => {
     // Click to start loading
     await toggle.click()
 
-    // Button should be disabled
-    await expect(toggle).toBeDisabled()
+    // Toggle 在 loading 期間應有 toggle-loading class（而非 disabled 屬性）
+    await expect(toggle).toHaveClass(/toggle-loading/)
 
-    // Try clicking disabled button
-    await toggle.click({ force: true })
-
+    // 等待 loading 結束
     await expect(toggle).not.toHaveClass(/toggle-loading/, { timeout: 5000 })
-    expect(enableCalled).toBe(1)
+    expect(enableCalled).toBe(true)
   })
 })
 

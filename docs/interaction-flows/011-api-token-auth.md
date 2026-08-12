@@ -82,11 +82,11 @@ flowchart TD
     ClickCreate --> OpenForm[顯示建立表單
     於 Modal 或頁面內嵌]
     
-    OpenForm --> FillForm[填寫 Token 資訊：
+    OpenForm --> FillForm["填寫 Token 資訊：
     • 名稱（必填，ex: Jenkins CI）
     • 過期時間（下拉選單）
     • 權限範圍（唯讀 / 完整操作）
-    ]
+    "]
     
     FillForm --> Validate{前端驗證?}
     
@@ -97,8 +97,8 @@ flowchart TD
     Validate -- 通過 --> Submit[點擊「產生 Token」按鈕
     按鈕變灰 + spinner]
     
-    Submit --> ApiCall[POST /api/v1/tokens
-    {name, expires_in, scope}]
+    Submit --> ApiCall["POST /api/v1/tokens
+    {name, expires_in, scope}"]
     
     ApiCall --> CreateResult{API 回應?}
     
@@ -136,18 +136,18 @@ flowchart TD
     ClickRevoke([管理員點擊 Token 列
     的「撤銷」按鈕])
     
-    ClickRevoke --> ConfirmModal[顯示確認對話框：
+    ClickRevoke --> ConfirmModal["顯示確認對話框：
     「確定要撤銷 Token
     『{name}』嗎？
     使用此 Token 的服務
-    將立即失去存取權。」]
+    將立即失去存取權。」"]
     
     ConfirmModal --> UserChoice{管理員選擇?}
     
     UserChoice -- 取消 --> Cancel[關閉對話框
     無任何變更]
-    UserChoice -- 確認撤銷 --> CallRevoke[POST /api/v1/tokens/{id}/revoke
-    按鈕變灰 + spinner]
+    UserChoice -- 確認撤銷 --> CallRevoke["POST /api/v1/tokens/{id}/revoke
+    按鈕變灰 + spinner"]
     
     CallRevoke --> RevokeResult{API 回應?}
     
@@ -183,8 +183,8 @@ flowchart TD
     HasToken -- 否 --> CheckCookie{有 Cookie
     session?}
     CheckCookie -- 是 --> CookieAuth[使用 session 驗證]
-    CheckCookie -- 否 --> Return401[回傳 401 Unauthorized
-    {error: '未提供驗證資訊'}]
+    CheckCookie -- 否 --> Return401["回傳 401 Unauthorized
+    {error: '未提供驗證資訊'}"]
     
     HasToken -- 是 --> LookupToken[查詢 Token：
     1. 是否存在於儲存中
@@ -193,17 +193,17 @@ flowchart TD
     
     LookupToken --> TokenValid{Token 有效?}
     
-    TokenValid -- 不存在 --> Return401Invalid[回傳 401 Unauthorized
-    {error: 'Token 無效'}]
-    TokenValid -- 已撤銷 --> Return401Revoked[回傳 401 Unauthorized
-    {error: 'Token 已被撤銷'}]
-    TokenValid -- 已過期 --> Return401Expired[回傳 401 Unauthorized
-    {error: 'Token 已過期'}]
+    TokenValid -- 不存在 --> Return401Invalid["回傳 401 Unauthorized
+    {error: 'Token 無效'}"]
+    TokenValid -- 已撤銷 --> Return401Revoked["回傳 401 Unauthorized
+    {error: 'Token 已被撤銷'}"]
+    TokenValid -- 已過期 --> Return401Expired["回傳 401 Unauthorized
+    {error: 'Token 已過期'}"]
     
     TokenValid -- 有效 --> CheckScope{檢查權限範圍}
     
-    CheckScope -- 唯讀 Token + 寫入操作 --> Return403[回傳 403 Forbidden
-    {error: '權限不足，此 Token 僅供唯讀'}]
+    CheckScope -- 唯讀 Token + 寫入操作 --> Return403["回傳 403 Forbidden
+    {error: '權限不足，此 Token 僅供唯讀'}"]
     CheckScope -- 完整操作 / 唯讀+讀取 --> AllowRequest[允許請求繼續
     設定 request context：
     auth_method=token,

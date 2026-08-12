@@ -3,7 +3,7 @@
 > **對應頁面**：Dashboard（服務過濾 Toolbar、批次操作 Toolbar）、Audit Log（稽核 Toolbar）
 > **狀態**：設計提案（待實作）
 > **設計日期**：2025-08-11
-> **畫面文件**：`docs/uiux/011-toolbar-redesign-mockup.html`（互動 mockup，可切換主題／裝置／批次狀態）
+> **畫面文件**：`docs/uiux/000-toolbar-redesign-mockup.html`（互動 mockup，可切換主題／裝置／批次狀態）
 > **相關元件**：`Toolbar.vue`、`BatchToolbar.vue`、`AuditLogView.vue`（內嵌 toolbar）
 
 ---

@@ -46,12 +46,12 @@ flowchart TD
     總節點數 / 線上台數 / 離線台數
     總服務數 / 執行中 / 失敗"]
 
-    AggStats --> NodeCards[每個節點顯示為一張 Card：
+    AggStats --> NodeCards["每個節點顯示為一張 Card：
     節點名稱 / Hostname
     狀態指示燈 (🟢線上 🟡延遲 🔴離線)
     服務統計 (M/N 執行中)
     最後心跳時間
-    CPU/Memory 簡要指標]
+    CPU/Memory 簡要指標"]
 
     NodeCards --> UserAction{管理員操作?}
 
@@ -107,12 +107,12 @@ flowchart TD
 
     NodeList --> ClickAdd[點擊「新增節點」按鈕]
 
-    ClickAdd --> FormModal[彈出新增節點表單 Modal：
+    ClickAdd --> FormModal["彈出新增節點表單 Modal：
     節點名稱 (必填)
     Agent 位址 (host:port，必填)
     TLS 憑證指紋 (選填，mTLS 時)
     API Token (選填，驗證用)
-    備註 (選填)]
+    備註 (選填)"]
 
     FormModal --> FillForm[管理員填寫表單]
 
@@ -147,10 +147,10 @@ flowchart TD
     開始接收心跳
     Toast 通知：「節點已註冊」
     節點列表更新，新節點出現"]
-    RegResult -- 失敗 (重複名稱) --> DupErr["Toast 錯誤：
+    RegResult -- "失敗 (重複名稱)" --> DupErr["Toast 錯誤：
     「節點名稱重複」
     返回表單修改"]
-    RegResult -- 失敗 (連線失敗) --> ConnErr["Toast 錯誤：
+    RegResult -- "失敗 (連線失敗)" --> ConnErr["Toast 錯誤：
     「無法建立連線」
     節點仍儲存但標示為離線"]
 
@@ -173,10 +173,10 @@ flowchart TD
 flowchart TD
     Start3([管理員部署 Agent])
 
-    Start3 --> Download[從 Manager 下載 Agent binary：
+    Start3 --> Download["從 Manager 下載 Agent binary：
     點擊「下載 Agent」
     選擇目標架構 (amd64/arm64)
-    瀏覽器下載 binary]
+    瀏覽器下載 binary"]
 
     Download --> Deploy["部署到目標 Linux 機器：
     scp agent-linux-amd64 user@target:/usr/local/bin/
@@ -241,10 +241,10 @@ flowchart TD
 
     GracePeriod --> Reconnect{心跳恢復?}
 
-    Reconnect -- 是 (寬限期內) --> ReOnline["節點狀態 → 🟢 線上
+    Reconnect -- "是 (寬限期內)" --> ReOnline["節點狀態 → 🟢 線上
     Toast 通知「Node-X 已恢復連線」
     重新載入服務狀態"]
-    Reconnect -- 否 (超過寬限期) --> LongOff["節點狀態 → ⚫ 長期離線
+    Reconnect -- "否 (超過寬限期)" --> LongOff["節點狀態 → ⚫ 長期離線
     Aggregate Dashboard 中
     該節點卡片移至底部或摺疊"]
 

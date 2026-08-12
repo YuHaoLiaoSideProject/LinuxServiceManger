@@ -6,9 +6,10 @@ import type { Service } from '../types/service'
 
 // Mock i18n
 const tMap: Record<string, string> = {
-  'action.start': 'Start',
-  'action.stop': 'Stop',
-  'action.restart': 'Restart',
+  'action.start': '啟動',
+  'action.stop': '停止',
+  'action.restart': '重啟',
+  'action.logs': '日誌',
   'locked.badge': '🔒 已鎖定',
   'locked.tooltip': '此服務受保護，無法直接操作。',
   'action.start.aria': '啟動 {name}',
@@ -87,9 +88,9 @@ describe('ServiceRow — 服務列表列', () => {
     const wrapper = mount(ServiceRow, { props: { service } })
 
     const actions = wrapper.find('.actions')
-    expect(actions.text()).toContain('Start')
-    expect(actions.text()).toContain('Restart')
-    expect(actions.text()).not.toContain('Stop')
+    expect(actions.text()).toContain('啟動')
+    expect(actions.text()).toContain('重啟')
+    expect(actions.text()).not.toContain('停止')
   })
 
   it('active → 顯示 Stop + Restart，不顯示 Start', () => {
@@ -97,9 +98,9 @@ describe('ServiceRow — 服務列表列', () => {
     const wrapper = mount(ServiceRow, { props: { service } })
 
     const actions = wrapper.find('.actions')
-    expect(actions.text()).toContain('Stop')
-    expect(actions.text()).toContain('Restart')
-    expect(actions.text()).not.toContain('Start')
+    expect(actions.text()).toContain('停止')
+    expect(actions.text()).toContain('重啟')
+    expect(actions.text()).not.toContain('啟動')
   })
 
   it('failed → 顯示 Start + Restart，不顯示 Stop', () => {
@@ -107,9 +108,9 @@ describe('ServiceRow — 服務列表列', () => {
     const wrapper = mount(ServiceRow, { props: { service } })
 
     const actions = wrapper.find('.actions')
-    expect(actions.text()).toContain('Start')
-    expect(actions.text()).toContain('Restart')
-    expect(actions.text()).not.toContain('Stop')
+    expect(actions.text()).toContain('啟動')
+    expect(actions.text()).toContain('重啟')
+    expect(actions.text()).not.toContain('停止')
   })
 
   it('locked=true → 顯示 🔒 鎖定圖示，僅有 Logs 按鈕', () => {
@@ -121,7 +122,7 @@ describe('ServiceRow — 服務列表列', () => {
     // Only the Logs button should be present for locked services
     const buttons = actions.findAll('button')
     expect(buttons.length).toBe(1)
-    expect(buttons[0].text()).toContain('📋 Logs')
+    expect(buttons[0].text()).toContain('📋 日誌')
   })
 
   // --- 確認對話框行為 ---
@@ -132,7 +133,7 @@ describe('ServiceRow — 服務列表列', () => {
 
     // Find the Start button within actions
     const startBtn = wrapper.find('.actions button')
-    expect(startBtn.text()).toContain('Start')
+    expect(startBtn.text()).toContain('啟動')
 
     await startBtn.trigger('click')
 
@@ -147,7 +148,7 @@ describe('ServiceRow — 服務列表列', () => {
 
     // Find the Stop button - it's the first button in active state
     const buttons = wrapper.findAll('button')
-    const stopBtn = buttons.find(b => b.text().includes('Stop'))
+    const stopBtn = buttons.find(b => b.text().includes('停止'))
     expect(stopBtn).toBeDefined()
 
     await stopBtn!.trigger('click')
@@ -162,7 +163,7 @@ describe('ServiceRow — 服務列表列', () => {
     const wrapper = mount(ServiceRow, { props: { service } })
 
     const buttons = wrapper.findAll('button')
-    const restartBtn = buttons.find(b => b.text().includes('Restart'))
+    const restartBtn = buttons.find(b => b.text().includes('重啟'))
     expect(restartBtn).toBeDefined()
 
     await restartBtn!.trigger('click')
@@ -402,20 +403,20 @@ describe('ServiceRow — Logs 按鈕', () => {
     setActivePinia(createPinia())
   })
 
-  it('F-SR-01: 所有服務（含 locked=false）皆顯示「📋 Logs」按鈕', () => {
+  it('F-SR-01: 所有服務（含 locked=false）皆顯示「📋 日誌」按鈕', () => {
     const service = makeService({ locked: false })
     const wrapper = mount(ServiceRow, { props: { service } })
 
     const actions = wrapper.find('.actions')
-    expect(actions.text()).toContain('📋 Logs')
+    expect(actions.text()).toContain('📋 日誌')
   })
 
-  it('F-SR-02: 鎖定服務（locked=true）仍有「📋 Logs」按鈕', () => {
+  it('F-SR-02: 鎖定服務（locked=true）仍有「📋 日誌」按鈕', () => {
     const service = makeService({ locked: true })
     const wrapper = mount(ServiceRow, { props: { service } })
 
     const actions = wrapper.find('.actions')
-    expect(actions.text()).toContain('📋 Logs')
+    expect(actions.text()).toContain('📋 日誌')
     expect(actions.text()).toContain('🔒 已鎖定')
   })
 

@@ -8,7 +8,7 @@
  * forwards `/login` to localhost:8080 (Pi agent).
  */
 
-import type { Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 
 export const VALID_USER = 'admin'
 export const VALID_PASS = 'admin123'
@@ -177,6 +177,46 @@ export async function gotoDashboard(page: Page) {
   await page.goto('/')
   await page.waitForURL((url) => url.pathname === '/', { timeout: 10_000 })
   await page.waitForSelector('.app-header', { timeout: 10_000 })
+}
+
+// ── Header account-menu helpers ───────────────────────────────────
+
+/**
+ * Open the account menu (👤 button in the header) and wait until visible.
+ * Idempotent: clicking the trigger again would toggle it closed, so only
+ * click when the menu is not already open.
+ */
+export async function openAccountMenu(page: Page) {
+  const menu = page.locator('[data-testid="account-menu"]')
+  const isOpen = await menu.isVisible().catch(() => false)
+  if (!isOpen) {
+    await page.locator('[data-testid="account-btn"]').click()
+  }
+  await expect(menu).toBeVisible()
+}
+
+/**
+ * Toggle the UI language via the account menu (closes the menu after).
+ */
+export async function toggleLang(page: Page) {
+  await openAccountMenu(page)
+  await page.locator('[data-testid="menu-lang"]').click()
+}
+
+/**
+ * Toggle the dark/light theme via the account menu (closes the menu after).
+ */
+export async function toggleTheme(page: Page) {
+  await openAccountMenu(page)
+  await page.locator('[data-testid="menu-theme"]').click()
+}
+
+/**
+ * Open the account menu and click Logout.
+ */
+export async function logoutViaMenu(page: Page) {
+  await openAccountMenu(page)
+  await page.locator('[data-testid="menu-logout"]').click()
 }
 
 // ── Selector helpers ──────────────────────────────────────────────

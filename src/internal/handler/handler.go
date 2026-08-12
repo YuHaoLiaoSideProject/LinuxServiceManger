@@ -5,27 +5,33 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	gw "github.com/gorilla/websocket"
 
+	"linux-service-manager/internal/audit"
 	"linux-service-manager/internal/auth"
 	"linux-service-manager/internal/systemd"
+	"linux-service-manager/internal/websocket"
 )
 
 // Handler holds the parsed templates and systemd manager.
 type Handler struct {
 	tmpl    *template.Template
 	systemd systemd.ServiceManager
+	Hub     *websocket.Hub
+	Audit   *audit.Module
 }
 
 // New creates a new Handler with the given template filesystem and systemd manager.
 // tplFS may be nil for JSON-only usage (e.g. tests).
-func New(tplFS fs.FS, sm systemd.ServiceManager) *Handler {
+func New(tplFS fs.FS, sm systemd.ServiceManager, auditMod *audit.Module) *Handler {
 	var tmpl *template.Template
 	if tplFS != nil {
 		tmpl = template.Must(template.ParseFS(tplFS, "index.html", "login.html"))
 	}
-	return &Handler{tmpl: tmpl, systemd: sm}
+	return &Handler{tmpl: tmpl, systemd: sm, Audit: auditMod}
 }
 
 // HandleIndex serves the full HTML page.
@@ -122,6 +128,39 @@ func (h *Handler) HandleRestart(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	err := h.systemd.RestartService(name)
 	h.respondWithFlash(w, name, "重啟", err)
+}
+
+// HandleStatusWS upgrades an HTTP connection to WebSocket and registers
+// the client with the hub for real-time status push notifications.
+func (h *Handler) HandleStatusWS(w http.ResponseWriter, r *http.Request) {
+	conn, err := websocket.Upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("WebSocket upgrade error: %v", err)
+		return
+	}
+	userID := "unknown"
+	session := auth.GetSession(r)
+	if username, ok := session.Values["username"].(string); ok {
+		userID = username
+	}
+
+	if h.Hub.CountByUser(userID) >= 5 {
+		conn.WriteMessage(gw.CloseMessage,
+			gw.FormatCloseMessage(gw.ClosePolicyViolation, "Too many connections"))
+		conn.Close()
+		return
+	}
+
+	client := &websocket.Client{
+		Hub:         h.Hub,
+		Conn:        conn,
+		Send:        make(chan []byte, 256),
+		UserID:      userID,
+		ConnectedAt: time.Now(),
+	}
+	h.Hub.Register <- client
+	go client.WritePump()
+	go client.ReadPump()
 }
 
 // respondWithFlash renders the updated rows and an OOB flash message.

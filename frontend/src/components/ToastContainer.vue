@@ -14,7 +14,7 @@ const { toasts } = useToast()
         :class="'toast-' + toast.type"
         role="status"
       >
-        <span>{{ toast.type === 'success' ? '✅' : '❌' }} {{ toast.message }}</span>
+        <span>{{ toast.type === 'success' ? '✅' : toast.type === 'warning' ? '⚠️' : '❌' }} {{ toast.message }}</span>
       </div>
     </div>
   </Teleport>

@@ -31,13 +31,18 @@ type mockSystemd struct {
 	restartErr       error
 	enableErr        error
 	disableErr       error
+	unitFileState    string
 	getServiceLogsFn func(name string, lines int) (string, error)
-	startCalled      []string
-	stopCalled       []string
-	restartCalled    []string
-	enableCalled     []string
-	disableCalled    []string
-	getLogsCalled    []getLogsCall
+	// Per-service error maps for batch operation partial-failure testing.
+	startErrFor   map[string]error
+	stopErrFor    map[string]error
+	restartErrFor map[string]error
+	startCalled   []string
+	stopCalled    []string
+	restartCalled []string
+	enableCalled  []string
+	disableCalled []string
+	getLogsCalled []getLogsCall
 }
 
 type getLogsCall struct {
@@ -54,16 +59,31 @@ func (m *mockSystemd) ListServices() ([]systemd.Service, error) {
 
 func (m *mockSystemd) StartService(name string) error {
 	m.startCalled = append(m.startCalled, name)
+	if m.startErrFor != nil {
+		if err, ok := m.startErrFor[name]; ok {
+			return err
+		}
+	}
 	return m.startErr
 }
 
 func (m *mockSystemd) StopService(name string) error {
 	m.stopCalled = append(m.stopCalled, name)
+	if m.stopErrFor != nil {
+		if err, ok := m.stopErrFor[name]; ok {
+			return err
+		}
+	}
 	return m.stopErr
 }
 
 func (m *mockSystemd) RestartService(name string) error {
 	m.restartCalled = append(m.restartCalled, name)
+	if m.restartErrFor != nil {
+		if err, ok := m.restartErrFor[name]; ok {
+			return err
+		}
+	}
 	return m.restartErr
 }
 
@@ -75,6 +95,10 @@ func (m *mockSystemd) EnableService(name string) error {
 func (m *mockSystemd) DisableService(name string) error {
 	m.disableCalled = append(m.disableCalled, name)
 	return m.disableErr
+}
+
+func (m *mockSystemd) GetUnitFileState(name string) (string, error) {
+	return m.unitFileState, nil
 }
 
 func (m *mockSystemd) GetServiceLogs(name string, lines int) (string, error) {
@@ -203,7 +227,7 @@ func TestLoginJSON_Success(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	form := url.Values{}
@@ -243,7 +267,7 @@ func TestLoginJSON_InvalidCredentials(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	form := url.Values{}
@@ -263,7 +287,7 @@ func TestLoginJSON_InvalidCredentials(t *testing.T) {
 
 func TestLoginJSON_EmptyCredentials(t *testing.T) {
 	mock := &mockSystemd{}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	tests := []struct {
@@ -304,7 +328,7 @@ func TestLogoutJSON_Success(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -338,7 +362,7 @@ func TestSessionCheck_Authenticated(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -359,7 +383,7 @@ func TestSessionCheck_Authenticated(t *testing.T) {
 
 func TestSessionCheck_NotAuthenticated(t *testing.T) {
 	mock := &mockSystemd{}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/session", nil)
@@ -382,7 +406,7 @@ func TestServicesList_Success(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -418,7 +442,7 @@ func TestServicesList_Success(t *testing.T) {
 
 func TestServicesList_Unauthorized(t *testing.T) {
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/services", nil)
@@ -437,7 +461,7 @@ func TestServicesList_SystemdError(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{listErr: fmt.Errorf("dbus connection failed")}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -459,7 +483,7 @@ func TestServicesList_Empty(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: []systemd.Service{}}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -485,7 +509,7 @@ func TestServiceStart_Success(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -511,7 +535,7 @@ func TestServiceStart_Error(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{startErr: fmt.Errorf("permission denied")}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -529,7 +553,7 @@ func TestServiceStart_Error(t *testing.T) {
 
 func TestServiceStart_Unauthorized(t *testing.T) {
 	mock := &mockSystemd{}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/services/nginx.service/start", nil)
@@ -549,7 +573,7 @@ func TestServiceStop_Success(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -575,7 +599,7 @@ func TestServiceStop_Error(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{stopErr: fmt.Errorf("service not found")}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -601,7 +625,7 @@ func TestServiceRestart_Success(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -631,7 +655,7 @@ func TestHandleEnable_Success(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -657,7 +681,7 @@ func TestHandleEnable_Error(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{enableErr: fmt.Errorf("operation not permitted")}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -675,7 +699,7 @@ func TestHandleEnable_Error(t *testing.T) {
 
 func TestHandleEnable_Unauthorized(t *testing.T) {
 	mock := &mockSystemd{}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/services/nginx.service/enable", nil)
@@ -695,7 +719,7 @@ func TestHandleDisable_Success(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -721,7 +745,7 @@ func TestHandleDisable_Error(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{disableErr: fmt.Errorf("service not found")}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -739,7 +763,7 @@ func TestHandleDisable_Error(t *testing.T) {
 
 func TestHandleDisable_Unauthorized(t *testing.T) {
 	mock := &mockSystemd{}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/services/nginx.service/disable", nil)
@@ -759,7 +783,7 @@ func TestHandleServices_IncludesUnitFileState(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -794,7 +818,7 @@ func TestHandleServices_LockedService(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -825,7 +849,7 @@ func TestHandleServices_StaticService(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -857,7 +881,7 @@ func TestServiceAction_SpecialCharacters(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -900,7 +924,7 @@ func TestServiceRestart_InactiveService(t *testing.T) {
 	mock := &mockSystemd{services: []systemd.Service{
 		{Name: "myapp.service", Load: "loaded", Active: "inactive", Sub: "dead", Locked: false},
 	}}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -950,7 +974,7 @@ func TestErrorResponse_NoInternalDetails(t *testing.T) {
 		mock := &mockSystemd{
 			listErr: fmt.Errorf("dbus connection failed: connection refused /org/freedesktop/systemd1"),
 		}
-		h := New(nil, mock)
+		h := New(nil, mock, nil)
 		router := setupTestRouter(h)
 
 		cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -979,7 +1003,7 @@ func TestErrorResponse_NoInternalDetails(t *testing.T) {
 		mock := &mockSystemd{
 			startErr: fmt.Errorf("permission denied: failed to execute systemctl start"),
 		}
-		h := New(nil, mock)
+		h := New(nil, mock, nil)
 		router := setupTestRouter(h)
 
 		cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -1008,7 +1032,7 @@ func TestErrorResponse_NoInternalDetails(t *testing.T) {
 		mock := &mockSystemd{
 			stopErr: fmt.Errorf("systemctl stop missing.service: exit status 5: Unit missing.service not loaded: No such file or directory"),
 		}
-		h := New(nil, mock)
+		h := New(nil, mock, nil)
 		router := setupTestRouter(h)
 
 		cookie := loginAndGetCookie(t, router, "admin", "pass")
@@ -1046,7 +1070,7 @@ func TestJSONContentType(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{services: sampleServices()}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouter(h)
 
 	// Test all JSON endpoints return correct content type
@@ -1126,7 +1150,7 @@ func connectWS(t *testing.T, serverURL string, cookie *http.Cookie, path string)
 // TestHandleServiceLogsWS_Unauthorized tests HDL-WS-05: unauthenticated → 401.
 func TestHandleServiceLogsWS_Unauthorized(t *testing.T) {
 	mock := &mockSystemd{}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouterWithWS(h)
 
 	server := httptest.NewServer(router)
@@ -1160,7 +1184,7 @@ func TestHandleServiceLogsWS_UpgradeSuccess(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouterWithWS(h)
 
 	server := httptest.NewServer(router)
@@ -1205,7 +1229,7 @@ func TestHandleServiceLogsWS_InvalidName(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouterWithWS(h)
 
 	server := httptest.NewServer(router)
@@ -1233,7 +1257,7 @@ func TestHandleServiceLogsWS_InvalidLines(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouterWithWS(h)
 
 	server := httptest.NewServer(router)
@@ -1269,7 +1293,7 @@ func TestHandleServiceLogsWS_StdoutPipe(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouterWithWS(h)
 
 	server := httptest.NewServer(router)
@@ -1322,7 +1346,7 @@ func TestHandleServiceLogsWS_PermissionDenied(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouterWithWS(h)
 
 	server := httptest.NewServer(router)
@@ -1367,7 +1391,7 @@ func TestHandleServiceLogsWS_ClientClose(t *testing.T) {
 	defer func() { auth.AdminUser, auth.AdminPass = origUser, origPass }()
 
 	mock := &mockSystemd{}
-	h := New(nil, mock)
+	h := New(nil, mock, nil)
 	router := setupTestRouterWithWS(h)
 
 	server := httptest.NewServer(router)

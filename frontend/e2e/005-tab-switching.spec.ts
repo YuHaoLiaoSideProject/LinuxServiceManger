@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { setupApiMocks, loginViaUI, MOCK_SERVICES, getServiceRow } from './auth.setup'
+import { setupApiMocks, loginViaUI, MOCK_SERVICES, getServiceRow, toggleLang } from './auth.setup'
 
 /**
  * 005 — 我的服務 / 系統服務切換驗證 E2E Tests
@@ -9,7 +9,7 @@ import { setupApiMocks, loginViaUI, MOCK_SERVICES, getServiceRow } from './auth.
  *   2. ✅ Tab 計數正確性 — 數字反映 locked/unlocked 筆數
  *   3. ✅ 資料過濾正確性 — 各 tab 僅顯示對應服務
  *   4. ✅ Tab 切換 + 搜尋組合 — 搜尋條件跨 tab 保留
- *   5. ✅ Tab 切換不影響 StatsBar — 統計永遠是全部服務
+ *   5. ✅ Tab 切換時 StatsBar 統計跟隨 tab 過濾（口徑與 filter 一致）
  *   6. ✅ Tab 切換 + 操作後重整 — tab 狀態維持
  *   7. ✅ Tab 持久化 (localStorage) — 重整後維持選擇
  *   8. ✅ 邊界狀況 — 空 tab、全鎖定、全解鎖
@@ -222,7 +222,9 @@ test.describe('Scenario 3: 資料過濾正確性', () => {
 
     const sshdRow = getServiceRow(page, 'sshd.service')
     await expect(sshdRow.locator('.locked-badge').first()).toBeVisible()
-    await expect(sshdRow.locator('button')).toHaveCount(0)
+    // 僅 Logs 按鈕（locked 服務不提供 Start/Stop/Restart）
+    await expect(sshdRow.locator('button')).toHaveCount(1)
+    await expect(sshdRow.locator('button.btn-act-logs')).toBeVisible()
   })
 })
 
@@ -301,7 +303,7 @@ test.describe('Scenario 5: StatsBar 跟隨 Tab 過濾', () => {
     await loginViaUI(page)
 
     const unlockedCount = MOCK_SERVICES.filter(s => !s.locked).length // 6
-    const unlockedRunning = MOCK_SERVICES.filter(s => !s.locked && ['active', 'running'].includes(s.active)).length // 3
+    const unlockedRunning = MOCK_SERVICES.filter(s => !s.locked && s.sub === 'running').length // 3
     const unlockedFailed = MOCK_SERVICES.filter(s => !s.locked && s.active === 'failed').length // 1
 
     await expect(page.locator('.stat-total .stat-value')).toHaveText(String(unlockedCount))
@@ -316,7 +318,7 @@ test.describe('Scenario 5: StatsBar 跟隨 Tab 過濾', () => {
     await getSystemTab(page).click()
 
     const lockedCount = MOCK_SERVICES.filter(s => s.locked).length // 1
-    const lockedRunning = MOCK_SERVICES.filter(s => s.locked && ['active', 'running'].includes(s.active)).length // 1
+    const lockedRunning = MOCK_SERVICES.filter(s => s.locked && s.sub === 'running').length // 1
     const lockedFailed = MOCK_SERVICES.filter(s => s.locked && s.active === 'failed').length // 0
 
     await expect(page.locator('.stat-total .stat-value')).toHaveText(String(lockedCount))
@@ -697,7 +699,7 @@ test.describe('Scenario 9: 多語言支援', () => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
 
     await expect(getMyTab(page)).toContainText('我的服務')
     await expect(getSystemTab(page)).toContainText('系統服務')
@@ -708,11 +710,11 @@ test.describe('Scenario 9: 多語言支援', () => {
     await loginViaUI(page)
 
     // Switch to zh-TW
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
     await expect(getMyTab(page)).toContainText('我的服務')
 
     // Switch back to en
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
     await expect(getMyTab(page)).toContainText('My Services')
   })
 
@@ -720,7 +722,7 @@ test.describe('Scenario 9: 多語言支援', () => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
 
     // Switch to system tab in Chinese
     await getSystemTab(page).click()

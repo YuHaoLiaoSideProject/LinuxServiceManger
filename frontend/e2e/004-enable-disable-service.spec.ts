@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { setupApiMocks, loginViaUI, MOCK_SERVICES, getServiceRow } from './auth.setup'
+import { setupApiMocks, loginViaUI, MOCK_SERVICES, getServiceRow, toggleTheme } from './auth.setup'
 
 /**
  * 004 — Enable / Disable 開機自動啟動 E2E Tests
@@ -106,15 +106,15 @@ test.describe('Scenario 1: 檢視 Auto-start 欄位', () => {
     await expect(nginxRow.locator('td[data-label="Actions"]')).toBeVisible()
   })
 
-  test('六個欄位標頭存在', async ({ page }) => {
+  test('七個欄位標頭存在（含 checkbox 欄）', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
     const headers = page.locator('thead th')
-    await expect(headers).toHaveCount(6)
-    await expect(headers.nth(0)).toHaveText('Name')
-    await expect(headers.nth(4)).toHaveText('Auto-start')
-    await expect(headers.nth(5)).toHaveText('Actions')
+    await expect(headers).toHaveCount(7)
+    await expect(headers.nth(1)).toHaveText('Name')
+    await expect(headers.nth(5)).toHaveText('Auto-start')
+    await expect(headers.nth(6)).toHaveText('Actions')
   })
 })
 
@@ -366,14 +366,9 @@ test.describe('Scenario 7: 深色模式', () => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
-    // Toggle dark mode
-    // Theme toggle button in AppHeader
-    const themeBtn = page.locator('.theme-toggle')
-    if (await themeBtn.isVisible()) {
-      await themeBtn.click()
-      // Wait for theme attribute
-      await page.waitForTimeout(300)
-    }
+    // Toggle dark mode via account menu
+    await toggleTheme(page)
+    await page.waitForTimeout(300)
 
     // Verify both ON and OFF toggles are visible
     const nginxToggle = getToggle(getServiceRow(page, 'nginx.service'))

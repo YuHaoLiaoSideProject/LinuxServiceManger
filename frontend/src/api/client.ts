@@ -1,11 +1,27 @@
 import axios from 'axios'
-import type { Service, LoginResponse, SessionInfo, MessageResponse } from '../types/service'
+import type { Service, LoginResponse, SessionInfo, MessageResponse, BatchRequest, BatchResponse } from '../types/service'
+import { useAuthStore } from '../stores/auth'
 
 const api = axios.create({
   baseURL: '/api/v1',
   withCredentials: true,
   headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 })
+
+export default api
+
+// Intercept 401 responses to reset auth state (session expired)
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      const auth = useAuthStore()
+      auth.authenticated = false
+      auth.username = ''
+    }
+    return Promise.reject(error)
+  },
+)
 
 // Auth
 export async function login(username: string, password: string): Promise<LoginResponse> {
@@ -52,5 +68,13 @@ export async function enableService(name: string): Promise<MessageResponse> {
 
 export async function disableService(name: string): Promise<MessageResponse> {
   const { data } = await api.post<MessageResponse>(`/services/${encodeURIComponent(name)}/disable`)
+  return data
+}
+
+export async function batchServices(req: BatchRequest): Promise<BatchResponse> {
+  const { data } = await api.post<BatchResponse>('/services/batch', req, {
+    headers: { 'Content-Type': 'application/json' },
+    timeout: 65_000,
+  })
   return data
 }

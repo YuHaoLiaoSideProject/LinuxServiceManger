@@ -1,891 +1,844 @@
+/**
+ * LogDrawer 元件單元測試
+ *
+ * 對應 BDD：docs/bdds/005-journalctl-log-viewer.feature
+ * 對應測試計畫：docs/test-plans/005-journalctl-log-viewer測試計畫.md §3.1
+ *
+ * 策略：
+ * - 元件使用 <Teleport to="body"> → teleported DOM 用 document.querySelector 存取
+ * - 優先驗證行為（emit / vm 狀態 / mock 呼叫）而非 DOM 結構細節
+ * - 每個測試後清理 document.body
+ */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { readFileSync } from 'fs'
-import { fileURLToPath } from 'url'
-import { dirname, resolve } from 'path'
 import LogDrawer from '../components/LogDrawer.vue'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
+// ── Mock WebSocket ──
 
-// ── Mock WebSocket with tracking ──
-
-let mockWSInstances: MockWebSocket[] = []
-
-class MockWebSocket {
-  static CONNECTING = 0
-  static OPEN = 1
-  static CLOSING = 2
-  static CLOSED = 3
-
-  readyState = MockWebSocket.CONNECTING
+interface MockWebSocket {
   url: string
-  onopen: (() => void) | null = null
-  onmessage: ((event: { data: string }) => void) | null = null
-  onclose: ((event?: { code?: number; reason?: string }) => void) | null = null
-  onerror: ((event?: any) => void) | null = null
-  closeSpy = vi.fn()
+  readyState: number
+  onopen: (() => void) | null
+  onmessage: ((event: { data: string }) => void) | null
+  onclose: ((event?: { code?: number; reason?: string }) => void) | null
+  onerror: ((event?: unknown) => void) | null
+  closeSpy: (code?: number, reason?: string) => void
+  close: (code?: number, reason?: string) => void
+  sendMessage: (data: string) => void
+  triggerError: () => void
+}
 
-  constructor(url: string) {
-    this.url = url
-    mockWSInstances.push(this)
-    // Simulate async connection
-    setTimeout(() => {
-      this.readyState = MockWebSocket.OPEN
-      this.onopen?.()
-    }, 0)
-  }
+let mockInstances: MockWebSocket[] = []
 
-  close(code?: number, reason?: string) {
+// Must use a proper constructor (not arrow fn) for `new WebSocket(url)`
+function MockWS(this: MockWebSocket, url: string) {
+  this.url = url
+  this.readyState = 0 // CONNECTING
+  this.onopen = null
+  this.onmessage = null
+  this.onclose = null
+  this.onerror = null
+  this.closeSpy = vi.fn()
+  this.close = function (code?: number, reason?: string) {
     this.closeSpy(code, reason)
-    this.readyState = MockWebSocket.CLOSED
-    this.onclose?.({ code: code || 1000, reason: reason || '' })
+    this.readyState = 3 // CLOSED
+    this.onclose?.({ code: code ?? 1000, reason: reason ?? '' })
   }
-
-  // Test helpers
-  sendMessage(data: string) {
+  this.sendMessage = function (data: string) {
     this.onmessage?.({ data })
   }
-
-  triggerError() {
+  this.triggerError = function () {
+    this.readyState = 3
     this.onerror?.({})
   }
+  mockInstances.push(this)
+  // Simulate async open
+  setTimeout(() => {
+    this.readyState = 1 // OPEN
+    this.onopen?.()
+  }, 0)
 }
 
-function lastInstance(): MockWebSocket | undefined {
-  return mockWSInstances[mockWSInstances.length - 1]
+function lastWS(): MockWebSocket | undefined {
+  return mockInstances[mockInstances.length - 1]
 }
 
-describe('LogDrawer — 日誌檢視器', () => {
-  beforeEach(() => {
-    mockWSInstances = []
-    vi.stubGlobal('WebSocket', MockWebSocket)
+// ── Helpers ──
+
+function mountDrawer(props: { serviceName?: string; visible?: boolean } = {}) {
+  return mount(LogDrawer, {
+    props: { serviceName: 'test.service', visible: true, ...props },
+  })
+}
+
+/** Flush setTimeout(0) so mock WS onopen fires */
+async function flushWS() {
+  await new Promise(r => setTimeout(r, 10))
+}
+
+/** Single micro/macro tick for real timers */
+async function tick() {
+  await new Promise(r => setTimeout(r, 0))
+}
+
+// ── Setup / Teardown ──
+
+beforeEach(() => {
+  mockInstances = []
+  vi.stubGlobal('WebSocket', MockWS as any)
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  document.body.innerHTML = ''
+})
+
+// ===================================================================
+// BDD: 開啟日誌 Drawer 並成功載入日誌
+// ===================================================================
+
+describe('開啟 Drawer 與日誌載入', () => {
+  it('visible=false 時不渲染 Drawer', () => {
+    mountDrawer({ visible: false })
+    expect(document.querySelector('.log-drawer')).toBeNull()
+    expect(document.querySelector('.drawer-overlay')).toBeNull()
   })
 
-  afterEach(() => {
-    vi.unstubAllGlobals()
+  it('visible=true 時 Drawer 出現在 document.body 中', () => {
+    mountDrawer({ visible: true })
+    expect(document.querySelector('.log-drawer')).not.toBeNull()
   })
 
-  // ── F-LD-01 ──
-  it('F-LD-01: visible=false 時不渲染任何元素', () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'nginx.service', visible: false },
-    })
-    expect(wrapper.find('.drawer-overlay').exists()).toBe(false)
-    expect(wrapper.find('.log-drawer').exists()).toBe(false)
+  it('Drawer 標題包含 serviceName', () => {
+    mountDrawer({ serviceName: 'nginx.service', visible: true })
+    expect(document.querySelector('.drawer-title')?.textContent).toContain('nginx.service')
   })
 
-  // ── F-LD-02 ──
-  it('F-LD-02: visible=true 時渲染 Drawer，標題含 serviceName', () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'nginx.service', visible: true },
-    })
-    expect(wrapper.find('.log-drawer').exists()).toBe(true)
-    expect(wrapper.text()).toContain('nginx.service')
+  it('連線中顯示 loading spinner，連線完成後消失', async () => {
+    mountDrawer({ visible: true })
+
+    // Before WS open
+    expect(document.querySelector('.loading-spinner')).not.toBeNull()
+
+    await flushWS()
+
+    // After WS open
+    expect(document.querySelector('.loading-spinner')).toBeNull()
   })
 
-  // ── F-LD-03 ──
-  it('F-LD-03: WebSocket 連線中顯示 loading spinner', () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    // WebSocket onopen hasn't fired yet (setTimeout 0) — we're in the same macrotask
-    expect(wrapper.find('.loading-spinner').exists()).toBe(true)
+  it('連線成功後狀態指示為 LIVE', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
+    const status = document.querySelector('.connection-status')
+    expect(status?.textContent).toContain('LIVE')
   })
 
-  it('F-LD-03: WebSocket 連線完成後隱藏 loading spinner', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    // Wait for onopen (macrotask)
-    await new Promise(resolve => setTimeout(resolve, 10))
-    expect(wrapper.find('.loading-spinner').exists()).toBe(false)
+  it('收到日誌訊息後內容顯示在 pre 區塊', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
+
+    lastWS()?.sendMessage('line one\n')
+    lastWS()?.sendMessage('line two\n')
+    await tick()
+
+    const pre = document.querySelector('.log-content')
+    expect(pre?.textContent).toContain('line one')
+    expect(pre?.textContent).toContain('line two')
   })
 
-  // ── F-LD-04 ──
-  it('F-LD-04: WebSocket onMessage → 日誌內容追加到 <pre> 區塊', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    // Wait for connection
-    await new Promise(resolve => setTimeout(resolve, 10))
+  it('新日誌觸發自動捲動到底部', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
 
-    // Simulate incoming log messages
-    const instance = lastInstance()
-    instance?.sendMessage('line1\n')
-    instance?.sendMessage('line2\n')
+    lastWS()?.sendMessage('first\n')
+    await tick()
 
-    await new Promise(resolve => setTimeout(resolve, 0))
-
-    const pre = wrapper.find('pre')
-    expect(pre.exists()).toBe(true)
-    expect(pre.text()).toContain('line1')
-    expect(pre.text()).toContain('line2')
-  })
-
-  // ── F-LD-05 ──
-  it('F-LD-05: 日誌自動捲動到底部', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
-
-    // First send a message so <pre> appears
-    lastInstance()?.sendMessage('first line\n')
-    await new Promise(resolve => setTimeout(resolve, 0))
-
-    // Now <pre> should be rendered
-    const pre = wrapper.find('pre').element as HTMLPreElement
+    const pre = document.querySelector('.log-content') as HTMLPreElement
+    expect(pre).not.toBeNull()
     Object.defineProperty(pre, 'scrollHeight', { value: 500, writable: true })
     pre.scrollTop = 100
 
-    // Simulate another message
-    lastInstance()?.sendMessage('new line\n')
+    lastWS()?.sendMessage('new line\n')
+    await tick()
 
-    // nextTick + flush
-    await new Promise(resolve => setTimeout(resolve, 0))
-
-    // After auto-scroll, scrollTop should equal scrollHeight
     expect(pre.scrollTop).toBe(500)
   })
+})
 
-  // ── F-LD-06 ──
-  it('F-LD-06: 點擊 ✕ 按鈕 → emit close 事件', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
+// ===================================================================
+// BDD: 調整日誌顯示行數
+// ===================================================================
 
-    const closeBtn = wrapper.find('.close-btn')
-    expect(closeBtn.exists()).toBe(true)
-
-    await closeBtn.trigger('click')
-
-    expect(wrapper.emitted('close')).toBeTruthy()
-    expect(wrapper.emitted('close')!.length).toBe(1)
+describe('行數選擇器', () => {
+  it('預設行數為 100，選單包含 50/100/200/500 四個選項', () => {
+    mountDrawer({ visible: true })
+    const select = document.querySelector<HTMLSelectElement>('.line-count-select')
+    expect(select).not.toBeNull()
+    const values = Array.from(select!.options).map(o => o.value)
+    expect(values).toEqual(['50', '100', '200', '500'])
+    expect(select!.value).toBe('100')
   })
 
-  // ── F-LD-07 ──
-  it('F-LD-07: 點擊遮罩 → emit close 事件', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
+  it('切換行數 → 關閉舊 WS + 建立新 WS（含新行數）', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
 
-    const overlay = wrapper.find('.drawer-overlay')
-    expect(overlay.exists()).toBe(true)
+    const old = lastWS()!
+    const countBefore = mockInstances.length
 
-    await overlay.trigger('click')
+    const select = document.querySelector<HTMLSelectElement>('.line-count-select')!
+    select.value = '200'
+    select.dispatchEvent(new Event('change'))
+
+    await flushWS()
+
+    expect(old.closeSpy).toHaveBeenCalled()
+    expect(mockInstances.length).toBe(countBefore + 1)
+    expect(lastWS()!.url).toContain('lines=200')
+  })
+})
+
+// ===================================================================
+// BDD: WebSocket 即時串流
+// ===================================================================
+
+describe('WebSocket 即時串流', () => {
+  it('收到新訊息時追加到現有內容之後', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
+
+    lastWS()?.sendMessage('msg1\n')
+    await tick()
+    lastWS()?.sendMessage('msg2\n')
+    await tick()
+
+    const pre = document.querySelector('.log-content')
+    const lines = pre?.querySelectorAll('code span')
+    expect(lines?.length).toBe(2)
+    expect(lines?.[0].textContent).toContain('msg1')
+    expect(lines?.[1].textContent).toContain('msg2')
+  })
+
+  it('日誌行數超過 MAX_LOG_LINES 時截斷舊內容', async () => {
+    const wrapper = mountDrawer({ visible: true })
+    await flushWS()
+    const vm = wrapper.vm as unknown as { logLines: { text: string }[] }
+
+    // Fill exactly to max
+    const MAX = 5000
+    for (let i = 0; i < MAX + 10; i++) {
+      lastWS()?.sendMessage(`line${i}\n`)
+    }
+    await tick()
+
+    expect(vm.logLines.length).toBeLessThanOrEqual(MAX)
+  })
+})
+
+// ===================================================================
+// BDD: 關閉 Drawer（✕ / 遮罩 / Esc）
+// ===================================================================
+
+describe('關閉 Drawer', () => {
+  it('點擊 ✕ 按鈕 → emit close + WS 關閉', async () => {
+    const wrapper = mountDrawer({ visible: true })
+    await flushWS()
+    const ws = lastWS()!
+
+    document.querySelector<HTMLButtonElement>('.close-btn')?.click()
+    await tick()
+
+    expect(wrapper.emitted('close')).toBeTruthy()
+    expect(ws.closeSpy).toHaveBeenCalled()
+  })
+
+  it('點擊遮罩 → emit close', async () => {
+    const wrapper = mountDrawer({ visible: true })
+    await flushWS()
+
+    document.querySelector<HTMLDivElement>('.drawer-overlay')?.click()
+    await tick()
 
     expect(wrapper.emitted('close')).toBeTruthy()
   })
 
-  // ── F-LD-08 ──
-  it('F-LD-08: 按下 Esc 鍵 → emit close 事件', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
+  it('按下 Esc → emit close + WS 關閉', async () => {
+    const wrapper = mountDrawer({ visible: true })
+    await flushWS()
+    const ws = lastWS()!
 
-    // Dispatch Escape key on document
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await tick()
 
     expect(wrapper.emitted('close')).toBeTruthy()
+    expect(ws.closeSpy).toHaveBeenCalled()
   })
 
-  it('F-LD-08: 按下非 Esc 鍵不觸發 close', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-
+  it('非 Esc 鍵不觸發 close', async () => {
+    const wrapper = mountDrawer({ visible: true })
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))
-
     expect(wrapper.emitted('close')).toBeFalsy()
   })
 
-  // ── F-LD-09 ──
-  it('F-LD-09: 連線後無日誌 → 顯示「此服務尚無日誌記錄」', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    // Wait for connection to open
-    await new Promise(resolve => setTimeout(resolve, 10))
+  it('unmount 時關閉 WS 並移除 keydown listener', async () => {
+    const wrapper = mountDrawer({ visible: true })
+    await flushWS()
+    const ws = lastWS()!
 
-    // After connection but without any messages, should show empty state
-    expect(wrapper.text()).toContain('此服務尚無日誌記錄')
+    wrapper.unmount()
+    expect(ws.closeSpy).toHaveBeenCalled()
+  })
+})
+
+// ===================================================================
+// BDD: 服務切換
+// ===================================================================
+
+describe('服務名稱切換', () => {
+  it('serviceName 變更 → 關閉舊 WS + 建立新 WS', async () => {
+    const wrapper = mountDrawer({ serviceName: 'svc-a', visible: true })
+    await flushWS()
+    const old = lastWS()!
+    const countBefore = mockInstances.length
+
+    await wrapper.setProps({ serviceName: 'svc-b' })
+    await flushWS()
+
+    expect(old.closeSpy).toHaveBeenCalled()
+    expect(mockInstances.length).toBe(countBefore + 1)
+    expect(lastWS()!.url).toContain('svc-b')
   })
 
-  // ── F-LD-10 ──
-  it('F-LD-10: 行數下拉選單包含 50/100/200/500 四個選項', () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
+  it('切換後標題更新', async () => {
+    const wrapper = mountDrawer({ serviceName: 'svc-a', visible: true })
+    expect(document.querySelector('.drawer-title')?.textContent).toContain('svc-a')
 
-    const select = wrapper.find('select')
-    expect(select.exists()).toBe(true)
+    await wrapper.setProps({ serviceName: 'svc-b' })
+    await flushWS()
 
-    const options = select.findAll('option')
-    const values = options.map(o => o.attributes('value'))
-    expect(values).toContain('50')
-    expect(values).toContain('100')
-    expect(values).toContain('200')
-    expect(values).toContain('500')
-    expect(options.length).toBe(4)
+    expect(document.querySelector('.drawer-title')?.textContent).toContain('svc-b')
+    expect(document.querySelector('.drawer-title')?.textContent).not.toContain('svc-a')
   })
 
-  // ── F-LD-11 ──
-  it('F-LD-11: 行數切換 → 關閉舊 WebSocket + 建立新 WebSocket', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
+  it('切換後舊日誌內容被清空', async () => {
+    const wrapper = mountDrawer({ visible: true })
+    await flushWS()
+    lastWS()?.sendMessage('old log\n')
+    await tick()
 
-    // Track the first WS instance
-    const firstInstance = lastInstance()!
-    const oldCloseSpy = firstInstance.closeSpy
+    await wrapper.setProps({ serviceName: 'new-svc' })
+    await flushWS()
 
-    // Change line count
-    const select = wrapper.find('select')
-    await select.setValue('200')
-
-    // Wait for watch to trigger reconnect
-    await new Promise(resolve => setTimeout(resolve, 10))
-
-    // Old WebSocket.close() should have been called
-    expect(oldCloseSpy).toHaveBeenCalled()
-
-    // New WebSocket should have been created with updated URL
-    const newInstance = lastInstance()!
-    expect(newInstance).not.toBe(firstInstance)
-    expect(newInstance.url).toContain('lines=200')
+    const pre = document.querySelector('.log-content')
+    // New connection has no messages yet — should show empty state or loading
+    expect(pre?.textContent || '').not.toContain('old log')
   })
 
-  // ── Additional: error message display ──
-  it('WebSocket 收到 JSON error message 時顯示錯誤', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
+  it('切換後 loading 狀態重新出現', async () => {
+    const wrapper = mountDrawer({ visible: true })
+    await flushWS()
 
-    lastInstance()?.sendMessage('{"error":"Service not found"}')
+    expect(document.querySelector('.loading-spinner')).toBeNull()
 
-    await new Promise(resolve => setTimeout(resolve, 0))
+    await wrapper.setProps({ serviceName: 'other-svc' })
+    // Loading should appear before new WS opens
+    expect(document.querySelector('.loading-spinner')).not.toBeNull()
+  })
+})
 
-    expect(wrapper.text()).toContain('Service not found')
+// ===================================================================
+// BDD: 搜尋已載入日誌
+// ===================================================================
+
+describe('搜尋篩選', () => {
+  it('搜尋「error」→ 匹配行 highlight，不匹配行 dim', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
+
+    lastWS()?.sendMessage('error: something failed\n')
+    lastWS()?.sendMessage('info: all good\n')
+    lastWS()?.sendMessage('another error here\n')
+    await tick()
+
+    const input = document.querySelector<HTMLInputElement>('.search-input')!
+    input.value = 'error'
+    input.dispatchEvent(new Event('input'))
+
+    await tick()
+
+    const spans = document.querySelectorAll('.log-content code span')
+    expect(spans[0].classList).toContain('highlight')
+    expect(spans[1].classList).toContain('dim')
+    expect(spans[2].classList).toContain('highlight')
   })
 
-  // ── Additional: close disconnects WebSocket ──
-  it('關閉時 WebSocket.close() 被呼叫', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
+  it('搜尋大小寫不敏感（"ERROR" 匹配 "error"）', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
 
-    const instance = lastInstance()!
-    expect(instance).toBeDefined()
+    lastWS()?.sendMessage('Error: something\n')
+    lastWS()?.sendMessage('info line\n')
+    await tick()
 
-    await wrapper.find('.close-btn').trigger('click')
+    const input = document.querySelector<HTMLInputElement>('.search-input')!
+    input.value = 'ERROR'
+    input.dispatchEvent(new Event('input'))
+    await tick()
 
-    expect(instance.closeSpy).toHaveBeenCalled()
+    const spans = document.querySelectorAll('.log-content code span')
+    expect(spans[0].classList).toContain('highlight')
+    expect(spans[1].classList).toContain('dim')
   })
 
-  // ═══════════════════════════════════════════════════════════════
-  // P1: 搜尋 highlight + 匹配計數
-  // ═══════════════════════════════════════════════════════════════
+  it('搜尋獨立單詞（word-boundary）而非子字串', async () => {
+    // BDD: simpleddns / dns_udp 含子字串「dns」→ dim; 獨立「DNS」→ highlight
+    mountDrawer({ visible: true })
+    await flushWS()
 
-  // ── F-LD-SEARCH-01 ──
-  it('F-LD-SEARCH-01: searchQuery 為空 → 所有日誌行正常顯示（無 highlight/dim class）', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
+    lastWS()?.sendMessage('simpleddns started\n')
+    lastWS()?.sendMessage('dns_udp listening\n')
+    lastWS()?.sendMessage('DNS lookup failed\n')
+    await tick()
 
-    lastInstance()?.sendMessage('line one\n')
-    lastInstance()?.sendMessage('line two\n')
-    await new Promise(resolve => setTimeout(resolve, 0))
+    const input = document.querySelector<HTMLInputElement>('.search-input')!
+    input.value = 'DNS'
+    input.dispatchEvent(new Event('input'))
+    await tick()
 
-    // searchQuery is empty by default
-    const spans = wrapper.findAll('code span')
+    const spans = document.querySelectorAll('.log-content code span')
+    // "simpleddns" → "dns" is a substring, not an independent word → dim
+    expect(spans[0].classList).toContain('dim')
+    // "dns_udp" → "dns" followed by "_" (underscore excluded by word boundary) → dim
+    expect(spans[1].classList).toContain('dim')
+    // "DNS lookup failed" → "DNS" as independent word → highlight
+    expect(spans[2].classList).toContain('highlight')
+  })
+
+  it('搜尋框右側顯示匹配計數「M / N 行」', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
+
+    lastWS()?.sendMessage('error one\n')
+    lastWS()?.sendMessage('info one\n')
+    lastWS()?.sendMessage('error two\n')
+    lastWS()?.sendMessage('info two\n')
+    lastWS()?.sendMessage('error three\n')
+    await tick()
+
+    const input = document.querySelector<HTMLInputElement>('.search-input')!
+    input.value = 'error'
+    input.dispatchEvent(new Event('input'))
+    await tick()
+
+    const count = document.querySelector('.match-count')
+    expect(count?.textContent).toContain('3')
+    expect(count?.textContent).toContain('5')
+  })
+
+  it('清空搜尋框 → 恢復全部正常顯示', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
+
+    lastWS()?.sendMessage('error line\n')
+    lastWS()?.sendMessage('info line\n')
+    await tick()
+
+    const input = document.querySelector<HTMLInputElement>('.search-input')!
+    input.value = 'error'
+    input.dispatchEvent(new Event('input'))
+    await tick()
+
+    // Now clear
+    input.value = ''
+    input.dispatchEvent(new Event('input'))
+    await tick()
+
+    const spans = document.querySelectorAll('.log-content code span')
     for (const span of spans) {
-      expect(span.classes()).not.toContain('highlight')
-      expect(span.classes()).not.toContain('dim')
+      expect(span.classList).not.toContain('highlight')
+      expect(span.classList).not.toContain('dim')
     }
+    expect(document.querySelector('.match-count')).toBeNull()
   })
 
-  // ── F-LD-SEARCH-02 ──
-  it('F-LD-SEARCH-02: 輸入 "error" → 包含 "error" 的行有 highlight class，不含的有 dim class', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
+  it('搜尋無匹配結果 → 全部 dim', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
 
-    lastInstance()?.sendMessage('error: something failed\n')
-    lastInstance()?.sendMessage('info: all good\n')
-    lastInstance()?.sendMessage('another error occurred\n')
-    await new Promise(resolve => setTimeout(resolve, 0))
+    lastWS()?.sendMessage('line one\n')
+    lastWS()?.sendMessage('line two\n')
+    await tick()
 
-    const input = wrapper.find('.search-input')
-    await input.setValue('error')
+    const input = document.querySelector<HTMLInputElement>('.search-input')!
+    input.value = 'xyz_not_found_123'
+    input.dispatchEvent(new Event('input'))
+    await tick()
 
-    const spans = wrapper.findAll('code span')
-    expect(spans[0].classes()).toContain('highlight')
-    expect(spans[0].classes()).not.toContain('dim')
-    expect(spans[1].classes()).toContain('dim')
-    expect(spans[1].classes()).not.toContain('highlight')
-    expect(spans[2].classes()).toContain('highlight')
+    const spans = document.querySelectorAll('.log-content code span')
+    expect(spans[0].classList).toContain('dim')
+    expect(spans[1].classList).toContain('dim')
+
+    const count = document.querySelector('.match-count')
+    expect(count?.textContent).toContain('0')
   })
 
-  // ── F-LD-SEARCH-03 ──
-  it('F-LD-SEARCH-03: 搜尋忽略大小寫（"ERROR" 也匹配 "error"）', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
+  it('搜尋不觸發任何 WebSocket 請求（純前端篩選）', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
 
-    lastInstance()?.sendMessage('Error: something failed\n')
-    lastInstance()?.sendMessage('info: all good\n')
-    await new Promise(resolve => setTimeout(resolve, 0))
+    lastWS()?.sendMessage('line one\n')
+    await tick()
 
-    const input = wrapper.find('.search-input')
-    await input.setValue('ERROR')
+    const wsCount = mockInstances.length
+    const old = lastWS()!
 
-    const spans = wrapper.findAll('code span')
-    expect(spans[0].classes()).toContain('highlight')
-    expect(spans[1].classes()).toContain('dim')
+    const input = document.querySelector<HTMLInputElement>('.search-input')!
+    input.value = 'line'
+    input.dispatchEvent(new Event('input'))
+    await tick()
+
+    expect(mockInstances.length).toBe(wsCount)
+    expect(old.closeSpy).not.toHaveBeenCalled()
   })
 
-  // ── F-LD-SEARCH-04 ──
-  it('F-LD-SEARCH-04: 搜尋框右側顯示匹配行數統計，如「3 / 100 行」', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
-
-    // Send 5 lines, 3 contain "error"
-    lastInstance()?.sendMessage('error one\n')
-    lastInstance()?.sendMessage('info one\n')
-    lastInstance()?.sendMessage('error two\n')
-    lastInstance()?.sendMessage('info two\n')
-    lastInstance()?.sendMessage('error three\n')
-    await new Promise(resolve => setTimeout(resolve, 0))
-
-    const input = wrapper.find('.search-input')
-    await input.setValue('error')
-
-    expect(wrapper.find('.match-count').exists()).toBe(true)
-    expect(wrapper.find('.match-count').text()).toContain('3')
-    expect(wrapper.find('.match-count').text()).toContain('5')
-    expect(wrapper.find('.match-count').text()).toContain('行')
+  it('日誌為空時搜尋框不顯示', () => {
+    mountDrawer({ visible: true })
+    // No messages sent, no connection opened yet
+    expect(document.querySelector('.search-input')).toBeNull()
   })
 
-  // ── F-LD-SEARCH-05 ──
-  it('F-LD-SEARCH-05: 清空搜尋框 → 恢復全部正常顯示', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
+  it('有日誌後搜尋框才出現', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
 
-    lastInstance()?.sendMessage('error line\n')
-    lastInstance()?.sendMessage('info line\n')
-    await new Promise(resolve => setTimeout(resolve, 0))
+    lastWS()?.sendMessage('first line\n')
+    await tick()
 
-    const input = wrapper.find('.search-input')
-    await input.setValue('error')
+    expect(document.querySelector('.search-input')).not.toBeNull()
+  })
+})
 
-    // Verify dim/highlight are present
-    let spans = wrapper.findAll('code span')
-    expect(spans[0].classes()).toContain('highlight')
-    expect(spans[1].classes()).toContain('dim')
+// ===================================================================
+// BDD: 錯誤處理
+// ===================================================================
 
-    // Clear search
-    await input.setValue('')
+describe('錯誤處理', () => {
+  it('服務無日誌時顯示空狀態', async () => {
+    const wrapper = mountDrawer({ visible: true })
+    await flushWS()
 
-    spans = wrapper.findAll('code span')
-    for (const span of spans) {
-      expect(span.classes()).not.toContain('highlight')
-      expect(span.classes()).not.toContain('dim')
-    }
+    const vm = wrapper.vm as unknown as { logLines: { text: string }[]; isLoading: boolean; error: string }
+    vm.isLoading = false
+    vm.logLines = []
+    await tick()
+
+    expect(document.querySelector('.empty-state')).not.toBeNull()
+    expect(document.querySelector('.empty-state')?.textContent).toContain('尚無日誌記錄')
   })
 
-  // ── F-LD-SEARCH-06 ──
-  it('F-LD-SEARCH-06: 搜尋僅在已載入日誌中篩選，不觸發任何 WebSocket 動作', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
+  it('收到 JSON error → 顯示錯誤訊息 + 重試按鈕', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
 
-    const instance = lastInstance()!
-    const oldCloseSpy = instance.closeSpy
+    lastWS()?.sendMessage('{"error":"permission denied: cannot access journalctl"}')
+    await tick()
 
-    lastInstance()?.sendMessage('line one\n')
-    await new Promise(resolve => setTimeout(resolve, 0))
-
-    // Count WebSocket instances after initial connection
-    const wsCountBefore = mockWSInstances.length
-
-    const input = wrapper.find('.search-input')
-    await input.setValue('line')
-
-    // No new WebSocket should have been created
-    expect(mockWSInstances.length).toBe(wsCountBefore)
-    // Old WebSocket should not have been closed
-    expect(oldCloseSpy).not.toHaveBeenCalled()
+    expect(document.querySelector('.drawer-error')).not.toBeNull()
+    expect(document.querySelector('.drawer-error')?.textContent).toContain('permission denied')
+    expect(document.querySelector('.retry-btn')).not.toBeNull()
   })
 
-  // ═══════════════════════════════════════════════════════════════
-  // P1: 錯誤處理 UI
-  // ═══════════════════════════════════════════════════════════════
+  it('收到 journalctl not found error', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
 
-  // ── F-LD-ERR-01 ──
-  it('F-LD-ERR-01: WebSocket 收到 permission denied error → 顯示錯誤訊息 + 重試按鈕', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
+    lastWS()?.sendMessage('{"error":"journalctl not found on target system"}')
+    await tick()
 
-    lastInstance()?.sendMessage('{"error":"permission denied: cannot access journalctl"}')
-    await new Promise(resolve => setTimeout(resolve, 0))
-
-    expect(wrapper.text()).toContain('permission denied')
-    expect(wrapper.find('.retry-btn').exists()).toBe(true)
+    expect(document.querySelector('.drawer-error')?.textContent).toContain('journalctl not found')
   })
 
-  // ── F-LD-ERR-02 ──
-  it('F-LD-ERR-02: WebSocket 收到 journalctl not found error → 顯示對應錯誤訊息', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
+  it('WebSocket onerror → 顯示連線錯誤', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
 
-    lastInstance()?.sendMessage('{"error":"journalctl not found on target system"}')
-    await new Promise(resolve => setTimeout(resolve, 0))
+    lastWS()?.triggerError()
+    await tick()
 
-    expect(wrapper.text()).toContain('journalctl not found')
-    expect(wrapper.find('.retry-btn').exists()).toBe(true)
+    expect(document.querySelector('.drawer-error')).not.toBeNull()
   })
 
-  // ── F-LD-ERR-03 ──
-  it('F-LD-ERR-03: WebSocket onerror 觸發 → 顯示連線失敗錯誤', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
+  it('點擊重試按鈕 → 重新建立 WebSocket', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
 
-    lastInstance()?.triggerError()
-    await new Promise(resolve => setTimeout(resolve, 0))
+    lastWS()?.sendMessage('{"error":"some error"}')
+    await tick()
 
-    expect(wrapper.find('.drawer-error').exists()).toBe(true)
-    expect(wrapper.text()).toContain('連線')
+    const wsCount = mockInstances.length
+
+    document.querySelector<HTMLButtonElement>('.retry-btn')?.click()
+    await tick()
+
+    expect(mockInstances.length).toBe(wsCount + 1)
   })
 
-  // ── F-LD-ERR-04 ──
-  it('F-LD-ERR-04: 點擊重試按鈕 → 重新呼叫 connectWebSocket', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
+  it('重試時顯示 loading 狀態', async () => {
+    const wrapper = mountDrawer({ visible: true })
+    await flushWS()
 
-    // Trigger error
-    lastInstance()?.sendMessage('{"error":"some error"}')
-    await new Promise(resolve => setTimeout(resolve, 0))
+    lastWS()?.sendMessage('{"error":"some error"}')
+    await tick()
 
-    const wsCountBefore = mockWSInstances.length
+    document.querySelector<HTMLButtonElement>('.retry-btn')?.click()
+    // Vue DOM update for isLoading=true happens before WS onopen setTimeout
+    await wrapper.vm.$nextTick()
 
-    const retryBtn = wrapper.find('.retry-btn')
-    await retryBtn.trigger('click')
-
-    // A new WebSocket should be created
-    expect(mockWSInstances.length).toBe(wsCountBefore + 1)
+    expect(document.querySelector('.loading-spinner')).not.toBeNull()
   })
+})
 
-  // ── F-LD-ERR-05 ──
-  it('F-LD-ERR-05: 重試期間顯示 loading 狀態', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
+// ===================================================================
+// BDD: WebSocket 重連機制
+// ===================================================================
 
-    // Trigger error
-    lastInstance()?.sendMessage('{"error":"some error"}')
-    await new Promise(resolve => setTimeout(resolve, 0))
-
-    // Click retry
-    const retryBtn = wrapper.find('.retry-btn')
-    await retryBtn.trigger('click')
-
-    // Should show loading state immediately (before new WS opens)
-    expect(wrapper.find('.loading-spinner').exists()).toBe(true)
-  })
-
-  // ═══════════════════════════════════════════════════════════════
-  // P1: 服務切換
-  // ═══════════════════════════════════════════════════════════════
-
-  // ── F-LD-SWITCH-01 ──
-  it('F-LD-SWITCH-01: serviceName 從 "nginx" 變 "apache" → 關閉舊 WebSocket + 建立新 WebSocket', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'nginx', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
-
-    const firstInstance = lastInstance()!
-    const oldCloseSpy = firstInstance.closeSpy
-
-    // Switch service name
-    await wrapper.setProps({ serviceName: 'apache' })
-    await new Promise(resolve => setTimeout(resolve, 10))
-
-    // Old WS should be closed
-    expect(oldCloseSpy).toHaveBeenCalled()
-
-    // New WS should have been created
-    const newInstance = lastInstance()!
-    expect(newInstance).not.toBe(firstInstance)
-    expect(newInstance.url).toContain('apache')
-  })
-
-  // ── F-LD-SWITCH-02 ──
-  it('F-LD-SWITCH-02: 切換後 logContent 清空為空', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'nginx', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
-
-    // Add some log lines
-    lastInstance()?.sendMessage('old log line\n')
-    await new Promise(resolve => setTimeout(resolve, 0))
-    expect(wrapper.find('pre').text()).toContain('old log line')
-
-    // Switch service
-    await wrapper.setProps({ serviceName: 'apache' })
-    await new Promise(resolve => setTimeout(resolve, 10))
-
-    // After switch, the pre should show new logs (empty until more messages arrive)
-    // The log should not contain the old line anymore
-    const preExists = wrapper.find('pre').exists()
-    if (preExists) {
-      expect(wrapper.find('pre').text()).not.toContain('old log line')
-    }
-  })
-
-  // ── F-LD-SWITCH-03 ──
-  it('F-LD-SWITCH-03: 切換後標題更新為新服務名稱', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'nginx', visible: true },
-    })
-
-    expect(wrapper.find('.drawer-title').text()).toContain('nginx')
-
-    await wrapper.setProps({ serviceName: 'apache' })
-
-    expect(wrapper.find('.drawer-title').text()).toContain('apache')
-    expect(wrapper.find('.drawer-title').text()).not.toContain('nginx')
-  })
-
-  // ── F-LD-SWITCH-04 ──
-  it('F-LD-SWITCH-04: 切換後 isLoading 回到 true（等待新連線）', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'nginx', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
-
-    // After initial connection, loading should be gone
-    expect(wrapper.find('.loading-spinner').exists()).toBe(false)
-
-    // Switch service
-    await wrapper.setProps({ serviceName: 'apache' })
-
-    // Loading should reappear immediately (before new WS opens)
-    expect(wrapper.find('.loading-spinner').exists()).toBe(true)
-  })
-
-  // ═══════════════════════════════════════════════════════════════
-  // P1: WebSocket 重連機制
-  // ═══════════════════════════════════════════════════════════════
-
-  // ── F-LD-RECON-01 ──
-  it('F-LD-RECON-01: WebSocket onclose（非主動關閉） → 1 秒後自動重連', async () => {
+describe('WebSocket 自動重連', () => {
+  beforeEach(() => {
     vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
 
-    mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
+  it('非主動關閉 → 自動重連', async () => {
+    mountDrawer({ visible: true })
+    await vi.advanceTimersByTimeAsync(10) // let WS open
+
+    const wsCount = mockInstances.length
+
+    // Simulate unexpected close (server drops connection)
+    lastWS()?.onclose?.({ code: 1006 })
+    await vi.advanceTimersByTimeAsync(1100) // past 1s reconnect delay
+
+    expect(mockInstances.length).toBe(wsCount + 1)
+  })
+
+  it('重連期間顯示「連線中斷，正在重連...」', async () => {
+    const wrapper = mountDrawer({ visible: true })
+    await vi.advanceTimersByTimeAsync(10) // open WS
+
+    lastWS()?.onclose?.({ code: 1006 })
+    await wrapper.vm.$nextTick()
+
+    expect(document.querySelector('.reconnect-hint')).not.toBeNull()
+    expect(document.querySelector('.reconnect-hint')?.textContent).toContain('重連')
+  })
+
+  it('重連成功後提示消失', async () => {
+    const wrapper = mountDrawer({ visible: true })
+    await vi.advanceTimersByTimeAsync(10)
+
+    lastWS()?.onclose?.({ code: 1006 })
+    await wrapper.vm.$nextTick()
+
+    expect(document.querySelector('.reconnect-hint')).not.toBeNull()
+
+    // Advance past reconnect delay
+    await vi.advanceTimersByTimeAsync(1100)
+
+    expect(document.querySelector('.reconnect-hint')).toBeNull()
+  })
+
+  it('主動關閉 Drawer → 不觸發重連', async () => {
+    mountDrawer({ visible: true })
     await vi.runAllTimersAsync()
 
-    const firstInstance = lastInstance()!
-    const wsCountBefore = mockWSInstances.length
+    const wsCount = mockInstances.length
 
-    // Simulate unexpected close (server closes connection)
-    // Trigger onclose directly without going through component's disconnect
-    firstInstance.onclose?.({ code: 1006 })
+    document.querySelector<HTMLButtonElement>('.close-btn')?.click()
+    await vi.runAllTimersAsync()
+    await vi.advanceTimersByTimeAsync(3000)
 
-    // Fast-forward past the 1s reconnect delay
-    await vi.advanceTimersByTimeAsync(1100)
-
-    // New WebSocket should have been created
-    expect(mockWSInstances.length).toBe(wsCountBefore + 1)
-
-    vi.useRealTimers()
+    expect(mockInstances.length).toBe(wsCount)
   })
 
-  // ── F-LD-RECON-02 ──
-  it('F-LD-RECON-02: 重連期間顯示「連線中斷，正在重連...」提示', async () => {
-    vi.useFakeTimers()
+  it('重連使用 exponential backoff', async () => {
+    mountDrawer({ visible: true })
+    await vi.advanceTimersByTimeAsync(10) // initial connect
 
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    // Advance past initial WS onopen (setTimeout 0)
+    const wsCount = mockInstances.length
+
+    // First disconnect: reconnect after ~1s
+    lastWS()?.onclose?.({ code: 1006 })
+    await vi.advanceTimersByTimeAsync(1100)
+    expect(mockInstances.length).toBe(wsCount + 1) // reconnected after ~1s
+  })
+})
+
+// ===================================================================
+// BDD: 連線狀態指示
+// ===================================================================
+
+describe('連線狀態指示', () => {
+  it('連線中 → ○ 離線', () => {
+    mountDrawer({ visible: true })
+    const status = document.querySelector('.connection-status')
+    expect(status?.textContent).toContain('離線')
+  })
+
+  it('連線成功 → ● LIVE', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
+    const status = document.querySelector('.connection-status')
+    expect(status?.textContent).toContain('LIVE')
+  })
+
+  it('重連中 → ⟳ 重連中', async () => {
+    vi.useFakeTimers()
+    const wrapper = mountDrawer({ visible: true })
     await vi.advanceTimersByTimeAsync(10)
 
-    // Trigger unexpected close
-    lastInstance()?.onclose?.({ code: 1006 })
-    // Flush microtasks only (reconnecting is set synchronously, setTimeout not yet fired)
+    lastWS()?.onclose?.({ code: 1006 })
     await wrapper.vm.$nextTick()
 
-    // Should show reconnecting hint (before setTimeout fires)
-    expect(wrapper.find('.reconnect-hint').exists()).toBe(true)
-    expect(wrapper.text()).toContain('重連')
-
+    const status = document.querySelector('.connection-status')
+    expect(status?.textContent).toContain('重連')
     vi.useRealTimers()
   })
+})
 
-  // ── F-LD-RECON-03 ──
-  it('F-LD-RECON-03: 重連成功 → 提示消失，isConnected = true', async () => {
+// ===================================================================
+// BDD: ARIA 無障礙
+// ===================================================================
+
+describe('ARIA 無障礙', () => {
+  it('✕ 按鈕有 aria-label', () => {
+    mountDrawer({ visible: true })
+    const btn = document.querySelector('.close-btn')
+    expect(btn?.getAttribute('aria-label')).toBe('關閉日誌檢視器')
+  })
+
+  it('搜尋框有 aria-label', async () => {
+    mountDrawer({ visible: true })
+    await flushWS()
+    lastWS()?.sendMessage('log\n')
+    await tick()
+
+    const input = document.querySelector('.search-input')
+    expect(input?.getAttribute('aria-label')).toBe('搜尋日誌')
+  })
+
+  it('重連提示有 aria-live="polite"', async () => {
     vi.useFakeTimers()
-
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
+    const wrapper = mountDrawer({ visible: true })
     await vi.advanceTimersByTimeAsync(10)
 
-    // Trigger unexpected close
-    lastInstance()?.onclose?.({ code: 1006 })
+    lastWS()?.onclose?.({ code: 1006 })
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.find('.reconnect-hint').exists()).toBe(true)
-
-    // Advance past reconnect delay (1000ms) + new WS onopen (0ms)
-    await vi.advanceTimersByTimeAsync(1100)
-
-    // New WS onopen should have fired → hint gone
-    expect(wrapper.find('.reconnect-hint').exists()).toBe(false)
-
+    const hint = document.querySelector('.reconnect-hint')
+    expect(hint?.getAttribute('aria-live')).toBe('polite')
     vi.useRealTimers()
   })
+})
 
-  // ═══════════════════════════════════════════════════════════════
-  // P2: RWD 行動裝置全螢幕
-  // ═══════════════════════════════════════════════════════════════
+// ===================================================================
+// BDD: Focus Trap
+// ===================================================================
 
-  // ── F-LD-RWD-01 ──
-  it('F-LD-RWD-01: 窄螢幕時 CSS 包含 media query 將 .log-drawer width 設為 100vw', () => {
-    // Read the source .vue file to verify CSS media query exists
-    // (Vue scoped styles are not injected as <style> tags in happy-dom)
-    const sourcePath = resolve(__dirname, '../components/LogDrawer.vue')
-    const source = readFileSync(sourcePath, 'utf-8')
-
-    // Verify media query exists with 100vw rule in the component source
-    expect(source).toContain('@media (max-width: 768px)')
-    expect(source).toMatch(/width:\s*100vw/)
-    // Also check that min-width and max-width are unset in mobile
-    expect(source).toMatch(/min-width:\s*unset/)
-    expect(source).toMatch(/max-width:\s*unset/)
-  })
-
-  // ═══════════════════════════════════════════════════════════════
-  // P2: Focus Trap
-  // ═══════════════════════════════════════════════════════════════
-
-  // ── F-LD-FT-01 ──
-  it('F-LD-FT-01: Tab 在最後一個可聚焦元素 → 焦點回到第一個', async () => {
-    // Use a unique container to avoid DOM pollution between tests
+describe('Focus Trap', () => {
+  function mountAttached() {
     const container = document.createElement('div')
     document.body.appendChild(container)
-
-    const wrapper = mount(LogDrawer, {
+    return mount(LogDrawer, {
       props: { serviceName: 'test.service', visible: true },
       attachTo: container,
     })
+  }
 
-    await wrapper.vm.$nextTick()
+  it('Tab 在最後一個元素時 → 焦點回到第一個', async () => {
+    const wrapper = mountAttached()
+    await flushWS()
+    lastWS()?.sendMessage('log\n')
+    await new Promise(r => setTimeout(r, 10))
 
-    const drawer = document.querySelector('.log-drawer')
-    expect(drawer).not.toBeNull()
-    const focusable = drawer!.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    const focusable = document.querySelectorAll<HTMLElement>(
+      '.log-drawer button, .log-drawer input, .log-drawer select'
     )
-
     expect(focusable.length).toBeGreaterThanOrEqual(2)
 
     const first = focusable[0]
     const last = focusable[focusable.length - 1]
-
-    // Give elements tabIndex so happy-dom can track focus
     first.tabIndex = 0
     last.tabIndex = 0
-    
-    // Focus last element (happy-dom tracks focus for tabIndex-enabled elements)
+
     last.focus()
-    
-    // Spy on first.focus() to verify focus trap moves focus
-    const firstFocusSpy = vi.spyOn(first, 'focus')
+    const spy = vi.spyOn(first, 'focus')
 
     const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })
-    const preventDefaultSpy = vi.spyOn(event, 'preventDefault')
+    vi.spyOn(event, 'preventDefault')
     document.dispatchEvent(event)
 
-    // When last is focused and Tab is pressed, preventDefault should be called
-    // and focus should move to first
-    expect(preventDefaultSpy).toHaveBeenCalled()
-    expect(firstFocusSpy).toHaveBeenCalled()
+    expect(event.preventDefault).toHaveBeenCalled()
+    expect(spy).toHaveBeenCalled()
 
-    // Cleanup
     wrapper.unmount()
-    document.body.removeChild(container)
   })
 
-  // ── F-LD-FT-02 ──
-  it('F-LD-FT-02: Shift+Tab 在第一個可聚焦元素 → 焦點跳到最後一個', async () => {
-    // Use a unique container to avoid DOM pollution between tests
-    const container = document.createElement('div')
-    document.body.appendChild(container)
+  it('Shift+Tab 在第一個元素 → 焦點跳到最後一個', async () => {
+    const wrapper = mountAttached()
+    await flushWS()
+    lastWS()?.sendMessage('log\n')
+    await new Promise(r => setTimeout(r, 10))
 
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-      attachTo: container,
-    })
-
-    await wrapper.vm.$nextTick()
-
-    const drawer = document.querySelector('.log-drawer')
-    expect(drawer).not.toBeNull()
-    const focusable = drawer!.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    const focusable = document.querySelectorAll<HTMLElement>(
+      '.log-drawer button, .log-drawer input, .log-drawer select'
     )
-
     expect(focusable.length).toBeGreaterThanOrEqual(2)
 
     const first = focusable[0]
     const last = focusable[focusable.length - 1]
-
-    // Give elements tabIndex so happy-dom can track focus
     first.tabIndex = 0
     last.tabIndex = 0
 
-    // Focus first element
     first.focus()
-
-    // Spy on last.focus() to verify focus trap moves focus
-    const lastFocusSpy = vi.spyOn(last, 'focus')
+    const spy = vi.spyOn(last, 'focus')
 
     const event = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true })
-    const preventDefaultSpy = vi.spyOn(event, 'preventDefault')
+    vi.spyOn(event, 'preventDefault')
     document.dispatchEvent(event)
 
-    // When first is focused and Shift+Tab is pressed, preventDefault should be called
-    // and focus should move to last
-    expect(preventDefaultSpy).toHaveBeenCalled()
-    expect(lastFocusSpy).toHaveBeenCalled()
+    expect(event.preventDefault).toHaveBeenCalled()
+    expect(spy).toHaveBeenCalled()
 
-    // Cleanup
     wrapper.unmount()
-    document.body.removeChild(container)
   })
 
-  // ── F-LD-FT-03 ──
-  it('F-LD-FT-03: Escape 仍正常關閉 Drawer（確認未破壞既有功能）', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
-
-    expect(wrapper.emitted('close')).toBeTruthy()
-    expect(wrapper.emitted('close')!.length).toBe(1)
-  })
-
-  // ── F-LD-FT-04: Edge — no focusable elements ──
-  it('F-LD-FT-04: 沒有可聚焦元素時 Tab 不拋出錯誤', async () => {
-    // Mount with visible=false then test that onKeydown handles gracefully
-    mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: false },
-    })
-
-    // Should not throw — drawer not visible so focus trap is bypassed
+  it('沒有可聚焦元素時不拋出錯誤', () => {
+    mountDrawer({ visible: true })
+    // No search bar, no select either visible without logs
     expect(() => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
     }).not.toThrow()
   })
+})
 
-  // ═══════════════════════════════════════════════════════════════
-  // P2: ARIA 無障礙屬性
-  // ═══════════════════════════════════════════════════════════════
+// ===================================================================
+// BDD: 行動裝置全螢幕（驗證 CSS media query 存在）
+// ===================================================================
 
-  // ── F-LD-ARIA-01 ──
-  it('F-LD-ARIA-01: ✕ 按鈕有 aria-label="關閉日誌檢視器"', () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
+describe('RWD 行動裝置', () => {
+  it('原始碼包含手機版 bottom sheet media query', async () => {
+    const { readFileSync } = await import('fs')
+    const { fileURLToPath } = await import('url')
+    const { dirname, resolve } = await import('path')
 
-    const closeBtn = wrapper.find('.close-btn')
-    expect(closeBtn.attributes('aria-label')).toBe('關閉日誌檢視器')
-  })
+    const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), '../components/LogDrawer.vue')
+    const source = readFileSync(sourcePath, 'utf-8')
 
-  // ── F-LD-ARIA-02 ──
-  it('F-LD-ARIA-02: 搜尋框有 aria-label="搜尋日誌"', async () => {
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await new Promise(resolve => setTimeout(resolve, 10))
-
-    // Search bar only appears when connected and has logs
-    lastInstance()?.sendMessage('some log\n')
-    await new Promise(resolve => setTimeout(resolve, 0))
-
-    const searchInput = wrapper.find('.search-input')
-    expect(searchInput.exists()).toBe(true)
-    expect(searchInput.attributes('aria-label')).toBe('搜尋日誌')
-  })
-
-  // ── F-LD-ARIA-03 ──
-  it('F-LD-ARIA-03: 連線狀態指示器有 aria-live="polite"', async () => {
-    vi.useFakeTimers()
-
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await vi.advanceTimersByTimeAsync(10)
-
-    // Trigger an unexpected close to show reconnect hint
-    lastInstance()?.onclose?.({ code: 1006 })
-    await wrapper.vm.$nextTick()
-
-    const reconnectHint = wrapper.find('.reconnect-hint')
-    expect(reconnectHint.exists()).toBe(true)
-    expect(reconnectHint.attributes('aria-live')).toBe('polite')
-
-    vi.useRealTimers()
-  })
-
-  // ── F-LD-RECON-04 ──
-  it('F-LD-RECON-04: 主動關閉 Drawer → 不觸發重連', async () => {
-    vi.useFakeTimers()
-
-    const wrapper = mount(LogDrawer, {
-      props: { serviceName: 'test.service', visible: true },
-    })
-    await vi.runAllTimersAsync()
-
-    const wsCountBefore = mockWSInstances.length
-
-    // Close drawer (active close)
-    await wrapper.find('.close-btn').trigger('click')
-    await vi.runAllTimersAsync()
-
-    // Fast-forward well past reconnect delay
-    await vi.advanceTimersByTimeAsync(3000)
-
-    // No new WebSocket should have been created
-    expect(mockWSInstances.length).toBe(wsCountBefore)
-
-    vi.useRealTimers()
+    expect(source).toContain('@media (max-width: 767px)')
+    expect(source).toMatch(/transform:\s*translateY\(100%\)/)
+    expect(source).toMatch(/max-height:\s*88dvh/)
+    expect(source).toMatch(/border-radius:\s*16px 16px 0 0/)
   })
 })

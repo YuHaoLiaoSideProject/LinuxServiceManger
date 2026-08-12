@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A+ 最終設計 — Header 導航 + 帳號選單</title>
+<style>
+  :root {
+    --accent: #1a73e8;
+    --accent-hover: #1557b0;
+    --accent-light: rgba(26,115,232,0.12);
+    --success: #188038;
+    --danger: #c5221f;
+    --warning: #e37400;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --transition: 0.2s ease;
+  }
+  [data-theme="light"] {
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #f6f7f9;
+    --border: #e3e6ea;
+    --text: #374151;
+    --muted: #9ca3af;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,0.16);
+    --frame: #eef0f3;
+  }
+  [data-theme="dark"] {
+    --bg: #11191f;
+    --surface: #181e25;
+    --surface-2: #1e2530;
+    --border: #262e38;
+    --text: #c7c9ce;
+    --muted: #7d8590;
+    --shadow: 0 2px 16px rgba(0,0,0,0.45);
+    --shadow-lg: 0 12px 36px rgba(0,0,0,0.6);
+    --frame: #0d1318;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    transition: background var(--transition), color var(--transition);
+    padding: 2rem 1.25rem 4rem;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; }
+  h1 { font-size: 1.35rem; margin: 0; }
+  .sub { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+
+  .segmented { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 2px; }
+  .segmented button {
+    border: none; background: none; color: var(--muted); font-size: 0.85rem; padding: 0.45rem 0.9rem;
+    border-radius: 7px; cursor: pointer; transition: all var(--transition); font-weight: 500;
+  }
+  .segmented button:hover { color: var(--text); }
+  .segmented button.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+  .controls { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+
+  .frame {
+    background: var(--frame); border: 1px solid var(--border); border-radius: 14px;
+    padding: 2rem 1.5rem 2.5rem; margin-bottom: 1.5rem;
+  }
+  .browser-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 1.25rem; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; }
+  .dot:nth-child(1){ background:#f87171 } .dot:nth-child(2){ background:#fbbf24 } .dot:nth-child(3){ background:#34d399 }
+  .browser-url { flex: 1; max-width: 380px; margin-left: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.75rem; color: var(--muted); }
+  .elem-count { font-size: 0.72rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 0.2rem 0.7rem; white-space: nowrap; }
+  .elem-count b { color: var(--accent); }
+
+  .app-page { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); position: relative; transition: background var(--transition); }
+  .app-page.is-mobile { max-width: 390px; margin: 0 auto; }
+
+  /* ══════ Header ══════ */
+  .header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); }
+  .brand { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 1.15rem; font-weight: 700; color: var(--text); text-decoration: none; }
+  .header-right { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+  .conn { font-size: 0.72rem; color: var(--success); display: inline-flex; align-items: center; gap: 0.25rem; background: rgba(24,128,56,0.08); border: 1px solid rgba(24,128,56,0.25); padding: 0.2rem 0.55rem; border-radius: 20px; }
+
+  /* Nav group */
+  .nav-group { display: flex; align-items: center; gap: 0.35rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
+  .nav-item {
+    display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; font-weight: 500;
+    padding: 0.4rem 0.85rem; border-radius: 7px; border: none; background: none; color: var(--muted);
+    cursor: pointer; transition: all var(--transition); text-decoration: none; white-space: nowrap;
+  }
+  .nav-item:hover { color: var(--text); }
+  .nav-item.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+  .mobile-nav { display: none; }
+  .is-mobile .desktop-nav { display: none; }
+  .is-mobile .mobile-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+  .mobile-nav .nav-item { justify-content: center; padding: 0.55rem 0.5rem; }
+
+  /* Account menu */
+  .account { position: relative; }
+  .account-btn {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    font-size: 0.8rem; font-weight: 500; color: var(--text);
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px;
+    padding: 0.3rem 0.8rem 0.3rem 0.45rem; cursor: pointer; white-space: nowrap;
+    transition: all var(--transition);
+  }
+  .account-btn:hover { border-color: var(--accent); background: var(--accent-light); }
+  .account-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .account-btn .avatar {
+    width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700;
+  }
+  .account-btn .chevron { font-size: 0.6rem; color: var(--muted); transition: transform var(--transition); }
+  .account-btn.open .chevron { transform: rotate(180deg); }
+  .is-mobile .account-name { display: none; }
+  .is-mobile .account-btn { padding-right: 0.45rem; }
+
+  .menu-pop {
+    position: absolute; top: calc(100% + 8px); right: 0; z-index: 50;
+    min-width: 210px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow-lg); padding: 0.35rem; display: none;
+  }
+  .menu-pop.open { display: block; animation: pop 0.14s ease; }
+  @keyframes pop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  .menu-head { padding: 0.6rem 0.7rem 0.55rem; border-bottom: 1px solid var(--border); margin-bottom: 0.3rem; }
+  .menu-head .who { font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 0.4rem; }
+  .menu-head .meta { font-size: 0.7rem; color: var(--muted); margin-top: 0.15rem; }
+  .menu-item {
+    display: flex; align-items: center; gap: 0.5rem; width: 100%; text-align: left;
+    font-size: 0.82rem; padding: 0.55rem 0.7rem; border: none; background: none; color: var(--text);
+    border-radius: 8px; cursor: pointer; white-space: nowrap; transition: background var(--transition);
+  }
+  .menu-item:hover { background: var(--surface-2); }
+  .menu-item.danger { color: var(--danger); }
+  .menu-item.danger:hover { background: rgba(197,34,31,0.08); }
+  .menu-divider { height: 1px; background: var(--border); margin: 0.3rem 0.4rem; border: none; }
+
+  /* ══════ Page content ══════ */
+  .page-body { padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; }
+  .page-title { font-size: 1rem; font-weight: 600; margin: 0.25rem 0 0; display: flex; align-items: center; gap: 0.4rem; }
+  .toolbar { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+  .btn { font-size: 0.78rem; padding: 0.4rem 0.8rem; border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); transition: background var(--transition); display: inline-flex; align-items: center; gap: 0.3rem; }
+  .btn:hover { background: var(--border); }
+  .btn-accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-accent:hover { background: var(--accent-hover); }
+  .search-box { flex: 1; min-width: 160px; max-width: 320px; padding: 0.4rem 0.8rem; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.8rem; background: var(--surface-2); color: var(--muted); }
+  .stats { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+  .stat { flex: 1; min-width: 90px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 0.7rem 0.9rem; }
+  .stat b { display: block; font-size: 1.05rem; }
+  .stat span { font-size: 0.7rem; color: var(--muted); }
+  .fake-row { height: 44px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
+
+  /* ══════ Sections ══════ */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-top: 1.25rem; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem; }
+  .card h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+  .card p, .card li { color: var(--muted); font-size: 0.82rem; line-height: 1.7; margin: 0; }
+  .card ul { margin: 0; padding-left: 1.1rem; color: var(--muted); font-size: 0.82rem; line-height: 1.7; }
+  .tag { display: inline-block; font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 20px; vertical-align: 2px; }
+  .tag-rec { background: rgba(227,116,0,0.12); color: var(--warning); }
+  .tag-ok { background: rgba(24,128,56,0.1); color: var(--success); }
+
+  .hl { color: var(--accent); font-weight: 600; }
+  .note { font-size: 0.78rem; color: var(--muted); margin-top: 1rem; line-height: 1.7; }
+  .footnote { margin-top: 2rem; font-size: 0.72rem; color: var(--muted); border-top: 1px dashed var(--border); padding-top: 0.75rem; }
+
+  .anno-list { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.9rem; }
+  .anno { display: flex; gap: 0.55rem; font-size: 0.8rem; color: var(--muted); align-items: flex-start; }
+  .anno .num { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-light); color: var(--accent); font-size: 0.7rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+
+  .rejected { background: var(--surface); border: 1px dashed var(--border); border-radius: 12px; padding: 0.9rem 1.1rem; margin-top: 1rem; font-size: 0.8rem; color: var(--muted); line-height: 1.8; }
+  .rejected b { color: var(--text); }
+</style>
+</head>
+<body data-theme="light">
+<div class="wrap">
+
+  <div class="topbar">
+    <div>
+      <h1>🧭 A+ 最終設計 — Header 導航 + 帳號選單</h1>
+      <div class="sub">Linux Service Manager · 單一方案 mockup（點 👤 admin 開選單、點導航切頁面）</div>
+    </div>
+    <div class="controls">
+      <div class="segmented" id="devSwitch">
+        <button data-dev="desktop" class="active">🖥 Desktop</button>
+        <button data-dev="mobile">📱 Mobile</button>
+      </div>
+      <button class="segmented" id="themeToggle" style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:3px;">🌙</button>
+    </div>
+  </div>
+
+  <!-- ══════════ PREVIEW ══════════ -->
+  <div class="frame">
+    <div class="browser-bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="browser-url" id="urlBar">https://linux-service-manager/</span>
+      <span class="elem-count">Header 元素：<b>3 組</b>（品牌 / 導航 / 狀態+帳號）</span>
+    </div>
+
+    <div class="app-page" id="appPage">
+      <header class="header">
+        <a class="brand" href="#">🖥 Linux Service Manager</a>
+
+        <nav class="nav-group desktop-nav" aria-label="主導航">
+          <a class="nav-item active" data-nav="dash" href="#">🏠 Dashboard</a>
+          <a class="nav-item" data-nav="audit" href="#">📋 稽核紀錄</a>
+        </nav>
+        <nav class="mobile-nav" aria-label="主導航">
+          <a class="nav-item active" data-nav="dash" href="#">🏠 Dashboard</a>
+          <a class="nav-item" data-nav="audit" href="#">📋 稽核紀錄</a>
+        </nav>
+
+        <div class="header-right">
+          <span class="conn">🔗 已連線</span>
+          <div class="account">
+            <button class="account-btn" id="accountBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="accountMenu">
+              <span class="avatar">A</span><span class="account-name">admin</span><span class="chevron">▼</span>
+            </button>
+            <div class="menu-pop" id="accountMenu" role="menu">
+              <div class="menu-head">
+                <div class="who">👤 admin</div>
+                <div class="meta">已登入</div>
+              </div>
+              <button class="menu-item" role="menuitem">☀️ 切換主題</button>
+              <button class="menu-item" role="menuitem">🌐 切換語言</button>
+              <hr class="menu-divider">
+              <button class="menu-item danger" role="menuitem">🚪 登出</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="page-body" id="pageBody">
+        <!-- Dashboard content -->
+        <div id="page-dash">
+          <p class="page-title">🏠 Dashboard</p>
+          <div class="toolbar">
+            <span class="search-box">🔍 搜尋服務名稱...</span>
+            <button class="btn">🔄 重新整理</button>
+          </div>
+          <div class="stats">
+            <div class="stat"><b>42</b><span>總服務數</span></div>
+            <div class="stat"><b>38</b><span>執行中</span></div>
+            <div class="stat"><b>2</b><span>失敗</span></div>
+            <div class="stat"><b>128</b><span>今日操作</span></div>
+          </div>
+          <div class="fake-row"></div>
+          <div class="fake-row"></div>
+          <div class="fake-row"></div>
+        </div>
+        <!-- Audit content -->
+        <div id="page-audit" hidden>
+          <p class="page-title">📋 稽核紀錄</p>
+          <div class="toolbar">
+            <span class="search-box">🔍 搜尋使用者、動作、目標服務...</span>
+            <button class="btn btn-accent">⬇ 匯出 CSV</button>
+            <button class="btn">🔄 重新整理</button>
+          </div>
+          <div class="stats">
+            <div class="stat"><b>128</b><span>今日操作</span></div>
+            <div class="stat"><b>3</b><span>失敗</span></div>
+            <div class="stat"><b>12</b><span>登入</span></div>
+          </div>
+          <div class="fake-row"></div>
+          <div class="fake-row"></div>
+          <div class="fake-row"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ ANNOTATIONS ══════════ -->
+  <h2 style="font-size:1.05rem;margin:1.5rem 0 0;">✅ 設計重點</h2>
+  <div class="anno-list">
+    <div class="anno"><span class="num">1</span>Header 只剩 <span class="hl">品牌 → 導航 → 🔗 + 👤</span>：7 個元素 → 3 組，低頻動作（🌐☀️🚪）全收進帳號選單</div>
+    <div class="anno"><span class="num">2</span>語言/主題是<span class="hl">個人偏好</span>、登出是<span class="hl">帳號動作</span> — 全部掛在 👤 下語意才正確（⋮ 是 app 動作容器，放這些邏輯不對）</div>
+    <div class="anno"><span class="num">3</span>🔄 重新整理是<span class="hl">頁面動作</span> → 移到內容區 toolbar（Dashboard 搜尋列旁 / 稽核匯出列旁），動作就近發生在內容上</div>
+    <div class="anno"><span class="num">4</span>👤 觸發器有 <span class="hl">▾ 箭頭 + hover/focus 樣式</span>，明確表示「這是可點的選單，不是標籤」</div>
+    <div class="anno"><span class="num">5</span>選單三區塊：<span class="hl">資訊（admin）→ 偏好（主題/語言）→ 分隔線 → 危險動作（登出紅字）</span>，業界標準</div>
+    <div class="anno"><span class="num">6</span>Mobile：帳號名隱藏、只剩 <span class="hl">圓形頭像</span>（切 📱 看）；選單從右緣展開不溢出</div>
+  </div>
+
+  <!-- ══════════ CARDS ══════════ -->
+  <div class="cards">
+    <div class="card">
+      <h3>🎨 為什麼這樣分 <span class="tag tag-rec">核心原則</span></h3>
+      <p>「選單裡裝什麼」決定「入口長什麼樣」：</p>
+      <ul>
+        <li><b>關於使用者的事</b>（偏好/帳號）→ 👤 選單</li>
+        <li><b>關於頁面的事</b>（重新整理）→ 內容區 toolbar</li>
+        <li><b>關於系統的事</b>（連線狀態）→ 被動顯示、不可點</li>
+      </ul>
+      <p style="margin-top:0.5rem">每個元素都問「它是誰的事」，Header 自然只剩 3 組。</p>
+    </div>
+    <div class="card">
+      <h3>♿ 無障礙與細節 <span class="tag tag-ok">標準</span></h3>
+      <ul>
+        <li>真 <b>&lt;button&gt;</b> + dropdown（非 hover，touch 可用）</li>
+        <li><b>aria-haspopup / aria-expanded</b> + Escape / 點外部關閉</li>
+        <li>▾ 箭頭旋轉動畫、頭像用首字母（未來可換照片）</li>
+        <li>登出在分隔線下方 + 紅字 = danger zone，防誤按</li>
+        <li>選單項 icon + 文字（純 icon 難懂）</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>📱 Mobile 策略</h3>
+      <ul>
+        <li>導航變 <b>50/50 分割 tab</b>，拇指友善</li>
+        <li>帳號按鈕隱藏名字，只剩 <b>圓形頭像</b>（省空間）</li>
+        <li>🔗 連線狀態保留（被動資訊，即時可看）</li>
+        <li>Header 高度只有 1 行，不再佔掉第一屏</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="rejected">
+    <b>🚫 已評估、未採用：</b>
+    ⋮ + 👤 雙選單（多一個圖示、兩種容器要學，零收益）｜ 登出常駐外露（每 session 只用一次的按鈕）｜ 👤 維持左側被動標籤（只是裝飾，失去入口功能）｜ 全部塞進 ⋮（語言/主題語意歸屬錯誤）
+  </div>
+
+  <p class="note">
+    💡 <b>加值（選配）</b>：① Dashboard 統計列「今日操作」卡 → 點擊進稽核頁（mockup 已示範位置）；② 稽核頁有未讀新事件時在導航上顯示 <span style="color:var(--danger);font-weight:600;">紅點 badge</span>（需後端支援上次瀏覽時間戳）；③ 選單資訊區未來可加 email / 角色（後端有資料時）。
+  </p>
+
+  <p class="footnote">
+    使用專案現有設計語彙（emoji icon、--lms-accent #1a73e8、radius、Pico 色彩）。可互動：點 👤 admin 開關選單（Escape / 點外部關閉）、點導航切換 Dashboard / 稽核頁面內容、切 Desktop / Mobile、切深淺色。
+  </p>
+</div>
+
+<script>
+  const devSwitch = document.getElementById('devSwitch')
+  const appPage = document.getElementById('appPage')
+  const pageDash = document.getElementById('page-dash')
+  const pageAudit = document.getElementById('page-audit')
+  const urlBar = document.getElementById('urlBar')
+  let dev = 'desktop'
+  let theme = 'light'
+
+  devSwitch.addEventListener('click', e => {
+    const btn = e.target.closest('button'); if (!btn) return
+    dev = btn.dataset.dev
+    appPage.classList.toggle('is-mobile', dev === 'mobile')
+    devSwitch.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.dev === dev))
+  })
+  document.getElementById('themeToggle').addEventListener('click', () => {
+    theme = theme === 'light' ? 'dark' : 'light'
+    document.body.dataset.theme = theme
+    document.getElementById('themeToggle').textContent = theme === 'light' ? '🌙' : '☀️'
+  })
+
+  // nav switch
+  function setPage(nav) {
+    const isAudit = nav === 'audit'
+    pageDash.hidden = isAudit
+    pageAudit.hidden = !isAudit
+    urlBar.textContent = 'https://linux-service-manager/' + (isAudit ? 'audit' : '')
+    document.querySelectorAll('.nav-group, .mobile-nav').forEach(g => {
+      g.querySelectorAll('.nav-item').forEach(i => i.classList.toggle('active', i.dataset.nav === nav))
+    })
+  }
+  document.querySelectorAll('.nav-group, .mobile-nav').forEach(group => {
+    group.addEventListener('click', e => {
+      const item = e.target.closest('.nav-item'); if (!item) return
+      setPage(item.dataset.nav)
+    })
+  })
+
+  // account menu
+  const accountBtn = document.getElementById('accountBtn')
+  const accountMenu = document.getElementById('accountMenu')
+  accountBtn.addEventListener('click', e => {
+    e.stopPropagation()
+    const open = accountMenu.classList.toggle('open')
+    accountBtn.classList.toggle('open', open)
+    accountBtn.setAttribute('aria-expanded', String(open))
+  })
+  document.addEventListener('click', closeMenu)
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenu() })
+  function closeMenu() {
+    accountMenu.classList.remove('open')
+    accountBtn.classList.remove('open')
+    accountBtn.setAttribute('aria-expanded', 'false')
+  }
+</script>
+</body>
+</html>

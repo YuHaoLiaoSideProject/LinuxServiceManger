@@ -4,13 +4,13 @@ import type { Ref } from 'vue'
 export interface Toast {
   id: number
   message: string
-  type: 'success' | 'error'
+  type: 'success' | 'error' | 'warning'
 }
 
 const toasts: Ref<Toast[]> = ref([])
 let nextId = 0
 
-function showToast(message: string, type: 'success' | 'error' = 'success', duration = 3500) {
+function showToast(message: string, type: 'success' | 'error' | 'warning' = 'success', duration = 3500) {
   const id = nextId++
   toasts.value.push({ id, message, type })
   setTimeout(() => {

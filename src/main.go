@@ -7,11 +7,15 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
+	"linux-service-manager/internal/audit"
 	"linux-service-manager/internal/auth"
 	"linux-service-manager/internal/handler"
 	"linux-service-manager/internal/middleware"
+	"linux-service-manager/internal/monitor"
 	"linux-service-manager/internal/systemd"
+	"linux-service-manager/internal/websocket"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
@@ -30,14 +34,58 @@ func main() {
 		log.Fatalf("failed to open templates: %v", err)
 	}
 
-	h := handler.New(templates, &systemd.DefaultManager{})
+	auditMod := audit.New(audit.Config{
+		FilePath:      "/var/lib/linux-service-manager/audit.jsonl",
+		MaxFileSizeMB: 100,
+		RetentionDays: 90,
+	})
+	defer auditMod.Shutdown()
+
+	h := handler.New(templates, &systemd.DefaultManager{}, auditMod)
+
+	// Initialize WebSocket Hub for real-time status push
+	hub := websocket.NewHub()
+	if ttlStr := os.Getenv("SESSION_TTL"); ttlStr != "" {
+		if ttl, err := time.ParseDuration(ttlStr); err == nil && ttl > 0 {
+			hub.SessionTTL = ttl
+			log.Printf("WebSocket session TTL set to %v (from SESSION_TTL env)", ttl)
+		} else {
+			log.Printf("WARNING: invalid SESSION_TTL=%q, using default %v", ttlStr, hub.SessionTTL)
+		}
+	}
+	hub.OnSnapshot = func() []websocket.ServiceSnapshot {
+		services, err := (&systemd.DefaultManager{}).ListServices()
+		if err != nil {
+			return nil
+		}
+		snapshots := make([]websocket.ServiceSnapshot, len(services))
+		for i, s := range services {
+			snapshots[i] = websocket.ServiceSnapshot{
+				Name:          s.Name,
+				Active:        s.Active,
+				Sub:           s.Sub,
+				UnitFileState: s.UnitFileState,
+			}
+		}
+		return snapshots
+	}
+	go hub.Run()
+
+	// Start service status monitor (D-Bus or polling fallback)
+	go monitor.StartMonitor(hub, &systemd.DefaultManager{})
+
+	// Attach hub to handler
+	h.Hub = hub
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
 
 	// JSON API (Vue SPA backend) — public
-	r.Post("/api/v1/login", h.HandleLoginJSON)
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RateLimit(5, time.Minute)) // 5 attempts per minute per IP
+		r.Post("/api/v1/login", h.HandleLoginJSON)
+	})
 	r.Post("/api/v1/logout", h.HandleLogoutJSON)
 	r.Get("/api/v1/session", h.HandleSessionCheck)
 
@@ -50,7 +98,11 @@ func main() {
 		r.Post("/api/v1/services/{name}/restart", h.HandleRestartJSON)
 		r.Post("/api/v1/services/{name}/enable", h.HandleEnableJSON)
 		r.Post("/api/v1/services/{name}/disable", h.HandleDisableJSON)
+		r.Post("/api/v1/services/batch", h.HandleBatchServices)
 		r.Get("/api/v1/services/{name}/logs/ws", h.HandleServiceLogsWS)
+		r.Get("/api/v1/ws", h.HandleStatusWS)
+		r.Get("/api/v1/audit", h.HandleAuditQuery)
+		r.Get("/api/v1/audit/export", h.HandleAuditExport)
 	})
 
 	// HTML routes (legacy htmx) — protected

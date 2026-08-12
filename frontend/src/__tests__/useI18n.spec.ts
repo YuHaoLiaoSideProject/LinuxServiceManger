@@ -34,7 +34,7 @@ describe('useI18n — 多語言', () => {
     expect(t('stats.total')).toBe('總服務數')
     expect(t('stats.running')).toBe('執行中')
     expect(t('search.placeholder')).toBe('搜尋服務名稱...')
-    expect(t('action.start')).toBe('Start')
+    expect(t('action.start')).toBe('啟動')
   })
 
   it('t() 回傳 en 翻譯', async () => {
@@ -142,9 +142,9 @@ describe('列表相關語系 keys', () => {
     expect(t('empty.state')).toBe('找不到任何服務，或無法連線至 systemd。')
 
     // 操作按鈕
-    expect(t('action.start')).toBe('Start')
-    expect(t('action.stop')).toBe('Stop')
-    expect(t('action.restart')).toBe('Restart')
+    expect(t('action.start')).toBe('啟動')
+    expect(t('action.stop')).toBe('停止')
+    expect(t('action.restart')).toBe('重啟')
 
     // 鎖定相關
     expect(t('locked.badge')).toBe('🔒 已鎖定')
@@ -155,7 +155,7 @@ describe('列表相關語系 keys', () => {
     expect(t('tab.system')).toBe('系統服務')
 
     // 標頭
-    expect(t('header.refresh')).toBe('🔄 重新整理')
+    expect(t('header.refresh')).toBe('重新整理')
     expect(t('header.logout')).toBe('🚪 登出')
 
     // 表格欄位標頭
@@ -198,7 +198,7 @@ describe('列表相關語系 keys', () => {
     expect(t('tab.system')).toBe('System Services')
 
     // Header
-    expect(t('header.refresh')).toBe('🔄 Refresh')
+    expect(t('header.refresh')).toBe('Refresh')
     expect(t('header.logout')).toBe('🚪 Logout')
 
     // Column headers
@@ -219,7 +219,7 @@ describe('列表相關語系 keys', () => {
     expect(t('empty.state')).toBe('找不到任何服務，或無法連線至 systemd。')
     expect(t('locked.badge')).toBe('🔒 已鎖定')
     expect(t('tab.my')).toBe('我的服務')
-    expect(t('action.stop')).toBe('Stop')
+    expect(t('action.stop')).toBe('停止')
 
     // 切到 en
     setLang('en')
@@ -254,6 +254,7 @@ describe('所有 component 用到的 key 皆存在於翻譯檔（不存在 = 紅
     // 操作按鈕
     'action.start', 'action.stop', 'action.restart',
     'action.start.aria', 'action.stop.aria', 'action.restart.aria',
+    'action.logs', 'action.logs.aria',
     // 鎖定
     'locked.badge', 'locked.tooltip',
     // 頁籤
@@ -292,9 +293,11 @@ describe('所有 component 用到的 key 皆存在於翻譯檔（不存在 = 紅
     'search.clear.aria': '清除搜尋內容',
     'search.clear.title': '清除搜尋',
     'empty.state': '找不到任何服務，或無法連線至 systemd。',
-    'action.start': 'Start',
-    'action.stop': 'Stop',
-    'action.restart': 'Restart',
+    'action.start': '啟動',
+    'action.stop': '停止',
+    'action.restart': '重啟',
+    'action.logs': '日誌',
+    'action.logs.aria': '查看 {name} 日誌',
     'action.start.aria': '啟動 {name}',
     'action.stop.aria': '停止 {name}',
     'action.restart.aria': '重啟 {name}',
@@ -302,7 +305,7 @@ describe('所有 component 用到的 key 皆存在於翻譯檔（不存在 = 紅
     'locked.tooltip': '此服務受保護，無法直接操作。設定 UNLOCKED_SERVICES 環境變數解鎖。',
     'tab.my': '我的服務',
     'tab.system': '系統服務',
-    'header.refresh': '🔄 重新整理',
+    'header.refresh': '重新整理',
     'header.logout': '🚪 登出',
     'header.refresh.aria': '重新整理',
     'header.logout.aria': '登出',
@@ -379,11 +382,13 @@ describe('所有 component 用到的 key 皆存在於翻譯檔（不存在 = 紅
     'action.start.aria': 'Start {name}',
     'action.stop.aria': 'Stop {name}',
     'action.restart.aria': 'Restart {name}',
+    'action.logs': 'Logs',
+    'action.logs.aria': 'View logs for {name}',
     'locked.badge': '🔒 Locked',
     'locked.tooltip': 'This service is protected. Set the UNLOCKED_SERVICES environment variable to unlock.',
     'tab.my': 'My Services',
     'tab.system': 'System Services',
-    'header.refresh': '🔄 Refresh',
+    'header.refresh': 'Refresh',
     'header.logout': '🚪 Logout',
     'header.refresh.aria': 'Refresh',
     'header.logout.aria': 'Logout',

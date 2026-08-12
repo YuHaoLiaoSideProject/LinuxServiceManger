@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { setupApiMocks, loginViaUI, MOCK_SERVICES, getServiceRow } from './auth.setup'
+import { setupApiMocks, loginViaUI, MOCK_SERVICES, getServiceRow, toggleLang } from './auth.setup'
 
 /**
  * 006 — RWD 行動版 Card Layout 驗證 E2E Tests
@@ -51,7 +51,7 @@ async function assertAllDataLabelsVisible(page: any) {
 test.describe('Scenario 1: 桌面版完整表格', () => {
   test.use({ viewport: { width: 1280, height: 800 } })
 
-  test('thead 應可見，包含六個欄位標頭', async ({ page }) => {
+  test('thead 應可見，包含七個欄位標頭（含 checkbox 欄）', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
@@ -59,12 +59,12 @@ test.describe('Scenario 1: 桌面版完整表格', () => {
     await expect(thead).toBeVisible()
 
     const headers = thead.locator('th')
-    await expect(headers).toHaveCount(6)
+    await expect(headers).toHaveCount(7)
 
-    // 確認常見欄位存在
-    await expect(headers.nth(0)).toContainText('Name')
-    await expect(headers.nth(1)).toContainText('Load')
-    await expect(headers.nth(2)).toContainText('Active')
+    // col-check(0) + Name(1) + Load(2) + Active(3) + Sub(4) + AutoStart(5) + Actions(6)
+    await expect(headers.nth(1)).toContainText('Name')
+    await expect(headers.nth(2)).toContainText('Load')
+    await expect(headers.nth(3)).toContainText('Active')
   })
 
   test('td 元素應該是 table-cell display', async ({ page }) => {
@@ -142,7 +142,7 @@ test.describe('Scenario 3: 手機版 Card Layout', () => {
     await expect(thead).toBeHidden()
   })
 
-  test('tr 應為 display: block，四周有 card 樣式', async ({ page }) => {
+  test('tr 應為 display: grid（卡片內 4 列 grid 重排）', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
@@ -150,7 +150,7 @@ test.describe('Scenario 3: 手機版 Card Layout', () => {
     const display = await tr.evaluate((el: Element) =>
       window.getComputedStyle(el).display,
     )
-    expect(display).toBe('block')
+    expect(display).toBe('grid')
 
     // 應有 border-radius 表示 card 樣式
     const borderRadius = await tr.evaluate((el: Element) =>
@@ -159,11 +159,39 @@ test.describe('Scenario 3: 手機版 Card Layout', () => {
     expect(borderRadius).not.toBe('0px')
   })
 
+  test('卡片標頭：Name 與 Status 在同一列（grid 重排）', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const nameCell = page.locator('td[data-label="Name"]').first()
+    const statusCell = page.locator('td[data-label="Active"]').first()
+    const nameBox = await nameCell.boundingBox()
+    const statusBox = await statusCell.boundingBox()
+    expect(nameBox && statusBox).toBeTruthy()
+    // 同一水平線（y 座標相近）
+    expect(Math.abs(nameBox!.y - statusBox!.y)).toBeLessThan(4)
+    // Name 在左、Status 在右
+    expect(statusBox!.x).toBeGreaterThan(nameBox!.x)
+  })
+
+  test('Status 以 pill 呈現（radius 20px、淡底、右對齊）', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const status = page.locator('td[data-label="Active"] .status-active').first()
+    await expect(status).toBeVisible()
+    const radius = await status.evaluate((el: Element) =>
+      window.getComputedStyle(el).borderRadius,
+    )
+    expect(radius).toBe('20px')
+  })
+
   test('td 應為 display: flex，左右排列（label + value）', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
-    const td = page.locator('.table-wrapper table td').first()
+    // 用可見的 Name cell（col-check 在手機版是 display:none）
+    const td = page.locator('td[data-label="Name"]').first()
     const display = await td.evaluate((el: Element) =>
       window.getComputedStyle(el).display,
     )
@@ -228,7 +256,7 @@ test.describe('Scenario 3: 手機版 Card Layout', () => {
 test.describe('Scenario 4: 手機版 Actions 按鈕', () => {
   test.use({ viewport: { width: 375, height: 812 } })
 
-  test('actions 區塊應為 flex-direction: column', async ({ page }) => {
+  test('actions 區塊應為 flex-wrap，primary 與 secondary 同一列', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
@@ -236,7 +264,64 @@ test.describe('Scenario 4: 手機版 Actions 按鈕', () => {
     const flexDir = await actions.evaluate((el: Element) =>
       window.getComputedStyle(el).flexDirection,
     )
-    expect(flexDir).toBe('column')
+    expect(flexDir).toBe('row')
+    const flexWrap = await actions.evaluate((el: Element) =>
+      window.getComputedStyle(el).flexWrap,
+    )
+    expect(flexWrap).toBe('wrap')
+  })
+
+  test('primary（Stop）全寬色塊，secondary（Restart/Logs）48px 圖示按鈕', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const nginxRow = getServiceRow(page, 'nginx.service')
+    // Primary Stop：flex 撐滿 → 寬 > 120px，danger 色底
+    const stopBtn = nginxRow.locator('.actions button.btn-act-stop')
+    await expect(stopBtn).toBeVisible()
+    const stopW = await stopBtn.evaluate((el: Element) =>
+      window.getComputedStyle(el).width,
+    )
+    expect(parseFloat(stopW)).toBeGreaterThan(120)
+    // Background 使用 Pico outline secondary，為透明底（非 danger 紅色）
+    const stopBg = await stopBtn.evaluate((el: Element) =>
+      window.getComputedStyle(el).backgroundColor,
+    )
+    expect(stopBg).toBe('rgba(0, 0, 0, 0)')
+
+    // Secondary Restart / Logs：48px 圖示按鈕
+    const restartBtn = nginxRow.locator('.actions button.btn-act-restart')
+    const logsBtn = nginxRow.locator('.actions button.btn-act-logs')
+    for (const btn of [restartBtn, logsBtn]) {
+      const w = await btn.evaluate((el: Element) =>
+        window.getComputedStyle(el).width,
+      )
+      expect(parseFloat(w)).toBeGreaterThanOrEqual(44)
+      expect(parseFloat(w)).toBeLessThanOrEqual(52)
+    }
+    // Secondary 與 primary 同一列（y 座標一致）
+    const stopBox = await stopBtn.boundingBox()
+    const restartBox = await restartBtn.boundingBox()
+    expect(stopBox && restartBox).toBeTruthy()
+    expect(Math.abs(stopBox!.y - restartBox!.y)).toBeLessThan(4)
+  })
+
+  test('locked 服務：badge 撐滿 + Logs 靠右，維持單列', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    await page.locator('#tab-system').click()
+    const sshdRow = getServiceRow(page, 'sshd.service')
+    const badge = sshdRow.locator('.actions .locked-badge')
+    await expect(badge).toBeVisible()
+    const logsBtn = sshdRow.locator('.actions button.btn-act-logs')
+    const badgeBox = await badge.boundingBox()
+    const logsBox = await logsBtn.boundingBox()
+    expect(badgeBox && logsBox).toBeTruthy()
+    // 同一列
+    expect(Math.abs(badgeBox!.y - logsBox!.y)).toBeLessThan(4)
+    // Logs 在右側
+    expect(logsBox!.x).toBeGreaterThan(badgeBox!.x)
   })
 
   test('actions 按鈕應全寬顯示', async ({ page }) => {
@@ -315,6 +400,17 @@ test.describe('Scenario 5: 手機版 Toolbar 佈局', () => {
     )
     expect(parseFloat(minHeight)).toBeGreaterThanOrEqual(44)
   })
+
+  test('search input 為 pill 外型（radius 20px）', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const input = page.locator('.toolbar .search-wrap input')
+    const radius = await input.evaluate((el: Element) =>
+      window.getComputedStyle(el).borderRadius,
+    )
+    expect(radius).toBe('20px')
+  })
 })
 
 // ── Scenario 6: data-label 語系切換 ────────────────────────────
@@ -349,7 +445,7 @@ test.describe('Scenario 6: 手機版 data-label 語系切換', () => {
     await loginViaUI(page)
 
     // Switch to zh-TW
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
 
     const row = getServiceRow(page, 'nginx.service')
     await expect(row.locator('td[data-label="名稱"]')).toBeVisible()
@@ -364,7 +460,7 @@ test.describe('Scenario 6: 手機版 data-label 語系切換', () => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
 
     const nameCell = page.locator('td[data-label="名稱"]').first()
     const content = await getBeforeContent(nameCell)
@@ -376,8 +472,8 @@ test.describe('Scenario 6: 手機版 data-label 語系切換', () => {
     await loginViaUI(page)
 
     // zh-TW → en → zh-TW → en
-    await page.locator('.lang-toggle').click()
-    await page.locator('.lang-toggle').click()
+    await toggleLang(page)
+    await toggleLang(page)
 
     const row = getServiceRow(page, 'nginx.service')
     await expect(row.locator('td[data-label="Name"]')).toBeVisible()
@@ -390,7 +486,7 @@ test.describe('Scenario 6: 手機版 data-label 語系切換', () => {
 test.describe('Scenario 7: 超小手機精簡佈局', () => {
   test.use({ viewport: { width: 320, height: 568 } })
 
-  test('card padding 更小 (< 0.75rem)', async ({ page }) => {
+  test('card padding 更小 (< 0.875rem)', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
@@ -399,19 +495,19 @@ test.describe('Scenario 7: 超小手機精簡佈局', () => {
       window.getComputedStyle(el).padding,
     )
     const paddingTop = parseFloat(padding.split(' ')[0])
-    expect(paddingTop).toBeLessThan(12) // 0.75rem = 12px
+    expect(paddingTop).toBeLessThan(14) // 0.85rem = 13.6px
   })
 
-  test('td font-size 縮小 (~0.82rem)', async ({ page }) => {
+  test('td font-size 縮小 (~0.9375rem)', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
-    const td = page.locator('.table-wrapper table td').first()
+    const td = page.locator('.table-wrapper table td[data-label="Load"]').first()
     const fontSize = await td.evaluate((el: Element) =>
       window.getComputedStyle(el).fontSize,
     )
     const sizePx = parseFloat(fontSize)
-    expect(sizePx).toBeLessThanOrEqual(14) // ~0.875rem = 14px
+    expect(sizePx).toBeLessThanOrEqual(16) // ~0.9375rem = 15px
   })
 
   test('actions 按鈕 min-height 至少 44px', async ({ page }) => {
@@ -473,6 +569,261 @@ test.describe('Scenario 8: 手機版特殊狀態', () => {
   })
 })
 
+// ── Scenario 11: 平板操作欄排版對齊 ──────────────────────────
+
+test.describe('Scenario 11: 平板操作欄 grid 排版對齊', () => {
+  test.use({ viewport: { width: 900, height: 800 } })
+
+  test('actions 應為 grid 佈局，3 欄', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const actions = page.locator('.actions').first()
+    const display = await actions.evaluate((el: Element) =>
+      window.getComputedStyle(el).display,
+    )
+    expect(display).toBe('grid')
+
+    const cols = await actions.evaluate((el: Element) =>
+      window.getComputedStyle(el).gridTemplateColumns,
+    )
+    expect(cols.split(' ').length).toBe(3)
+  })
+
+  test('每個 row 操作欄都有 3 個 action-slot', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const rows = page.locator('#service-table-body tr')
+    const count = await rows.count()
+
+    for (let i = 0; i < count; i++) {
+      const slots = rows.nth(i).locator('.action-slot')
+      await expect(slots).toHaveCount(3)
+    }
+  })
+
+  test('不同 row 的第一個 slot X 座標一致', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const rows = page.locator('#service-table-body tr')
+    const count = await rows.count()
+    const firstSlotX: number[] = []
+
+    for (let i = 0; i < count; i++) {
+      const slot = rows.nth(i).locator('.action-slot').first()
+      const box = await slot.boundingBox()
+      if (box) firstSlotX.push(box.x)
+    }
+
+    expect(firstSlotX.length).toBeGreaterThan(1)
+    const max = Math.max(...firstSlotX)
+    const min = Math.min(...firstSlotX)
+    expect(max - min).toBeLessThanOrEqual(2)
+  })
+
+  test('名稱欄寬度為 30%', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    // col-check 是 nth(0)，Name 是 nth(1)
+    const nameTh = page.locator('thead th').nth(1)
+    const width = await nameTh.evaluate((el: Element) =>
+      window.getComputedStyle(el).width,
+    )
+    const widthPx = parseFloat(width)
+    expect(widthPx).toBeGreaterThan(240)
+    expect(widthPx).toBeLessThan(300)
+  })
+
+  test('操作欄寬度為 22%', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const actionsTh = page.locator('thead th').nth(6)
+    const width = await actionsTh.evaluate((el: Element) =>
+      window.getComputedStyle(el).width,
+    )
+    const widthPx = parseFloat(width)
+    expect(widthPx).toBeGreaterThan(170)
+    expect(widthPx).toBeLessThan(220)
+  })
+
+  test('鎖定服務的 Logs 按鈕與其他 row 的 Logs 按鈕 X 位置一致', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const nginxRow = getServiceRow(page, 'nginx.service')
+    const nginxLogs = nginxRow.locator('.action-slot').nth(2).locator('button')
+    const nginxBox = await nginxLogs.boundingBox()
+
+    await page.locator('#tab-system').click()
+
+    const sshdRow = getServiceRow(page, 'sshd.service')
+    const sshdLogs = sshdRow.locator('.action-slot').nth(2).locator('button')
+    const sshdBox = await sshdLogs.boundingBox()
+
+    if (nginxBox && sshdBox) {
+      expect(Math.abs(nginxBox.x - sshdBox.x)).toBeLessThanOrEqual(2)
+    }
+  })
+})
+
+
+// ── Scenario 12: 桌面版操作欄排版對齊 ──────────────────────────
+
+test.describe('Scenario 12: 桌面版操作欄 grid 排版對齊', () => {
+  test.use({ viewport: { width: 1280, height: 800 } })
+
+  test('actions 應為 grid 佈局，3 欄', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const actions = page.locator('.actions').first()
+    const display = await actions.evaluate((el: Element) =>
+      window.getComputedStyle(el).display,
+    )
+    expect(display).toBe('grid')
+
+    const cols = await actions.evaluate((el: Element) =>
+      window.getComputedStyle(el).gridTemplateColumns,
+    )
+    expect(cols.split(' ').length).toBe(3)
+  })
+
+  test('每個 row 都有 3 個 action-slot', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const rows = page.locator('#service-table-body tr')
+    const count = await rows.count()
+
+    for (let i = 0; i < count; i++) {
+      await expect(rows.nth(i).locator('.action-slot')).toHaveCount(3)
+    }
+  })
+
+  test('不同 row 的 slot 水平位置一致', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const rows = page.locator('#service-table-body tr')
+    const count = await rows.count()
+    const firstSlotX: number[] = []
+    const lastSlotX: number[] = []
+
+    for (let i = 0; i < count; i++) {
+      const slots = rows.nth(i).locator('.action-slot')
+      const first = await slots.first().boundingBox()
+      const last = await slots.nth(2).boundingBox()
+      if (first) firstSlotX.push(first.x)
+      if (last) lastSlotX.push(last.x + last.width)
+    }
+
+    // All first slots at same X
+    expect(Math.max(...firstSlotX) - Math.min(...firstSlotX)).toBeLessThanOrEqual(2)
+    // All last slots (right edge) at same X
+    expect(Math.max(...lastSlotX) - Math.min(...lastSlotX)).toBeLessThanOrEqual(2)
+  })
+
+  test('桌面板按鈕 label 應可見', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const btnLabel = page.locator('.actions button .btn-label').first()
+    const display = await btnLabel.evaluate((el: Element) =>
+      window.getComputedStyle(el).display,
+    )
+    expect(display).not.toBe('none')
+  })
+
+  test('鎖定服務 slot 2 為空但保留空間，Logs 仍在 slot 3', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    await page.locator('#tab-system').click()
+
+    const sshdRow = getServiceRow(page, 'sshd.service')
+    const slots = sshdRow.locator('.action-slot')
+    await expect(slots).toHaveCount(3)
+
+    // Slot 1: locked badge
+    await expect(slots.nth(0).locator('.locked-badge')).toBeVisible()
+    // Slot 2: empty (no button)
+    await expect(slots.nth(1).locator('button')).toHaveCount(0)
+    // Slot 3: Logs button
+    await expect(slots.nth(2).locator('button')).toBeVisible()
+  })
+})
+
+
+// ── Scenario 13: 手機版設計提案排版（docs/uiux/design-proposal-mobile.html）──
+
+test.describe('Scenario 13: 手機版設計提案排版', () => {
+  test.use({ viewport: { width: 375, height: 812 } })
+
+  test('Tabs 為 segmented control（grid、active 填滿 accent）', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const tabs = page.locator('.tabs-bar')
+    const display = await tabs.evaluate((el: Element) =>
+      window.getComputedStyle(el).display,
+    )
+    expect(display).toBe('grid')
+
+    const activeBtn = page.locator('.tab-btn.active')
+    await expect(activeBtn).toHaveCount(1)
+    const bg = await activeBtn.evaluate((el: Element) =>
+      window.getComputedStyle(el).backgroundColor,
+    )
+    expect(bg).toContain('26, 115, 232') // --lms-accent #1a73e8
+
+    const radius = await activeBtn.evaluate((el: Element) =>
+      window.getComputedStyle(el).borderRadius,
+    )
+    expect(radius).toBe('9px')
+  })
+
+  test('Header 手機版為 sticky + 品牌列/導航列兩列', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const header = page.locator('.app-header')
+    const position = await header.evaluate((el: Element) =>
+      window.getComputedStyle(el).position,
+    )
+    expect(position).toBe('sticky')
+
+    // 品牌與帳號同一列（比較垂直中心；兩者高度不同但應同列居中）
+    const brand = page.locator('.app-header-left')
+    const right = page.locator('.app-header-right')
+    const brandBox = await brand.boundingBox()
+    const rightBox = await right.boundingBox()
+    expect(brandBox && rightBox).toBeTruthy()
+    const brandCenter = brandBox!.y + brandBox!.height / 2
+    const rightCenter = rightBox!.y + rightBox!.height / 2
+    expect(Math.abs(brandCenter - rightCenter)).toBeLessThan(4)
+
+    // 導航列在品牌下方、全寬
+    const nav = page.locator('.nav-group')
+    const navBox = await nav.boundingBox()
+    expect(navBox!.y).toBeGreaterThan(brandBox!.y + brandBox!.height - 2)
+  })
+
+  test('Stat 卡片圖示為 40px 色塊方塊', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const icon = page.locator('.stat-card .stat-icon').first()
+    const box = await icon.boundingBox()
+    expect(box!.width).toBeGreaterThanOrEqual(38)
+    expect(box!.height).toBeGreaterThanOrEqual(38)
+  })
+})
+
+
 // ── Scenario 9: 響應式切換（resize） ────────────────────────────
 
 test.describe('Scenario 9: 響應式即時切換', () => {
@@ -491,8 +842,8 @@ test.describe('Scenario 9: 響應式即時切換', () => {
     // Mobile: thead hidden
     await expect(page.locator('.table-wrapper table thead')).toBeHidden()
 
-    // td should be block/flex
-    const td = page.locator('.table-wrapper table td').first()
+    // td should be flex（用可見的 Name cell）
+    const td = page.locator('td[data-label="Name"]').first()
     const display = await td.evaluate((el: Element) =>
       window.getComputedStyle(el).display,
     )

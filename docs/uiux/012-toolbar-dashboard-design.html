@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard Toolbar 設計規格 — 服務過濾 + 批次操作</title>
+<style>
+/* ════════════════════════════════════════════════════════════
+   設計 Token（對應前端 --lms-* 變數）
+   ════════════════════════════════════════════════════════════ */
+:root {
+  --accent: #1a73e8; --accent-hover: #1557b0; --accent-light: rgba(26,115,232,0.12);
+  --success: #188038; --success-light: #e6f4ea; --success-border: #a8dab5;
+  --danger: #c5221f; --danger-light: #fce8e6; --danger-border: #f5c6c2;
+  --warning: #e37400; --warning-light: #fff4e5;
+  --radius: 10px; --radius-sm: 6px; --transition: 0.2s ease;
+  --h: 36px; --h-mobile: 44px; --fs: 0.875rem;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+[data-theme="light"] {
+  --bg: #ffffff; --surface: #ffffff; --surface-2: #f6f7f9; --surface-3: #eef0f3;
+  --border: #e3e6ea; --text: #374151; --muted: #9ca3af;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08); --shadow-lg: 0 12px 32px rgba(0,0,0,0.16);
+  --frame: #eef0f3;
+}
+[data-theme="dark"] {
+  --bg: #11191f; --surface: #181e25; --surface-2: #1e2530; --surface-3: #232c38;
+  --border: #262e38; --text: #c7c9ce; --muted: #7d8590;
+  --shadow: 0 2px 16px rgba(0,0,0,0.45); --shadow-lg: 0 12px 36px rgba(0,0,0,0.6);
+  --frame: #0d1318;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  background: var(--bg); color: var(--text); transition: background var(--transition), color var(--transition);
+  padding: 2rem 1.25rem 4rem;
+}
+.wrap { max-width: 1120px; margin: 0 auto; }
+.topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; }
+h1 { font-size: 1.35rem; margin: 0; }
+.sub { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+.controls { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.segmented { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 2px; }
+.segmented button { border: none; background: none; color: var(--muted); font-size: 0.85rem; padding: 0.45rem 0.9rem; border-radius: 7px; cursor: pointer; transition: all var(--transition); font-weight: 500; }
+.segmented button:hover { color: var(--text); }
+.segmented button.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+
+.frame { background: var(--frame); border: 1px solid var(--border); border-radius: 14px; padding: 1.6rem 1.5rem 1.8rem; margin-bottom: 1.5rem; }
+.frame h2 { margin: 0 0 0.25rem; font-size: 1.1rem; }
+.frame .fsub { color: var(--muted); font-size: 0.82rem; margin: 0 0 1rem; line-height: 1.6; }
+.browser-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 1rem; }
+.bdot { width: 11px; height: 11px; border-radius: 50%; }
+.bdot:nth-child(1){ background:#f87171 } .bdot:nth-child(2){ background:#fbbf24 } .bdot:nth-child(3){ background:#34d399 }
+.browser-url { flex: 1; max-width: 420px; margin-left: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.75rem; color: var(--muted); }
+.elem-count { font-size: 0.72rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 0.2rem 0.7rem; white-space: nowrap; }
+.elem-count b { color: var(--accent); }
+
+.app-page { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); transition: background var(--transition); overflow: hidden; }
+.app-page.is-mobile { max-width: 390px; margin: 0 auto; }
+.table-skel { padding: 0.9rem 1rem; }
+.row { height: 34px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px; }
+.row:last-child { margin-bottom: 0; }
+
+/* ── Toolbar 元件（統一規格）── */
+.tb { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+.tb-group { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.count-inline { font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+.count-inline b { color: var(--accent); }
+
+.pill { height: var(--h); font-size: 0.8125rem; display: inline-flex; align-items: center; gap: 0.35rem; padding: 0 0.85rem; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; transition: all var(--transition); white-space: nowrap; }
+.pill .dotp { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.pill .cnt { font-size: 0.68rem; background: var(--surface-2); border-radius: 20px; padding: 1px 6px; color: var(--muted); font-weight: 700; }
+.pill:hover { border-color: var(--accent); color: var(--accent); }
+.pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pill.active .cnt { background: rgba(255,255,255,0.22); color: #fff; }
+.pill:disabled { opacity: 0.5; cursor: not-allowed; }
+.dotp.all { background: var(--muted); } .pill.active .dotp.all { background: #fff; }
+.dotp.run { background: var(--success); }
+.dotp.fail { background: var(--danger); }
+.dotp.inact { background: var(--muted); }
+
+.search { position: relative; flex: 1; min-width: 220px; max-width: 400px; }
+.search input { width: 100%; height: var(--h); padding: 0 3.4rem 0 2.3rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: var(--fs); transition: border-color var(--transition), box-shadow var(--transition); }
+.search input:focus, .search.focus input { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); outline: none; }
+.search.error input { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(197,34,31,0.12); }
+.search .s-ico { position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; display: flex; }
+.search .s-clear { position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; border: none; background: none; color: var(--muted); cursor: pointer; font-size: 0.8rem; display: none; align-items: center; justify-content: center; }
+.search.has-value .s-clear { display: flex; }
+.search .s-clear:hover { background: var(--border); color: var(--text); }
+.search .s-regex { position: absolute; right: 2.5rem; top: 50%; transform: translateY(-50%); height: 26px; min-width: 32px; padding: 0 0.4rem; border-radius: 5px; border: 1px solid var(--border); background: var(--surface-2); color: var(--muted); font-family: var(--mono); font-size: 0.72rem; font-weight: 700; cursor: pointer; transition: all var(--transition); }
+.search .s-regex:hover { border-color: var(--accent); color: var(--accent); }
+.search .s-regex.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.search .s-err { display: none; font-size: 0.75rem; color: var(--danger); font-family: var(--mono); padding: 0.25rem 0.1rem 0; }
+.search.error .s-err { display: block; }
+
+.btn { height: var(--h); display: inline-flex; align-items: center; gap: 0.4rem; padding: 0 0.9rem; border-radius: var(--radius-sm); font-size: var(--fs); border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; transition: all var(--transition); white-space: nowrap; font-weight: 500; }
+.btn:hover { background: var(--surface-2); border-color: var(--muted); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.secondary { background: var(--surface-2); }
+.btn .spin { display: none; width: 14px; height: 14px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: rot 0.8s linear infinite; }
+.btn.loading .spin { display: inline-block; }
+@keyframes rot { to { transform: rotate(360deg); } }
+
+/* ── 批次工具列 ── */
+.batchbar { background: var(--surface-2); border-bottom: 2px solid var(--border); padding: 6px 1rem; display: flex; align-items: center; min-height: 52px; transition: border-color var(--transition), background var(--transition); }
+.batchbar.has-selection { border-bottom-color: var(--accent); background: var(--surface); }
+.batchbar.executing { border-bottom-color: var(--warning); }
+.bb-inner { display: flex; align-items: center; gap: 0.65rem; width: 100%; flex-wrap: wrap; }
+.bb-hint { display: flex; align-items: center; gap: 0.4rem; color: var(--muted); font-size: 0.8rem; }
+.bb-hint .key { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 4px; background: var(--border); font-size: 0.68rem; color: var(--muted); }
+.bb-count { font-size: 0.875rem; color: var(--muted); }
+.bb-count b { color: var(--accent); font-size: 1rem; }
+.act { height: var(--h); display: inline-flex; align-items: center; gap: 0.35rem; padding: 0 0.9rem; border-radius: var(--radius-sm); font-size: var(--fs); font-weight: 600; border: 1px solid; cursor: pointer; transition: all var(--transition); white-space: nowrap; }
+.act:disabled { opacity: 0.45; cursor: not-allowed; }
+.act-start { background: var(--success-light); color: var(--success); border-color: var(--success-border); }
+.act-start:hover:not(:disabled) { background: var(--success); color: #fff; }
+.act-stop { background: var(--danger-light); color: var(--danger); border-color: var(--danger-border); }
+.act-stop:hover:not(:disabled) { background: var(--danger); color: #fff; }
+.act-restart { background: var(--accent-light); color: var(--accent); border-color: rgba(26,115,232,0.3); }
+.act-restart:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.link-btn { height: var(--h); padding: 0 0.4rem; background: none; border: none; color: var(--muted); font-size: 0.8125rem; cursor: pointer; text-decoration: underline; display: inline-flex; align-items: center; white-space: nowrap; }
+.link-btn:hover { color: var(--accent); }
+.progress { flex: 1; min-width: 140px; max-width: 260px; height: 8px; border-radius: 20px; background: var(--border); overflow: hidden; }
+.progress .bar { height: 100%; width: 0%; background: var(--warning); border-radius: 20px; transition: width 0.3s ease; }
+.bb-prog { font-size: 0.78rem; color: var(--warning); font-weight: 700; }
+
+.mini-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.mini-table td, .mini-table th { padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--border); text-align: left; }
+.mini-table th { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+.mini-table input { accent-color: var(--accent); width: 16px; height: 16px; }
+.st-run { color: var(--success); font-weight: 600; }
+.st-inact { color: var(--muted); }
+.mini-table .svc { font-family: var(--mono); font-size: 0.8rem; }
+
+/* ── 元件規格（anatomy）── */
+.anatomy { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-top: 1.1rem; }
+@media (max-width: 760px) { .anatomy { grid-template-columns: 1fr; } }
+.anat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem 1.1rem; }
+.anat-card h4 { margin: 0 0 0.8rem; font-size: 0.92rem; display: flex; align-items: center; gap: 0.4rem; }
+.anat-card h4 .tag { font-size: 0.62rem; font-weight: 700; background: var(--accent-light); color: var(--accent); border-radius: 20px; padding: 0.12rem 0.5rem; }
+.anat-stage { background: var(--frame); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1rem; margin-bottom: 0.85rem; }
+.anat-dims { font-size: 0.74rem; color: var(--muted); line-height: 1.8; }
+.anat-dims b { color: var(--accent); font-family: var(--mono); }
+.dim-line { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
+.dim-line .d { flex: 1; height: 0; border-top: 1px dashed var(--accent); position: relative; }
+.dim-line span { font-size: 0.7rem; color: var(--accent); font-family: var(--mono); white-space: nowrap; }
+
+/* 狀態矩陣表 */
+.states { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 1rem; }
+.states th, .states td { border: 1px solid var(--border); padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+.states th { background: var(--surface-2); font-size: 0.74rem; color: var(--muted); font-weight: 700; }
+.states td:first-child { white-space: nowrap; font-weight: 600; }
+.states .demo-cell { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.states code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0.05rem 0.35rem; font-size: 0.72rem; font-family: var(--mono); }
+
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.5rem 1.5rem; margin-top: 1rem; }
+.anno { display: flex; gap: 0.55rem; font-size: 0.8rem; color: var(--muted); align-items: flex-start; line-height: 1.55; }
+.anno .num { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-light); color: var(--accent); font-size: 0.7rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
+.anno b { color: var(--text); }
+
+.note { font-size: 0.78rem; color: var(--muted); margin-top: 1rem; line-height: 1.7; background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; padding: 0.6rem 0.9rem; }
+.note b { color: var(--accent); }
+
+.demo-hint { font-size: 0.78rem; color: var(--muted); margin-top: 0.7rem; line-height: 1.6; }
+.demo-hint b { color: var(--accent); }
+
+/* Token 卡片 */
+.tokens { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; margin-top: 1rem; }
+.tcard { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.8rem 0.95rem; }
+.tcard .tk { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.4px; }
+.tcard .tv { font-size: 1.05rem; font-weight: 700; color: var(--text); margin-top: 0.2rem; }
+.tcard .td { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; line-height: 1.5; }
+.tcard .tv.accent { color: var(--accent); }
+
+.footnote { margin-top: 2rem; font-size: 0.72rem; color: var(--muted); border-top: 1px dashed var(--border); padding-top: 0.75rem; line-height: 1.7; }
+
+/* mobile 切換 */
+.frame.mobile-frame { display: none; }
+body.view-mobile .frame.mobile-frame { display: block; }
+body.view-mobile .frame.desktop-frame { display: none; }
+.mobile-frame .app-page { max-width: 390px; margin: 0 auto; }
+.mobile-frame .tb { flex-direction: column; align-items: stretch; }
+.mobile-frame .tb .search { max-width: none; }
+.mobile-frame .tb .pill { justify-content: center; height: var(--h-mobile); flex: 1; }
+.mobile-frame .tb .tb-group { width: 100%; }
+.mobile-frame .tb .btn { height: var(--h-mobile); justify-content: center; }
+.mobile-frame .act { height: var(--h-mobile); }
+</style>
+</head>
+<body data-theme="light">
+<div class="wrap">
+
+  <div class="topbar">
+    <div>
+      <h1>🖥 Dashboard Toolbar — 設計規格</h1>
+      <div class="sub">服務過濾 Toolbar ＋ 批次操作 Toolbar · 完整狀態／元件規格／互動規則（本文件為最終設計，非比較稿）</div>
+    </div>
+    <div class="controls">
+      <div class="segmented" id="devSwitch">
+        <button data-dev="desktop" class="active">🖥 Desktop</button>
+        <button data-dev="mobile">📱 Mobile</button>
+      </div>
+      <button class="segmented" id="themeToggle" style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:3px;">🌙 切換深色</button>
+    </div>
+  </div>
+
+  <!-- ══════════ 1. Design Tokens ══════════ -->
+  <div class="frame">
+    <h2>1️⃣ 設計 Token</h2>
+    <p class="fsub">所有數值對應前端 CSS 變數（--lms-*），是兩個 Toolbar 共用的基礎。</p>
+    <div class="tokens">
+      <div class="tcard"><div class="tk">控制高度</div><div class="tv accent">36 / 44px</div><div class="td">desktop 36px · mobile ≤767px 44px</div></div>
+      <div class="tcard"><div class="tk">字級</div><div class="tv">14 / 13 / 12px</div><div class="td">按鈕輸入 / pills / 計數 meta</div></div>
+      <div class="tcard"><div class="tk">圓角</div><div class="tv">6 / 18px</div><div class="td">按鈕輸入 6px · pills 橢圓 18px</div></div>
+      <div class="tcard"><div class="tk">間距</div><div class="tv">8 / 16px</div><div class="td">群組內 8px · 群組間 16px</div></div>
+      <div class="tcard"><div class="tk">動畫</div><div class="tv">150ms</div><div class="td">內容淡入 · 尊重 reduced-motion</div></div>
+      <div class="tcard"><div class="tk">Focus</div><div class="tv">3px ring</div><div class="td">accent 光圈（搜尋 3px／其他 2px）</div></div>
+    </div>
+  </div>
+
+  <!-- ══════════ 2. 服務過濾 Toolbar ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>2️⃣ 服務過濾 Toolbar — 完整畫面與互動</h2>
+    <p class="fsub">單列排版（pills → 搜尋 → 計數 → 重新整理）。下方可直接互動：點 pills 切換過濾、輸入搜尋、切換 regex、按重新整理看 loading。</p>
+
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url">https://linux-service-manager/ · Dashboard</span>
+      <span class="elem-count">互動：<b>點 pills ／ 輸入搜尋 ／ 開 regex ／ 按重新整理</b></span>
+    </div>
+
+    <div class="app-page">
+      <div class="tb" id="filterToolbar">
+        <div class="tb-group" id="pillGroup" role="group" aria-label="狀態過濾">
+          <button class="pill active" data-filter="all" aria-pressed="true"><span class="dotp all"></span>全部<b class="cnt">34</b></button>
+          <button class="pill" data-filter="running" aria-pressed="false"><span class="dotp run"></span>執行中<b class="cnt">12</b></button>
+          <button class="pill" data-filter="failed" aria-pressed="false"><span class="dotp fail"></span>失敗<b class="cnt">2</b></button>
+          <button class="pill" data-filter="inactive" aria-pressed="false"><span class="dotp inact"></span>未啟用<b class="cnt">20</b></button>
+        </div>
+        <div class="search" id="searchBox">
+          <svg class="s-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input id="searchInput" placeholder="搜尋服務名稱..." aria-label="搜尋服務名稱">
+          <button class="s-regex" id="regexBtn" title="正則搜尋" aria-pressed="false">.*</button>
+          <button class="s-clear" id="searchClear" title="清除" aria-label="清除搜尋">✕</button>
+          <span class="s-err" id="regexErr">Regex 格式錯誤：/( 未閉合</span>
+        </div>
+        <span class="count-inline">顯示 <b id="countShown">12</b> / 共 <b id="countTotal">34</b></span>
+        <button class="btn secondary" id="refreshBtn">
+          <span class="spin" aria-hidden="true"></span>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 3v6h-6"/></svg>
+          重新整理
+        </button>
+      </div>
+      <div class="table-skel">
+        <div class="row"></div><div class="row"></div><div class="row"></div>
+      </div>
+    </div>
+
+    <div class="anatomy">
+      <div class="anat-card">
+        <h4>狀態過濾 Pill <span class="tag">Segmented</span></h4>
+        <div class="anat-stage">
+          <button class="pill active"><span class="dotp run"></span>執行中<b class="cnt">12</b></button>
+          <button class="pill"><span class="dotp fail"></span>失敗<b class="cnt">2</b></button>
+        </div>
+        <div class="anat-dims">
+          高度 <b>36px</b>（mobile 44px）· 圓角 <b>18px</b> · 內距 <b>0–0.85rem</b> · 狀態點 <b>8px</b> 圓形<br>
+          計數 badge：字級 <b>11px</b>、底色 surface-2（active 時白 22% 透明）、內距 1px–6px
+        </div>
+        <div class="dim-line"><span>36px 與搜尋/按鈕同高</span><div class="d"></div></div>
+      </div>
+      <div class="anat-card">
+        <h4>搜尋框 <span class="tag">SearchInput</span></h4>
+        <div class="anat-stage">
+          <div class="search has-value">
+            <svg class="s-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+            <input value="nginx" style="pointer-events:none;">
+            <button class="s-regex active">.*</button>
+            <button class="s-clear">✕</button>
+          </div>
+        </div>
+        <div class="anat-dims">
+          高度 <b>36px</b> · 圓角 <b>6px</b> · 左內距 2.3rem（放 icon）· 右內距 3.4rem（放 regex＋clear）<br>
+          icon 距左 <b>11px</b> · regex 開關 <b>26×32px</b> · clear <b>24px</b> 圓形
+        </div>
+        <div class="dim-line"><span>focus：accent 邊框＋3px 光圈</span><div class="d"></div></div>
+      </div>
+    </div>
+
+    <table class="states">
+      <tr><th style="width:140px;">狀態</th><th>視覺</th><th>互動</th></tr>
+      <tr><td>Pill 預設</td><td>surface 底、border、muted 文字＋圓點</td><td>hover 時 accent 邊框與文字</td></tr>
+      <tr><td>Pill Active</td><td>accent 填滿、白字、badge 白 22% 底</td><td>radio 行為（一次一個）；aria-pressed 同步</td></tr>
+      <tr><td>搜尋 Focus</td><td>accent 邊框＋3px 光圈</td><td>Tab 進入即顯示；Esc 可清除</td></tr>
+      <tr><td>搜尋有值</td><td>✕ clear 按鈕淡入</td><td>點 ✕ 清空並還原 placeholder</td></tr>
+      <tr><td>Regex 開啟</td><td>開關變 accent 填滿</td><td>placeholder 換成「正則搜尋，例如 nginx-.*」</td></tr>
+      <tr><td>Regex 錯誤</td><td>輸入框紅框＋紅光圈＋下方 mono 錯誤訊息</td><td>即時驗證，輸入有效即清除</td></tr>
+      <tr><td>Loading</td><td>重新整理變 spinner、其餘 disabled</td><td>保留 filter 狀態，不清除</td></tr>
+    </table>
+    <div class="note"><b>無障礙：</b>狀態不只靠顏色（圓點＋文字，WCAG 1.4.1）；pills 用 radiogroup／aria-pressed；clear 與 regex 均有 aria-label／title；所有互動元件 focus ring 可見。</div>
+  </div>
+
+  <!-- Mobile 服務過濾 -->
+  <div class="frame mobile-frame">
+    <h2>2️⃣ 服務過濾 Toolbar — 📱 Mobile</h2>
+    <p class="fsub">堆疊式：pills 2×2 均分寬度 → 搜尋全寬 44px → 重新整理全寬 → 計數置底。</p>
+    <div class="app-page is-mobile">
+      <div class="tb">
+        <div class="tb-group" style="width:100%;gap:0.4rem;">
+          <button class="pill active"><span class="dotp all"></span>全部<b class="cnt">34</b></button>
+          <button class="pill"><span class="dotp run"></span>執行中<b class="cnt">12</b></button>
+          <button class="pill"><span class="dotp fail"></span>失敗<b class="cnt">2</b></button>
+          <button class="pill"><span class="dotp inact"></span>未啟用<b class="cnt">20</b></button>
+        </div>
+        <div class="search">
+          <svg class="s-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input placeholder="搜尋服務名稱..." style="height:var(--h-mobile);">
+          <button class="s-regex">.*</button>
+          <button class="s-clear">✕</button>
+        </div>
+        <button class="btn secondary" style="height:var(--h-mobile);justify-content:center;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 3v6h-6"/></svg>
+          重新整理
+        </button>
+        <div class="count-inline" style="align-self:flex-start;">顯示 <b>12</b> / 共 34</div>
+      </div>
+    </div>
+    <p class="note"><b>Mobile 規範：</b>觸控目標一律 <b>44px</b>（WCAG 2.5.5）；pills 平均分配欄寬（2×2）；regex／clear 維持原尺寸（附屬控制）。</p>
+  </div>
+
+  <!-- ══════════ 3. 批次操作 Toolbar ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>3️⃣ 批次操作 Toolbar — 固定槽位 × 三態（互動 Demo）</h2>
+    <p class="fsub">永遠佔同一位置（零版面位移），內容在 idle ⇄ 已選取 ⇄ 執行中 之間 150ms 淡入替換。</p>
+
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url">https://linux-service-manager/ · 批次操作</span>
+      <span class="elem-count">Demo：<b>勾選服務 → 按 ▶ 執行 → 看三態變化</b></span>
+    </div>
+
+    <div class="app-page">
+      <div class="batchbar" id="batchBar">
+        <div class="bb-inner">
+          <div class="bb-hint" id="bbHint"><span class="key">☑</span><span>勾選左側服務後，可在此批次 <b style="color:var(--muted);">啟動 / 停止 / 重啟</b></span></div>
+          <div class="bb-selected" id="bbSelected" style="display:none;align-items:center;gap:0.65rem;flex-wrap:wrap;width:100%;">
+            <span class="bb-count">已選取 <b id="bbCountNum">0</b> 個服務</span>
+            <button class="act act-start" id="btnExecStart">▶ 啟動</button>
+            <button class="act act-stop">⏹ 停止</button>
+            <button class="act act-restart">↻ 重啟</button>
+            <button class="link-btn" id="btnClearSel" style="margin-left:auto;">取消選取</button>
+          </div>
+          <div class="bb-exec" id="bbExec" style="display:none;align-items:center;gap:0.65rem;flex-wrap:wrap;width:100%;">
+            <span class="bb-count">已選取 <b id="bbExecCount">0</b> 個服務</span>
+            <div class="progress"><div class="bar" id="bbProgress"></div></div>
+            <span class="bb-prog" id="bbProgText">0/0 完成</span>
+          </div>
+        </div>
+      </div>
+      <table class="mini-table">
+        <thead><tr><th style="width:44px;"></th><th>服務名稱</th><th>狀態</th></tr></thead>
+        <tbody>
+          <tr><td><input type="checkbox" class="svc-cb" data-name="nginx.service"></td><td class="svc">nginx.service</td><td class="st-run">● 執行中</td></tr>
+          <tr><td><input type="checkbox" class="svc-cb" data-name="mysql.service"></td><td class="svc">mysql.service</td><td class="st-run">● 執行中</td></tr>
+          <tr><td><input type="checkbox" class="svc-cb" data-name="redis.service"></td><td class="svc">redis.service</td><td class="st-inact">○ 未啟用</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="anatomy">
+      <div class="anat-card">
+        <h4>動作按鈕 <span class="tag">Action</span></h4>
+        <div class="anat-stage" style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+          <button class="act act-start">▶ 啟動</button>
+          <button class="act act-stop">⏹ 停止</button>
+          <button class="act act-restart">↻ 重啟</button>
+        </div>
+        <div class="anat-dims">
+          高度 <b>36px</b>（mobile 44px）· 圓角 <b>6px</b> · 字重 600 · icon 15px<br>
+          色彩：<b style="color:var(--success);">success</b>＋light 底／<b style="color:var(--danger);">danger</b>＋light 底／<b style="color:var(--accent);">accent</b>＋light 底（皆走 CSS 變數，深色模式自動正確）
+        </div>
+      </div>
+      <div class="anat-card">
+        <h4>進度列 <span class="tag">Progress</span></h4>
+        <div class="anat-stage">
+          <div class="progress"><div class="bar" style="width:60%;"></div></div>
+        </div>
+        <div class="anat-dims">
+          高度 <b>8px</b> · 圓角 20px · 軌道 border 底 · 填充 <b>warning</b> 色<br>
+          語意：<code>role="progressbar"</code> ＋ aria-valuemin/max/now<br>
+          輔助文字「3/5 完成」置右
+        </div>
+      </div>
+    </div>
+
+    <table class="states">
+      <tr><th style="width:140px;">狀態</th><th>視覺</th><th>互動</th></tr>
+      <tr><td>Idle（未選取）</td><td>surface-2 底、單行 muted 提示、無亮色按鈕</td><td>固定佔位 52px；勾選任一服務即進入下一態</td></tr>
+      <tr><td>已選取</td><td>白底＋accent 左邊線；計數 accent 粗體；動作按鈕亮起</td><td>150ms 淡入；可繼續勾選/取消，計數即時更新</td></tr>
+      <tr><td>執行中</td><td>warning 左邊線；進度列動畫；「N/M 完成」</td><td>動作按鈕 disabled（去色）防止重複送出</td></tr>
+      <tr><td>全部成功</td><td>—</td><td>Toast 綠色通知；清空選取；自動重整列表</td></tr>
+      <tr><td>部分失敗</td><td>—</td><td>Toast 黃色警告；保留失敗項選取供重試</td></tr>
+      <tr><td>全部失敗</td><td>—</td><td>Toast 紅色錯誤；保留選取</td></tr>
+    </table>
+    <div class="note"><b>無障礙：</b>動作按鈕 aria-label 含數量（「啟動 5 個服務」）；進度列具備完整 aria 語意；取消選取是 link 樣式但有 36px 點擊區。</div>
+    <p class="demo-hint">👉 <b>勾選</b>服務 → 動作按鈕淡入；按 <b>▶ 啟動</b> → 進度列動畫；完成後自動回到已選取態；按 <b>取消選取</b> 回到 idle。</p>
+  </div>
+
+  <!-- Mobile 批次 -->
+  <div class="frame mobile-frame">
+    <h2>3️⃣ 批次操作 Toolbar — 📱 Mobile</h2>
+    <p class="fsub">計數＋取消選取一行、動作按鈕 2×2 全寬（重啟跨整列）、進度列獨立一行。</p>
+    <div class="app-page is-mobile">
+      <div class="batchbar has-selection" style="flex-direction:column;align-items:stretch;">
+        <div class="bb-inner" style="flex-direction:column;align-items:stretch;gap:0.5rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span class="bb-count">已選取 <b>3</b> 個服務</span>
+            <button class="link-btn">取消選取</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">
+            <button class="act act-start" style="height:var(--h-mobile);justify-content:center;">▶ 啟動</button>
+            <button class="act act-stop" style="height:var(--h-mobile);justify-content:center;">⏹ 停止</button>
+            <button class="act act-restart" style="height:var(--h-mobile);justify-content:center;grid-column:1/-1;">↻ 重啟</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ 4. 規格摘要 ══════════ -->
+  <div class="frame">
+    <h2>4️⃣ 規格摘要 — CSS 變數對應</h2>
+    <p class="fsub">實作時直接套用下列變數與結構，兩個 Toolbar 共用同一組 token。</p>
+    <table class="states">
+      <tr><th style="width:200px;">項目</th><th>值</th><th>對應</th></tr>
+      <tr><td>控制高度</td><td>36px / 44px</td><td><code>--lms-h: 36px</code>・mobile 覆寫 <code>44px</code></td></tr>
+      <tr><td>過濾 pill</td><td>高 36px・圓角 18px・dot 8px・badge 11px</td><td><code>--lms-radius-lg</code> 系列</td></tr>
+      <tr><td>搜尋框</td><td>高 36px・圓角 6px・focus 3px 光圈</td><td><code>--lms-accent-light</code></td></tr>
+      <tr><td>批次工具列</td><td>固定 min-height 52px・三態替換 150ms</td><td>transition 0.15s ease</td></tr>
+      <tr><td>動作按鈕</td><td>success／danger／accent + light 底</td><td><code>--lms-success-light</code> 等（已存在）</td></tr>
+      <tr><td>圖示</td><td>inline SVG 15px・aria-hidden</td><td>移除 emoji-as-icon</td></tr>
+      <tr><td>計數</td><td>「顯示 X / 共 Y」・accent 數字</td><td>i18n key 新增</td></tr>
+    </table>
+  </div>
+
+  <div class="footnote">
+    📄 設計文件：<b>docs/uiux/011-toolbar-redesign.md</b> ・ 本文件：<b>docs/uiux/012-toolbar-dashboard-design.html</b>（Dashboard 專用）<br>
+    實作範圍：<b>Toolbar.vue</b>（服務過濾）、<b>BatchToolbar.vue</b>（批次三態）、<b>main.css</b>（token）、<b>useI18n.ts</b>（新 key）。
+  </div>
+</div>
+
+<script>
+// theme
+const themeBtn = document.getElementById('themeToggle');
+themeBtn.addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+  themeBtn.textContent = dark ? '🌙 切換深色' : '☀️ 切換淺色';
+});
+// device
+const devSwitch = document.getElementById('devSwitch');
+devSwitch.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+  devSwitch.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  document.body.classList.toggle('view-mobile', b.dataset.dev === 'mobile');
+}));
+
+// ── filter demo ──
+document.querySelectorAll('#pillGroup .pill').forEach(p => p.addEventListener('click', () => {
+  document.querySelectorAll('#pillGroup .pill').forEach(x => { x.classList.remove('active'); x.setAttribute('aria-pressed','false'); });
+  p.classList.add('active'); p.setAttribute('aria-pressed','true');
+}));
+const searchInput = document.getElementById('searchInput');
+const searchBox = document.getElementById('searchBox');
+const searchClear = document.getElementById('searchClear');
+searchInput.addEventListener('input', () => searchBox.classList.toggle('has-value', searchInput.value.length > 0));
+searchClear.addEventListener('click', () => { searchInput.value=''; searchBox.classList.remove('has-value'); searchBox.classList.remove('error'); searchInput.focus(); });
+document.getElementById('regexBtn').addEventListener('click', function(){
+  this.classList.toggle('active');
+  this.setAttribute('aria-pressed', this.classList.contains('active'));
+  if (this.classList.contains('active')) {
+    searchInput.placeholder = '正則搜尋，例如：nginx-.*';
+    searchBox.classList.add('error'); // demo: show error state
+  } else {
+    searchInput.placeholder = '搜尋服務名稱...';
+    searchBox.classList.remove('error');
+  }
+});
+document.getElementById('refreshBtn').addEventListener('click', function(){
+  this.classList.add('loading'); this.disabled = true;
+  setTimeout(() => { this.classList.remove('loading'); this.disabled = false; }, 1200);
+});
+
+// ── batch demo ──
+const bar = document.getElementById('batchBar');
+const hint = document.getElementById('bbHint'), sel = document.getElementById('bbSelected'), exec = document.getElementById('bbExec');
+const countNum = document.getElementById('bbCountNum'), execCount = document.getElementById('bbExecCount');
+const progressBar = document.getElementById('bbProgress'), progText = document.getElementById('bbProgText');
+const cbs = document.querySelectorAll('.svc-cb');
+let executing = false, timer = null;
+function render() {
+  const n = Array.from(cbs).filter(c => c.checked).length;
+  if (executing) { hint.style.display='none'; sel.style.display='none'; exec.style.display='flex'; execCount.textContent=n; bar.className='batchbar executing'; }
+  else if (n > 0) { hint.style.display='none'; exec.style.display='none'; sel.style.display='flex'; countNum.textContent=n; bar.className='batchbar has-selection'; }
+  else { exec.style.display='none'; sel.style.display='none'; hint.style.display='flex'; bar.className='batchbar'; }
+}
+cbs.forEach(cb => cb.addEventListener('change', () => { if (!executing) render(); }));
+document.getElementById('btnClearSel').addEventListener('click', () => {
+  cbs.forEach(c => c.checked=false); executing=false;
+  if (timer) { clearInterval(timer); timer=null; } render();
+});
+document.getElementById('btnExecStart').addEventListener('click', () => {
+  const n = Array.from(cbs).filter(c => c.checked).length;
+  if (!n) return;
+  executing = true; render();
+  let done = 0; progressBar.style.width='0%'; progText.textContent='0/'+n+' 完成';
+  timer = setInterval(() => {
+    done += 1;
+    progressBar.style.width = Math.round(done/n*100)+'%';
+    progText.textContent = Math.min(done,n)+'/'+n+' 完成';
+    if (done >= n) { clearInterval(timer); timer=null; setTimeout(() => { executing=false; render(); }, 600); }
+  }, 500);
+});
+</script>
+</body>
+</html>

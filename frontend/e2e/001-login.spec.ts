@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { setupApiMocks, loginViaUI, gotoDashboard, VALID_USER, VALID_PASS } from './auth.setup'
+import { setupApiMocks, loginViaUI, gotoDashboard, VALID_USER, VALID_PASS, logoutViaMenu } from './auth.setup'
 
 /**
  * 001 — 管理員登入系統 E2E Tests
@@ -20,7 +20,7 @@ test.describe('Scenario 1: 使用正確帳號密碼登入', () => {
 
     // Should be on dashboard
     await expect(page.locator('.app-header h1')).toContainText('Linux Service Manager')
-    await expect(page.locator('.user-badge')).toContainText(VALID_USER)
+    await expect(page.locator('[data-testid="account-btn"]')).toContainText(VALID_USER)
   })
 })
 
@@ -87,10 +87,8 @@ test.describe('Scenario 4: 登出', () => {
     // Verify we're on dashboard
     await expect(page.locator('.app-header')).toBeVisible()
 
-    // Click logout button
-    const logoutBtn = page.locator('button', { hasText: 'Logout' })
-    await expect(logoutBtn).toBeVisible()
-    await logoutBtn.click()
+    // Click logout in the account menu
+    await logoutViaMenu(page)
 
     // After logout, navigating to / should redirect to /login
     // (router guard: meta.auth && !isLoggedIn → /login)

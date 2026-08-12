@@ -29,7 +29,7 @@ async function openLogDrawer(page: any, serviceName: string) {
 test.describe('E2E-07: 行動裝置全螢幕 Drawer', () => {
   test.use({ viewport: { width: 375, height: 812 } })
 
-  test('Drawer 應為全螢幕（100vw）', async ({ page }) => {
+  test('Drawer 應為全螢幕寬度（bottom sheet 填滿 overlay）', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
@@ -39,11 +39,39 @@ test.describe('E2E-07: 行動裝置全螢幕 Drawer', () => {
     const drawer = page.locator('.log-drawer')
     const box = await drawer.boundingBox()
 
-    // Drawer width should equal viewport width (375px)
     expect(box).not.toBeNull()
-    // Allow small rounding tolerance
-    expect(box!.width).toBeGreaterThanOrEqual(370)
-    expect(box!.width).toBeLessThanOrEqual(380)
+    // html { scrollbar-gutter: stable } 會為右側捲軸保留空間，
+    // fixed overlay 寬度 = viewport − gutter（此環境約 360px）——
+    // 斷言 drawer 填滿 overlay 即可，不綁死 375。
+    const overlayBox = await page.locator('.drawer-overlay').boundingBox()
+    expect(overlayBox).not.toBeNull()
+    expect(Math.abs(box!.width - overlayBox!.width)).toBeLessThanOrEqual(2)
+    expect(box!.width).toBeGreaterThanOrEqual(350)
+  })
+
+  test('行動裝置 Drawer 為 bottom sheet（底部對齊、上緣圓角、高度受限）', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    await openLogDrawer(page, 'nginx.service')
+
+    const drawer = page.locator('.log-drawer')
+    const box = await drawer.boundingBox()
+    const overlayBox = await page.locator('.drawer-overlay').boundingBox()
+    expect(box && overlayBox).toBeTruthy()
+
+    // 底部對齊 overlay 底緣
+    expect(Math.abs((box!.y + box!.height) - (overlayBox!.y + overlayBox!.height))).toBeLessThan(2)
+
+    // 上緣圓角（bottom sheet 特徵）
+    const radius = await drawer.evaluate((el: Element) =>
+      window.getComputedStyle(el).borderRadius,
+    )
+    expect(radius).toContain('16px')
+
+    // 高度不超過 88dvh
+    const viewportH = page.viewportSize()!.height
+    expect(box!.height).toBeLessThanOrEqual(Math.round(viewportH * 0.9))
   })
 
   test('全螢幕 Drawer 關閉後恢復正常', async ({ page }) => {

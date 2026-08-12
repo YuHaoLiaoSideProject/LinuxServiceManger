@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Toolbar 調整 — UI/UX 畫面文件</title>
+<style>
+/* ════════════════════════════════════════════════════════════
+   Design Tokens
+   ════════════════════════════════════════════════════════════ */
+:root {
+  --accent: #1a73e8;
+  --accent-hover: #1557b0;
+  --accent-light: rgba(26,115,232,0.12);
+  --success: #188038;
+  --success-light: #e6f4ea;
+  --success-border: #a8dab5;
+  --danger: #c5221f;
+  --danger-light: #fce8e6;
+  --danger-border: #f5c6c2;
+  --warning: #e37400;
+  --warning-light: #fff4e5;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --transition: 0.2s ease;
+  --h: 36px;              /* 統一控制元件高度 (desktop) */
+  --h-mobile: 44px;       /* 統一控制元件高度 (mobile / touch) */
+  --fs: 0.875rem;         /* 統一控制元件字級 */
+}
+[data-theme="light"] {
+  --bg: #ffffff; --surface: #ffffff; --surface-2: #f6f7f9; --surface-3: #eef0f3;
+  --border: #e3e6ea; --text: #374151; --muted: #9ca3af;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08); --shadow-lg: 0 12px 32px rgba(0,0,0,0.16);
+  --frame: #eef0f3;
+}
+[data-theme="dark"] {
+  --bg: #11191f; --surface: #181e25; --surface-2: #1e2530; --surface-3: #232c38;
+  --border: #262e38; --text: #c7c9ce; --muted: #7d8590;
+  --shadow: 0 2px 16px rgba(0,0,0,0.45); --shadow-lg: 0 12px 36px rgba(0,0,0,0.6);
+  --frame: #0d1318;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  background: var(--bg); color: var(--text);
+  transition: background var(--transition), color var(--transition);
+  padding: 2rem 1.25rem 4rem;
+}
+.wrap { max-width: 1120px; margin: 0 auto; }
+
+.topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; }
+h1 { font-size: 1.35rem; margin: 0; }
+.sub { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+.controls { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+
+.segmented { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 2px; }
+.segmented button {
+  border: none; background: none; color: var(--muted); font-size: 0.85rem; padding: 0.45rem 0.9rem;
+  border-radius: 7px; cursor: pointer; transition: all var(--transition); font-weight: 500;
+}
+.segmented button:hover { color: var(--text); }
+.segmented button.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+
+/* ── Frames ── */
+.frame {
+  background: var(--frame); border: 1px solid var(--border); border-radius: 14px;
+  padding: 1.6rem 1.5rem 1.8rem; margin-bottom: 1.5rem;
+}
+.frame h2 { margin: 0 0 0.25rem; font-size: 1.1rem; display: flex; align-items: center; gap: 0.4rem; }
+.frame .fsub { color: var(--muted); font-size: 0.82rem; margin: 0 0 1rem; line-height: 1.6; }
+.browser-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 1rem; }
+.dot { width: 11px; height: 11px; border-radius: 50%; }
+.dot:nth-child(1){ background:#f87171 } .dot:nth-child(2){ background:#fbbf24 } .dot:nth-child(3){ background:#34d399 }
+.browser-url { flex: 1; max-width: 380px; margin-left: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.75rem; color: var(--muted); }
+.elem-count { font-size: 0.72rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 0.2rem 0.7rem; white-space: nowrap; }
+.elem-count b { color: var(--accent); }
+
+.app-page { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); position: relative; transition: background var(--transition); overflow: hidden; }
+.app-page.is-mobile { max-width: 390px; margin: 0 auto; }
+
+.vs { display: grid; grid-template-columns: 1fr; gap: 1.25rem; align-items: stretch; margin-top: 1rem; }
+.vs .col { min-width: 0; }
+.vs.split { grid-template-columns: 1fr 1fr; }
+@media (max-width: 760px) { .vs.split { grid-template-columns: 1fr; } }
+.vs-label { font-size: 0.78rem; font-weight: 700; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.75rem; border-radius: 20px; margin-bottom: 0.6rem; }
+.vs-label.before { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+.vs-label.after { background: var(--accent-light); color: var(--accent); border: 1px solid rgba(26,115,232,0.3); }
+
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.5rem 1.5rem; margin-top: 1rem; }
+.anno { display: flex; gap: 0.55rem; font-size: 0.8rem; color: var(--muted); align-items: flex-start; line-height: 1.55; }
+.anno .num { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-light); color: var(--accent); font-size: 0.7rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
+.anno b { color: var(--text); }
+
+.note { font-size: 0.78rem; color: var(--muted); margin-top: 1rem; line-height: 1.7; background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; padding: 0.6rem 0.9rem; }
+.note b { color: var(--accent); }
+
+/* ════════════════════════════════════════════════════════════
+   Toolbar 元件 (AFTER — 統一規格)
+   ════════════════════════════════════════════════════════════ */
+.tb { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+.tb-group { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.tb-meta { width: 100%; font-size: 0.75rem; color: var(--muted); display: flex; align-items: center; gap: 0.35rem; }
+
+/* 統一控制高度 — 36px desktop / 44px mobile */
+
+/* Filter pills */
+.pill {
+  height: var(--h); font-size: 0.8125rem;
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0 0.85rem; border-radius: 18px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+  cursor: pointer; transition: all var(--transition); white-space: nowrap; font-size: 0.8125rem;
+}
+.pill .dotp { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.pill .cnt { font-size: 0.68rem; background: var(--surface-2); border-radius: 20px; padding: 1px 6px; color: var(--muted); font-weight: 700; }
+.pill:hover { border-color: var(--accent); color: var(--accent); }
+.pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pill.active .cnt { background: rgba(255,255,255,0.22); color: #fff; }
+.dotp.all { background: var(--muted); } .pill.active .dotp.all { background: #fff; }
+.dotp.run { background: var(--success); }
+.dotp.fail { background: var(--danger); }
+.dotp.inact { background: var(--muted); }
+
+/* Search */
+.search { position: relative; flex: 1; min-width: 220px; max-width: 380px; }
+.search input {
+  width: 100%; height: var(--h); padding: 0 3.4rem 0 2.3rem;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font-size: var(--fs);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.search input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); outline: none; }
+.search .s-ico { position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; display: flex; }
+.search .s-clear { position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; border: none; background: none; color: var(--muted); cursor: pointer; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; }
+.search .s-clear:hover { background: var(--border); color: var(--text); }
+.search .s-regex {
+  position: absolute; right: 2.5rem; top: 50%; transform: translateY(-50%);
+  height: 26px; min-width: 32px; padding: 0 0.4rem; border-radius: 5px;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--muted);
+  font-family: monospace; font-size: 0.72rem; font-weight: 700; cursor: pointer; transition: all var(--transition);
+}
+.search .s-regex:hover { border-color: var(--accent); color: var(--accent); }
+.search .s-regex.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* Buttons */
+.btn {
+  height: var(--h); display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0 0.9rem; border-radius: var(--radius-sm); font-size: var(--fs);
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  cursor: pointer; transition: all var(--transition); white-space: nowrap; font-weight: 500;
+}
+.btn:hover { background: var(--surface-2); border-color: var(--muted); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn.secondary { background: var(--surface-2); }
+.btn.accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.accent:hover { background: var(--accent-hover); }
+.btn svg { flex-shrink: 0; }
+.link-btn { height: var(--h); padding: 0 0.4rem; background: none; border: none; color: var(--muted); font-size: 0.8125rem; cursor: pointer; text-decoration: underline; display: inline-flex; align-items: center; white-space: nowrap; }
+.link-btn:hover { color: var(--accent); }
+
+.count-inline { font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+.count-inline b { color: var(--accent); }
+
+/* ── 批次工具列 (方案 B) ── */
+.batchbar {
+  background: var(--surface-2); border-bottom: 2px solid var(--border);
+  padding: 0.55rem 1rem; display: flex; align-items: center; min-height: 52px;
+  transition: border-color var(--transition), background var(--transition);
+}
+.batchbar.has-selection { border-bottom-color: var(--accent); background: var(--surface); }
+.batchbar.executing { border-bottom-color: var(--warning); }
+.bb-inner { display: flex; align-items: center; gap: 0.65rem; width: 100%; flex-wrap: wrap; }
+.bb-hint { display: flex; align-items: center; gap: 0.4rem; color: var(--muted); font-size: 0.8rem; }
+.bb-hint .key { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 4px; background: var(--border); font-size: 0.68rem; color: var(--muted); }
+.bb-count { font-size: 0.875rem; color: var(--muted); }
+.bb-count b { color: var(--accent); font-size: 1rem; }
+.act {
+  height: var(--h); display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0 0.9rem; border-radius: var(--radius-sm); font-size: var(--fs); font-weight: 600;
+  border: 1px solid; cursor: pointer; transition: all var(--transition); white-space: nowrap;
+}
+.act:disabled { opacity: 0.45; cursor: not-allowed; }
+.act-start { background: var(--success-light); color: var(--success); border-color: var(--success-border); }
+.act-start:hover:not(:disabled) { background: var(--success); color: #fff; }
+.act-stop { background: var(--danger-light); color: var(--danger); border-color: var(--danger-border); }
+.act-stop:hover:not(:disabled) { background: var(--danger); color: #fff; }
+.act-restart { background: var(--accent-light); color: var(--accent); border-color: rgba(26,115,232,0.3); }
+.act-restart:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.progress { flex: 1; min-width: 140px; max-width: 260px; height: 8px; border-radius: 20px; background: var(--border); overflow: hidden; }
+.progress .bar { height: 100%; width: 0%; background: var(--warning); border-radius: 20px; transition: width 0.3s ease; }
+.bb-prog { font-size: 0.78rem; color: var(--warning); font-weight: 700; }
+
+/* ── 批次工具列 (BEFORE — 現況) ── */
+.batchbar-before {
+  background: #fff; border-bottom: 2px solid #ccc; padding: 0.75rem 1rem;
+  display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+}
+[data-theme="dark"] .batchbar-before { background: #1c222a; border-bottom-color: #333c47; }
+.batchbar-before .bb-count-b { font-size: 0.9rem; color: #555; }
+.batchbar-before .bb-count-b b { color: #1976d2; font-size: 1.1rem; }
+.act-b { padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid; cursor: pointer; font-size: 0.85rem; }
+.act-b:disabled { opacity: 0.4; cursor: not-allowed; }
+.act-b.start { background: #e8f5e9; color: #2e7d32; border-color: #a5d6a7; }
+.act-b.stop { background: #fff0f0; color: #c62828; border-color: #ef9a9a; }
+.act-b.restart { background: #e3f2fd; color: #1565c0; border-color: #90caf9; }
+
+/* ── 服務過濾工具列 (BEFORE — 現況) ── */
+.tb-before {
+  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.75rem 1rem; border-bottom: 1px solid #ddd;
+}
+[data-theme="dark"] .tb-before { border-bottom-color: #333c47; }
+.pill-b { font-size: 0.78rem; padding: 0.3rem 0.65rem; border-radius: 16px; border: 1px solid #ddd; background: #fff; color: #888; cursor: pointer; display: inline-flex; align-items: center; gap: 0.2rem; }
+.pill-b.active { background: #1976d2; color: #fff; border-color: #1976d2; }
+[data-theme="dark"] .pill-b { background: #1c222a; border-color: #333c47; color: #9aa3ad; }
+.pill-b.active { background: #1976d2; color: #fff; border-color: #1976d2; }
+.search-b { position: relative; flex: 1; min-width: 200px; }
+.search-b input { width: 100%; height: 32px; padding: 0 4.2rem 0 2.2rem; border-radius: 20px; border: 2px solid #ddd; font-size: 0.9rem; background: #fff; color: #333; }
+[data-theme="dark"] .search-b input { background: #1c222a; border-color: #333c47; color: #c7c9ce; }
+.search-b .s-ico-b { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); font-size: 0.9rem; }
+.search-b .s-regex-b { position: absolute; right: 2.2rem; top: 50%; transform: translateY(-50%); background: none; border: 1px solid #ddd; border-radius: 10px; font-size: 0.75rem; font-weight: 700; color: #888; padding: 0.15rem 0.4rem; font-family: monospace; cursor: pointer; }
+.search-b .s-clear-b { position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: #888; cursor: pointer; font-size: 1rem; }
+.count-b { font-size: 0.78rem; color: #888; white-space: nowrap; }
+.refresh-b { padding: 0.35rem 0.8rem; border: 1px solid #ddd; border-radius: 6px; background: #f6f7f9; font-size: 0.85rem; color: #333; cursor: pointer; }
+[data-theme="dark"] .refresh-b { background: #1c222a; border-color: #333c47; color: #c7c9ce; }
+
+/* ── 高度一致性對照表 ── */
+.hmatrix { margin-top: 0.5rem; }
+.hrow { display: grid; grid-template-columns: 130px 1fr 1fr; gap: 0.75rem; align-items: center; padding: 0.45rem 0; border-bottom: 1px dashed var(--border); }
+.hrow:last-child { border-bottom: none; }
+.hname { font-size: 0.8rem; color: var(--text); font-weight: 600; }
+.hcell { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; min-height: 56px; }
+.hcell .h { display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; font-size: 0.7rem; color: var(--muted); white-space: nowrap; }
+.hcell.before .h { border: 1px dashed var(--danger-border); background: var(--danger-light); color: var(--danger); }
+.hcell.after .h { border: 1px solid var(--success-border); background: var(--success-light); color: var(--success); }
+.hbadge { font-size: 0.68rem; font-weight: 700; border-radius: 20px; padding: 0.1rem 0.5rem; }
+.hbadge.ok { background: var(--success-light); color: var(--success); }
+.hbadge.bad { background: var(--danger-light); color: var(--danger); }
+.hrow.guide .hcell { align-items: center; }
+.guide-line { position: relative; height: 40px; }
+
+/* ── Demo table ── */
+.mini-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.mini-table td, .mini-table th { padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--border); text-align: left; }
+.mini-table th { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+.mini-table input { accent-color: var(--accent); width: 16px; height: 16px; }
+.st-run { color: var(--success); font-weight: 600; }
+.st-inact { color: var(--muted); }
+.mini-table .svc { font-family: monospace; font-size: 0.8rem; }
+
+.demo-hint { font-size: 0.78rem; color: var(--muted); margin-top: 0.7rem; line-height: 1.6; }
+.demo-hint b { color: var(--accent); }
+
+.footnote { margin-top: 2rem; font-size: 0.72rem; color: var(--muted); border-top: 1px dashed var(--border); padding-top: 0.75rem; line-height: 1.7; }
+
+/* 行動版切換：隱藏 desktop frame、顯示 mobile frame */
+.frame.mobile-frame { display: none; }
+body.view-mobile .frame.mobile-frame { display: block; }
+body.view-mobile .frame.desktop-frame { display: none; }
+body.view-mobile .frame.both-frame { display: block; }
+body.view-mobile .hide-on-mobile { display: none; }
+.mobile-frame .app-page { max-width: 390px; margin: 0 auto; }
+.mobile-frame .tb { flex-direction: column; align-items: stretch; }
+.mobile-frame .tb .search { max-width: none; }
+.mobile-frame .tb .pill { justify-content: center; height: var(--h-mobile); }
+.mobile-frame .tb .btn { height: var(--h-mobile); justify-content: center; }
+.mobile-frame .act { height: var(--h-mobile); }
+.mobile-frame .tb-meta { order: 9; }
+</style>
+</head>
+<body data-theme="light">
+<div class="wrap">
+
+  <div class="topbar">
+    <div>
+      <h1>🧰 Toolbar 調整 — UI/UX 畫面文件</h1>
+      <div class="sub">Linux Service Manager · 三處 Toolbar 統一樣式／按鈕尺寸一致化／批次工具列降噪方案（可切換主題與裝置檢視）</div>
+    </div>
+    <div class="controls">
+      <div class="segmented" id="devSwitch">
+        <button data-dev="desktop" class="active">🖥 Desktop</button>
+        <button data-dev="mobile">📱 Mobile</button>
+      </div>
+      <button class="segmented" id="themeToggle" style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:3px;">🌙 切換深色</button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       Section 0 — 設計總覽：按鈕高度一致化
+       ══════════════════════════════════════════════ -->
+  <div class="frame">
+    <h2>0️⃣ 設計總覽 — 統一控制元件高度</h2>
+    <p class="fsub">先釐清事實：桌面版（≥1024px）pills、搜尋、計數、重新整理<b>全部在同一列</b>（容器 1280px 寬，flex-wrap 只在窄視窗才觸發換行）——這點維持不變。問題在「同列上的控制元件高度不一（實測 21–33px 混雜）」，是「看起來亂」的主因。調整後：<b>desktop 一律 36px、mobile 一律 44px</b>，同字級（14px）、同圓角（6px）、同間距（8px/16px）。下方數值為實測高度。</p>
+
+    <div class="hmatrix">
+      <div class="hrow">
+        <div class="hname"></div>
+        <div class="hcell before" style="color:var(--muted);font-size:0.72rem;min-height:auto;">現況（高度不一）</div>
+        <div class="hcell after" style="color:var(--muted);font-size:0.72rem;min-height:auto;">調整後（統一 36px）</div>
+      </div>
+      <div class="hrow"><div class="hname">狀態過濾 pills</div>
+        <div class="hcell before"><span class="h" style="height:30px;padding:0 0.6rem;">30px 🟢 執行中</span><span class="hbadge bad">不一</span></div>
+        <div class="hcell after"><span class="h" style="height:36px;padding:0 0.8rem;border-radius:18px;">36px 執行中</span><span class="hbadge ok">統一</span></div>
+      </div>
+      <div class="hrow"><div class="hname">搜尋輸入框</div>
+        <div class="hcell before"><span class="h" style="height:32px;width:200px;">32px 🔍 搜尋…</span></div>
+        <div class="hcell after"><span class="h" style="height:36px;width:200px;">36px 🔍 搜尋…</span></div>
+      </div>
+      <div class="hrow"><div class="hname">Regex 開關</div>
+        <div class="hcell before"><span class="h" style="height:21px;padding:0 0.4rem;border-radius:10px;">21px .*</span></div>
+        <div class="hcell after"><span class="h" style="height:26px;padding:0 0.4rem;border-radius:5px;border-style:solid;">26px .*</span></div>
+      </div>
+      <div class="hrow"><div class="hname">重新整理／匯出</div>
+        <div class="hcell before"><span class="h" style="height:33px;padding:0 0.7rem;">33px ↻ 重新整理</span></div>
+        <div class="hcell after"><span class="h" style="height:36px;padding:0 0.9rem;">36px ↻ 重新整理</span></div>
+      </div>
+      <div class="hrow"><div class="hname">批次動作按鈕</div>
+        <div class="hcell before"><span class="h" style="height:31px;padding:0 0.7rem;">31px ▶ Start</span></div>
+        <div class="hcell after"><span class="h" style="height:36px;padding:0 0.9rem;">36px ▶ Start</span></div>
+      </div>
+      <div class="hrow"><div class="hname">取消選取（link）</div>
+        <div class="hcell before"><span class="h" style="height:auto;padding:0;">— 無觸控高度</span></div>
+        <div class="hcell after"><span class="h" style="height:36px;padding:0 0.4rem;">36px 點擊區</span></div>
+      </div>
+    </div>
+    <p class="note"><b>原則：</b>同一列的所有互動控制元件，高度、字級、圓角、間距必須一致；唯一例外是 pill 外型（橢圓）——但高度仍須與其他控制元件同高。Mobile 時全部放大至 44px（WCAG 2.5.5 觸控目標）。</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       Section 1 — Dashboard 服務過濾 Toolbar
+       ══════════════════════════════════════════════ -->
+  <div class="frame desktop-frame">
+    <h2>1️⃣ Dashboard 服務過濾 Toolbar</h2>
+    <p class="fsub">對比現況（emoji pills、大小不一的控制元件）與調整後（語意化圓點＋計數 badge、統一 36px 高度、regex 開關獨立化）。</p>
+
+    <div class="browser-bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="browser-url">https://linux-service-manager/</span>
+      <span class="elem-count">調整重點：<b>6 處</b></span>
+    </div>
+
+    <div class="vs">
+      <div class="col">
+        <span class="vs-label before">✕ BEFORE — 現況</span>
+        <div class="app-page">
+          <div class="tb-before">
+            <div class="status-filters" style="display:flex;gap:0.35rem;flex-wrap:wrap;">
+              <button class="pill-b active">全部</button>
+              <button class="pill-b">🟢 執行中</button>
+              <button class="pill-b">🔴 失敗</button>
+              <button class="pill-b">⚪ 未啟用</button>
+            </div>
+            <div class="search-b">
+              <span class="s-ico-b">🔍</span>
+              <input placeholder="搜尋服務名稱..." value="nginx">
+              <button class="s-regex-b">.*</button>
+              <button class="s-clear-b">✕</button>
+            </div>
+            <span class="count-b">12 個服務</span>
+            <button class="refresh-b">🔄 重新整理</button>
+          </div>
+          <div style="padding:0.9rem 1rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.72rem;color:var(--muted);padding-bottom:0.4rem;">
+              <span>服務名稱</span><span>狀態</span>
+            </div>
+            <div style="height:34px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;margin-bottom:6px;"></div>
+            <div style="height:34px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col">
+        <span class="vs-label after">✓ AFTER — 調整後（維持單列排版）</span>
+        <div class="app-page">
+          <div class="tb">
+            <div class="tb-group">
+              <button class="pill active"><span class="dotp all"></span>全部<b class="cnt">34</b></button>
+              <button class="pill"><span class="dotp run"></span>執行中<b class="cnt">12</b></button>
+              <button class="pill"><span class="dotp fail"></span>失敗<b class="cnt">2</b></button>
+              <button class="pill"><span class="dotp inact"></span>未啟用<b class="cnt">20</b></button>
+            </div>
+            <div class="search">
+              <svg class="s-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+              <input placeholder="搜尋服務名稱..." value="nginx">
+              <button class="s-regex" title="正則搜尋" aria-pressed="false">.*</button>
+              <button class="s-clear" title="清除">✕</button>
+            </div>
+            <span class="count-inline">顯示 <b>12</b> / 共 34</span>
+            <button class="btn secondary">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 3v6h-6"/></svg>
+              重新整理
+            </button>
+          </div>
+          <div style="padding:0.9rem 1rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.72rem;color:var(--muted);padding-bottom:0.4rem;">
+              <span>服務名稱</span><span>狀態</span>
+            </div>
+            <div style="height:34px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;margin-bottom:6px;"></div>
+            <div style="height:34px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="anno"><span class="num">1</span><span><b>語意化狀態</b>：emoji 🟢🔴⚪ → CSS 圓點＋文字（跨平台一致、色盲可讀，符合 WCAG 1.4.1）；active 用 accent 填滿。</span></div>
+      <div class="anno"><span class="num">2</span><span><b>計數 badge</b>：每個 filter 即時顯示數量，掃讀更快；與「顯示 X / 共 Y」計數互相呼應。</span></div>
+      <div class="anno"><span class="num">3</span><span><b>搜尋框統一</b>：36px 高、SVG 放大鏡、focus ring（accent 3px 光圈）。</span></div>
+      <div class="anno"><span class="num">4</span><span><b>Regex 獨立化</b>：從搜尋框內 21px 小按鈕 → 26px 獨立開關（保留在輸入框內側但加大、加邊框與 hover 狀態）。</span></div>
+      <div class="anno"><span class="num">5</span><span><b>重新整理</b>：emoji → SVG icon＋文字，36px secondary 按鈕。</span></div>
+      <div class="anno"><span class="num">6</span><span><b>計數語意化</b>：「12 個服務」→「顯示 12 / 共 34」，維持與現況相同的<b>單列內聯</b>排版。</span></div>
+    </div>
+  </div>
+
+  <!-- Mobile variant -->
+  <div class="frame mobile-frame">
+    <h2>1️⃣ Dashboard 服務過濾 Toolbar — 📱 Mobile</h2>
+    <p class="fsub">堆疊式排列：filter pills 2 列 wrap、搜尋全寬、觸控目標放大至 44px。</p>
+    <div class="browser-bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="browser-url">mobile · 390px</span>
+      <span class="elem-count">觸控目標 <b>44px</b></span>
+    </div>
+    <div class="app-page is-mobile">
+      <div class="tb">
+        <div class="tb-group" style="width:100%;gap:0.4rem;">
+          <button class="pill active" style="flex:1;"><span class="dotp all"></span>全部<b class="cnt">34</b></button>
+          <button class="pill" style="flex:1;"><span class="dotp run"></span>執行中<b class="cnt">12</b></button>
+          <button class="pill" style="flex:1;"><span class="dotp fail"></span>失敗<b class="cnt">2</b></button>
+          <button class="pill" style="flex:1;"><span class="dotp inact"></span>未啟用<b class="cnt">20</b></button>
+        </div>
+        <div class="search">
+          <svg class="s-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input placeholder="搜尋服務名稱..." style="height:var(--h-mobile);">
+          <button class="s-regex" title="正則搜尋">.*</button>
+          <button class="s-clear" title="清除">✕</button>
+        </div>
+        <button class="btn secondary" style="height:var(--h-mobile);justify-content:center;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 3v6h-6"/></svg>
+          重新整理
+        </button>
+        <div class="tb-meta">顯示 12 / 共 34 個服務</div>
+      </div>
+    </div>
+    <p class="note"><b>Mobile 規範：</b>pills 平均分配寬度（2 列 wrap）、搜尋與動作按鈕全寬 44px、計數列置底。</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       Section 2 — 批次操作 Toolbar（互動 Demo）
+       ══════════════════════════════════════════════ -->
+  <div class="frame desktop-frame">
+    <h2>2️⃣ 批次操作 Toolbar — 固定槽位 × 內容淡入（互動 Demo）</h2>
+    <p class="fsub">你之前顧慮「勾選才跳出、視覺變動太大」是對的。<b>建議採用「固定槽位＋內容替換」</b>：工具列永遠佔同一個位置（不消失、表格不位移），只在「未選取 ⇄ 已選取 ⇄ 執行中」之間做 <b>150ms 淡入淡出</b>。未選取時是一行安靜的提示，沒有任何亮色按鈕。</p>
+
+    <div class="browser-bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="browser-url">https://linux-service-manager/ · 批次工具列</span>
+      <span class="elem-count">下方 Demo：<b>勾選服務 → 按 ▶ 執行</b></span>
+    </div>
+
+    <div class="app-page">
+      <!-- 方案 B 批次工具列（互動） -->
+      <div class="batchbar" id="batchBar">
+        <div class="bb-inner">
+          <div class="bb-hint" id="bbHint">
+            <span class="key">☑</span>
+            <span>勾選左側服務後，可在此批次 <b style="color:var(--muted);">啟動 / 停止 / 重啟</b></span>
+          </div>
+          <div class="bb-selected" id="bbSelected" style="display:none;align-items:center;gap:0.65rem;flex-wrap:wrap;width:100%;">
+            <span class="bb-count">已選取 <b id="bbCountNum">0</b> 個服務</span>
+            <button class="act act-start" id="btnExecStart">▶ 啟動</button>
+            <button class="act act-stop">⏹ 停止</button>
+            <button class="act act-restart">↻ 重啟</button>
+            <button class="link-btn" id="btnClearSel" style="margin-left:auto;">取消選取</button>
+          </div>
+          <div class="bb-exec" id="bbExec" style="display:none;align-items:center;gap:0.65rem;flex-wrap:wrap;width:100%;">
+            <span class="bb-count">已選取 <b id="bbExecCount">0</b> 個服務</span>
+            <div class="progress"><div class="bar" id="bbProgress"></div></div>
+            <span class="bb-prog" id="bbProgText">0/0 完成</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 迷你服務表格 -->
+      <table class="mini-table">
+        <thead><tr><th style="width:44px;"></th><th>服務名稱</th><th>狀態</th></tr></thead>
+        <tbody>
+          <tr><td><input type="checkbox" class="svc-cb" data-name="nginx.service"></td><td class="svc">nginx.service</td><td class="st-run">● 執行中</td></tr>
+          <tr><td><input type="checkbox" class="svc-cb" data-name="mysql.service"></td><td class="svc">mysql.service</td><td class="st-run">● 執行中</td></tr>
+          <tr><td><input type="checkbox" class="svc-cb" data-name="redis.service"></td><td class="svc">redis.service</td><td class="st-inact">○ 未啟用</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="legend">
+      <div class="anno"><span class="num">1</span><span><b>固定槽位</b>：工具列永遠存在（min-height 52px），表格位置不變 → 零版面位移。</span></div>
+      <div class="anno"><span class="num">2</span><span><b>安靜的 idle 狀態</b>：未選取時只有一行 muted 提示＋☑ 圖示，沒有亮色 disabled 按鈕的視覺噪音。</span></div>
+      <div class="anno"><span class="num">3</span><span><b>內容淡入替換</b>：勾選後計數＋動作按鈕 fade-in（150ms）；按 ▶ 後切換為進度列狀態。</span></div>
+      <div class="anno"><span class="num">4</span><span><b>執行中</b>：動作按鈕隱藏或 disabled＋實際進度列＋「N/M 完成」輔助文字，取代純文字。</span></div>
+      <div class="anno"><span class="num">5</span><span><b>色彩 theme-aware</b>：改用 --lms-success/--lms-danger/--lms-accent 變數，深色模式自動正確。</span></div>
+      <div class="anno"><span class="num">6</span><span><b>視覺焦點只在有意義時出現</b>：左側 accent 邊線、按鈕色彩都只在「已選取」時亮起。</span></div>
+    </div>
+    <p class="demo-hint">👉 互動：<b>勾選</b> 服務 → 工具列淡入動作按鈕；按 <b>▶ 啟動</b> → 進入執行中（進度列動畫）；按 <b>取消選取</b> 或取消勾選 → 回到安靜提示。</p>
+  </div>
+
+  <!-- Mobile batch -->
+  <div class="frame mobile-frame">
+    <h2>2️⃣ 批次操作 Toolbar — 📱 Mobile</h2>
+    <p class="fsub">按鈕全寬堆疊、44px 觸控目標；進度列置於按鈕上方。</p>
+    <div class="browser-bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="browser-url">mobile · 390px</span>
+      <span class="elem-count">全寬按鈕</span>
+    </div>
+    <div class="app-page is-mobile">
+      <div class="batchbar has-selection" style="flex-direction:column;align-items:stretch;">
+        <div class="bb-inner" style="flex-direction:column;align-items:stretch;gap:0.5rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span class="bb-count">已選取 <b>3</b> 個服務</span>
+            <button class="link-btn">取消選取</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">
+            <button class="act act-start" style="height:var(--h-mobile);justify-content:center;">▶ 啟動</button>
+            <button class="act act-stop" style="height:var(--h-mobile);justify-content:center;">⏹ 停止</button>
+            <button class="act act-restart" style="height:var(--h-mobile);justify-content:center;grid-column:1/-1;">↻ 重啟</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 方案比較 -->
+  <div class="frame desktop-frame">
+    <h2>2️⃣-b 方案比較 — 為什麼用「固定槽位」而不是「顯示/隱藏」</h2>
+    <p class="fsub">你之前把「勾選跳出」改回固定是正確的直覺。差異在「固定」的呈現方式。</p>
+    <div class="vs split">
+      <div class="col">
+        <span class="vs-label before">✕ 方案 A — 現況：固定＋全按鈕常駐</span>
+        <div class="app-page">
+          <div class="batchbar-before">
+            <span class="bb-count-b">已選取 <b>0</b> 個服務</span>
+            <button class="act-b start" disabled>▶ Start</button>
+            <button class="act-b stop" disabled>⏹ Stop</button>
+            <button class="act-b restart" disabled>🔄 Restart</button>
+          </div>
+          <div style="padding:0.8rem 1rem;font-size:0.78rem;color:var(--muted);">
+            · 未選取時仍顯示 3 顆亮色按鈕（disabled 40%），視覺噪音大<br>
+            · 硬編碼淺色底（#e8f5e9…），深色模式突兀<br>
+            · 按鈕高度 31px，與其他工具列不一致
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <span class="vs-label after">✓ 方案 B — 推薦：固定槽位＋內容淡入</span>
+        <div class="app-page">
+          <div class="batchbar">
+            <div class="bb-hint"><span class="key">☑</span><span>勾選服務後，可在此批次 啟動 / 停止 / 重啟</span></div>
+          </div>
+          <div style="padding:0.8rem 1rem;font-size:0.78rem;color:var(--muted);">
+            · 同樣固定不跳出不消失，但 idle 是「一行安靜提示」<br>
+            · 勾選後按鈕淡入（150ms），亮色只在有意義時出現<br>
+            · 36px 統一高度、theme-aware 色彩
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="note"><b>結論：</b>「固定」與「不吵」可以同時成立——關鍵是 idle 狀態的視覺音量，而不是工具列的有無。若團隊仍想保留全按鈕常駐，則至少套用方案 B 的「統一高度＋theme 色彩＋disabled 全灰（去色）」三項修正。</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       Section 3 — Audit Log Toolbar
+       ══════════════════════════════════════════════ -->
+  <div class="frame desktop-frame">
+    <h2>3️⃣ Audit Log Toolbar</h2>
+    <p class="fsub">抽成與 Dashboard 相同的共用骨架：搜尋帶 icon、日期範圍視覺群組、匯出 CSV 升級為 primary、條件啟用時顯示「符合 N 筆 ✕ 清除條件」。</p>
+
+    <div class="browser-bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="browser-url">https://linux-service-manager/audit</span>
+      <span class="elem-count">調整重點：<b>4 處</b></span>
+    </div>
+
+    <div class="vs">
+      <div class="col">
+        <span class="vs-label before">✕ BEFORE — 現況</span>
+        <div class="app-page">
+          <div style="padding:1rem 1.25rem;display:flex;gap:0.9rem;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);">
+            <input placeholder="🔍 搜尋操作者、動作、目標服務..." style="width:300px;height:34px;padding:0 0.8rem;border:1px solid var(--border);border-radius:6px;font-size:0.85rem;background:var(--surface);color:var(--text);">
+            <span style="font-size:0.8rem;color:var(--muted);">符合 42 筆</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;">
+              <input type="text" value="2025-08-01" style="width:110px;height:34px;padding:0 0.6rem;border:1px solid var(--border);border-radius:6px;font-size:0.8rem;background:var(--surface);color:var(--text);">
+              <span style="color:var(--muted);">–</span>
+              <input type="text" value="2025-08-11" style="width:110px;height:34px;padding:0 0.6rem;border:1px solid var(--border);border-radius:6px;font-size:0.8rem;background:var(--surface);color:var(--text);">
+            </span>
+            <button style="height:32px;padding:0 0.9rem;background:#1a73e8;color:#fff;border:none;border-radius:6px;font-size:0.8rem;cursor:pointer;">⬇ 匯出 CSV</button>
+            <button style="height:30px;padding:0 0.8rem;border:1px solid var(--border);background:var(--surface-2);border-radius:6px;font-size:0.82rem;cursor:pointer;">🔄 重新整理</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="col">
+        <span class="vs-label after">✓ AFTER — 調整後（維持單列排版）</span>
+        <div class="app-page">
+          <div class="tb" style="flex-direction:column;align-items:stretch;gap:0.5rem;">
+            <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+              <div class="search" style="flex:1;min-width:220px;">
+                <svg class="s-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                <input placeholder="搜尋操作者、動作、目標服務...">
+                <button class="s-clear" title="清除">✕</button>
+              </div>
+              <div style="display:inline-flex;align-items:center;height:var(--h);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;">
+                <input type="text" value="2025-08-01" style="width:112px;height:100%;border:none;padding:0 0.6rem;font-size:0.8rem;background:var(--surface);color:var(--text);">
+                <span style="color:var(--muted);padding:0 0.2rem;font-size:0.75rem;">–</span>
+                <input type="text" value="2025-08-11" style="width:112px;height:100%;border:none;padding:0 0.6rem;font-size:0.8rem;background:var(--surface);color:var(--text);">
+              </div>
+              <button class="btn accent">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 21h16"/></svg>
+                匯出 CSV
+              </button>
+              <button class="btn secondary">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 3v6h-6"/></svg>
+                重新整理
+              </button>
+            </div>
+            <div class="tb-meta" style="width:auto;display:flex;align-items:center;gap:0.5rem;">
+              <span>✓ 符合 <b style="color:var(--accent);">42</b> 筆記錄</span>
+              <button class="link-btn" style="height:auto;padding:0;text-decoration:underline;">✕ 清除條件</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="anno"><span class="num">1</span><span><b>共用骨架</b>：與 Dashboard 同一套 SearchInput／按鈕／計數樣式，36px 統一高度。</span></div>
+      <div class="anno"><span class="num">2</span><span><b>日期範圍視覺群組</b>：起訖兩欄共用一個外框＋中間分隔線，一眼看出是同一組條件。</span></div>
+      <div class="anno"><span class="num">3</span><span><b>匯出 CSV = primary</b>（accent 底）、重新整理 = secondary，動作階層明確。</span></div>
+      <div class="anno"><span class="num">4</span><span><b>條件回饋列</b>：「符合 N 筆」＋「✕ 清除條件」一鍵重置，取代現在散落的計數文字。</span></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       Section 4 — 規格摘要
+       ══════════════════════════════════════════════ -->
+  <div class="frame both-frame">
+    <h2>4️⃣ 規格摘要 — 統一 Design Token</h2>
+    <p class="fsub">以下數值直接對應前端 CSS 變數（--lms-*），實作時逐項套用。</p>
+    <div class="hmatrix">
+      <div class="hrow"><div class="hname">控制元件高度</div><div class="hcell" style="min-height:auto;color:var(--muted);font-size:0.82rem;"><b style="color:var(--accent);">36px</b>（desktop）／<b style="color:var(--accent);">44px</b>（mobile ≤767px）</div></div>
+      <div class="hrow"><div class="hname">字級</div><div class="hcell" style="min-height:auto;color:var(--muted);font-size:0.82rem;">按鈕/輸入 <b>14px</b> ・ pills <b>13px</b> ・ 計數/meta <b>12px</b></div></div>
+      <div class="hrow"><div class="hname">圓角</div><div class="hcell" style="min-height:auto;color:var(--muted);font-size:0.82rem;">按鈕/輸入 <b>6px</b> ・ pills <b>18px</b>（橢圓）・ 計數 badge <b>20px</b></div></div>
+      <div class="hrow"><div class="hname">間距</div><div class="hcell" style="min-height:auto;color:var(--muted);font-size:0.82rem;">群組內 <b>8px</b> ・ 群組間 <b>16px</b> ・ 工具列內邊距 <b>12–16px</b></div></div>
+      <div class="hrow"><div class="hname">色彩</div><div class="hcell" style="min-height:auto;color:var(--muted);font-size:0.82rem;">一律 <b>--lms-*</b> 變數；批次動作：<b style="color:var(--success);">success</b>／<b style="color:var(--danger);">danger</b>／<b style="color:var(--accent);">accent</b> + light 底</div></div>
+      <div class="hrow"><div class="hname">圖示</div><div class="hcell" style="min-height:auto;color:var(--muted);font-size:0.82rem;">inline SVG（aria-hidden）＋文字，移除 emoji-as-icon</div></div>
+      <div class="hrow"><div class="hname">動畫</div><div class="hcell" style="min-height:auto;color:var(--muted);font-size:0.82rem;">批次內容淡入 <b>150ms</b>；尊重 prefers-reduced-motion</div></div>
+      <div class="hrow"><div class="hname">Focus</div><div class="hcell" style="min-height:auto;color:var(--muted);font-size:0.82rem;">所有互動元件 2px accent ring（WCAG 2.4.7）</div></div>
+      <div class="hrow"><div class="hname">批次工具列</div><div class="hcell" style="min-height:auto;color:var(--muted);font-size:0.82rem;">固定槽位 min-height 52px；idle = 單行提示；已選取 = accent 左邊線＋動作按鈕；執行中 = 進度列</div></div>
+    </div>
+  </div>
+
+  <div class="footnote">
+    📄 對應設計文件：<b>docs/uiux/011-toolbar-redesign.md</b> ・ 本文件：<b>docs/uiux/011-toolbar-redesign-mockup.html</b><br>
+    調整範圍：<b>Toolbar.vue</b>（服務過濾）、<b>BatchToolbar.vue</b>（批次，固定槽位＋內容淡入）、<b>AuditLogView.vue</b>（稽核，抽共用元件）、<b>main.css</b>（統一 token）、<b>useI18n.ts</b>（新增文案 key）。
+  </div>
+</div>
+
+<script>
+// ── Theme toggle ──
+const themeBtn = document.getElementById('themeToggle');
+themeBtn.addEventListener('click', () => {
+  const html = document.documentElement;
+  const dark = html.dataset.theme === 'dark';
+  html.dataset.theme = dark ? 'light' : 'dark';
+  themeBtn.textContent = dark ? '🌙 切換深色' : '☀️ 切換淺色';
+});
+
+// ── Device toggle ──
+const devSwitch = document.getElementById('devSwitch');
+devSwitch.querySelectorAll('button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    devSwitch.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.body.classList.toggle('view-mobile', btn.dataset.dev === 'mobile');
+  });
+});
+
+// ── Batch demo ──
+const bar = document.getElementById('batchBar');
+const hint = document.getElementById('bbHint');
+const sel = document.getElementById('bbSelected');
+const exec = document.getElementById('bbExec');
+const countNum = document.getElementById('bbCountNum');
+const execCount = document.getElementById('bbExecCount');
+const progressBar = document.getElementById('bbProgress');
+const progText = document.getElementById('bbProgText');
+const cbs = document.querySelectorAll('.svc-cb');
+let executing = false;
+let timer = null;
+
+function render() {
+  const n = Array.from(cbs).filter(c => c.checked).length;
+  if (executing) {
+    hint.style.display = 'none';
+    sel.style.display = 'none';
+    exec.style.display = 'flex';
+    execCount.textContent = n;
+    bar.className = 'batchbar executing';
+  } else if (n > 0) {
+    hint.style.display = 'none';
+    exec.style.display = 'none';
+    sel.style.display = 'flex';
+    countNum.textContent = n;
+    bar.className = 'batchbar has-selection';
+  } else {
+    exec.style.display = 'none';
+    sel.style.display = 'none';
+    hint.style.display = 'flex';
+    bar.className = 'batchbar';
+  }
+}
+
+cbs.forEach(cb => cb.addEventListener('change', () => { if (!executing) render(); }));
+
+document.getElementById('btnClearSel').addEventListener('click', () => {
+  cbs.forEach(c => c.checked = false);
+  executing = false;
+  if (timer) { clearInterval(timer); timer = null; }
+  render();
+});
+
+document.getElementById('btnExecStart').addEventListener('click', () => {
+  const n = Array.from(cbs).filter(c => c.checked).length;
+  if (n === 0) return;
+  executing = true;
+  render();
+  let done = 0;
+  progressBar.style.width = '0%';
+  progText.textContent = '0/' + n + ' 完成';
+  timer = setInterval(() => {
+    done += 1;
+    progressBar.style.width = Math.round(done / n * 100) + '%';
+    progText.textContent = Math.min(done, n) + '/' + n + ' 完成';
+    if (done >= n) {
+      clearInterval(timer); timer = null;
+      setTimeout(() => { executing = false; render(); }, 600);
+    }
+  }, 500);
+});
+</script>
+</body>
+</html>

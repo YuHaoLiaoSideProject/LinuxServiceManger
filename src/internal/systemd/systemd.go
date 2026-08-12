@@ -28,6 +28,7 @@ type ServiceManager interface {
 	RestartService(name string) error
 	EnableService(name string) error
 	DisableService(name string) error
+	GetUnitFileState(name string) (string, error)
 	GetServiceLogs(name string, lines int) (string, error)
 }
 
@@ -40,6 +41,7 @@ func (m *DefaultManager) StopService(name string) error          { return StopSe
 func (m *DefaultManager) RestartService(name string) error       { return RestartService(name) }
 func (m *DefaultManager) EnableService(name string) error        { return EnableService(name) }
 func (m *DefaultManager) DisableService(name string) error       { return DisableService(name) }
+func (m *DefaultManager) GetUnitFileState(name string) (string, error) { return GetUnitFileState(name) }
 func (m *DefaultManager) GetServiceLogs(name string, lines int) (string, error) {
 	return GetServiceLogs(name, lines)
 }
@@ -464,6 +466,23 @@ func isUnlockedByConfig(name string) bool {
 	}
 
 	return false
+}
+
+// GetUnitFileState queries a single service's UnitFileState via systemctl show.
+func GetUnitFileState(name string) (string, error) {
+	if err := ValidateServiceName(name); err != nil {
+		return "", err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "systemctl", "show", "-p", "UnitFileState", "--value", name)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("systemctl show %s: %w", name, err)
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // GetServiceLogs retrieves the last N lines of a service's journald logs.

@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard 統計卡片 — 升級為狀態過濾（比較稿）</title>
+<style>
+
+/* ════════════════════════════════════════════════════════════
+   設計 Token（對應前端 --lms-* 變數）
+   ════════════════════════════════════════════════════════════ */
+:root {
+  --accent: #1a73e8; --accent-hover: #1557b0; --accent-light: rgba(26,115,232,0.12);
+  --success: #188038; --success-light: #e6f4ea; --success-border: #a8dab5;
+  --danger: #c5221f; --danger-light: #fce8e6; --danger-border: #f5c6c2;
+  --warning: #e37400; --warning-light: #fff4e5;
+  --radius: 10px; --radius-sm: 6px; --transition: 0.2s ease;
+  --h: 36px; --h-mobile: 44px; --fs: 0.875rem;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+[data-theme="light"] {
+  --bg: #ffffff; --surface: #ffffff; --surface-2: #f6f7f9; --surface-3: #eef0f3;
+  --border: #e3e6ea; --text: #374151; --muted: #9ca3af;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08); --shadow-lg: 0 12px 32px rgba(0,0,0,0.16);
+  --frame: #eef0f3;
+}
+[data-theme="dark"] {
+  --bg: #11191f; --surface: #181e25; --surface-2: #1e2530; --surface-3: #232c38;
+  --border: #262e38; --text: #c7c9ce; --muted: #7d8590;
+  --shadow: 0 2px 16px rgba(0,0,0,0.45); --shadow-lg: 0 12px 36px rgba(0,0,0,0.6);
+  --frame: #0d1318;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  background: var(--bg); color: var(--text); transition: background var(--transition), color var(--transition);
+  padding: 2rem 1.25rem 4rem;
+}
+.wrap { max-width: 1120px; margin: 0 auto; }
+.topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; }
+h1 { font-size: 1.35rem; margin: 0; }
+.sub { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+.controls { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.segmented { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 2px; }
+.segmented button { border: none; background: none; color: var(--muted); font-size: 0.85rem; padding: 0.45rem 0.9rem; border-radius: 7px; cursor: pointer; transition: all var(--transition); font-weight: 500; }
+.segmented button:hover { color: var(--text); }
+.segmented button.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+
+.frame { background: var(--frame); border: 1px solid var(--border); border-radius: 14px; padding: 1.6rem 1.5rem 1.8rem; margin-bottom: 1.5rem; }
+.frame h2 { margin: 0 0 0.25rem; font-size: 1.1rem; }
+.frame .fsub { color: var(--muted); font-size: 0.82rem; margin: 0 0 1rem; line-height: 1.6; }
+.browser-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 1rem; }
+.bdot { width: 11px; height: 11px; border-radius: 50%; }
+.bdot:nth-child(1){ background:#f87171 } .bdot:nth-child(2){ background:#fbbf24 } .bdot:nth-child(3){ background:#34d399 }
+.browser-url { flex: 1; max-width: 460px; margin-left: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.75rem; color: var(--muted); }
+.elem-count { font-size: 0.72rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 0.2rem 0.7rem; white-space: nowrap; }
+.elem-count b { color: var(--accent); }
+
+.app-page { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); transition: background var(--transition); overflow: hidden; }
+.app-page.is-mobile { max-width: 390px; margin: 0 auto; }
+
+/* ── BEFORE / AFTER 對比（上下堆疊，避免半寬欄誤觸發 wrap）── */
+.vs { display: grid; grid-template-columns: 1fr; gap: 1.25rem; margin-top: 1rem; }
+.vs .col { min-width: 0; }
+.vs-label { font-size: 0.78rem; font-weight: 700; display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.75rem; border-radius: 20px; margin-bottom: 0.6rem; }
+.vs-label.before { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+.vs-label.after { background: var(--accent-light); color: var(--accent); border: 1px solid rgba(26,115,232,0.3); }
+
+/* ── Tabs 骨架 ── */
+.tabs { display: flex; gap: 0.4rem; padding: 0.7rem 1rem 0.6rem; border-bottom: 1px solid var(--border); }
+.tab-k { font-size: 0.8rem; padding: 0.35rem 0.9rem; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; }
+.tab-k.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tab-k .n { font-size: 0.68rem; background: var(--surface-2); border-radius: 20px; padding: 1px 6px; margin-left: 0.25rem; color: var(--muted); }
+.tab-k.active .n { background: rgba(255,255,255,0.22); color: #fff; }
+
+/* ── AFTER 狀態過濾卡片（button，radio 行為）── */
+.scards { display: flex; flex-wrap: wrap; gap: 0.6rem; padding: 0.85rem 1rem; border-bottom: 1px solid var(--border); }
+.scard {
+  flex: 1; min-width: 130px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 0.6rem 1rem; display: flex; align-items: center; gap: 0.55rem;
+  font-size: 0.85rem; color: var(--text); cursor: pointer; text-align: left;
+  transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition), background var(--transition);
+}
+.scard:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--accent); }
+.scard:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.scard .sc-ico { display: flex; flex-shrink: 0; color: var(--muted); }
+.scard[data-filter="all"] .sc-ico { color: var(--accent); }
+.scard[data-filter="running"] .sc-ico { color: var(--success); }
+.scard[data-filter="failed"] .sc-ico { color: var(--danger); }
+.scard[data-filter="inactive"] .sc-ico { color: var(--muted); }
+.scard .sc-value { font-size: 1.3rem; font-weight: 700; line-height: 1; display: block; }
+.scard .sc-label { color: var(--muted); font-size: 0.75rem; display: block; margin-top: 0.15rem; }
+.scard[data-filter="all"] { border-left: 4px solid var(--accent); }
+.scard[data-filter="running"] { border-left: 4px solid var(--success); }
+.scard[data-filter="failed"] { border-left: 4px solid var(--danger); }
+.scard[data-filter="inactive"] { border-left: 4px solid var(--muted); }
+.scard.active { border-color: var(--accent); background: var(--accent-light); }
+.scard.active .sc-label { color: var(--accent); }
+.scard[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+/* ── BEFORE 現況卡片（不可點，emoji）── */
+.stats-b { display: flex; flex-wrap: wrap; gap: 0.6rem; padding: 0.85rem 1rem; border-bottom: 1px solid var(--border); }
+.stcard-b { flex: 1; min-width: 110px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.6rem 1rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: default; }
+.stcard-b .b-ico { font-size: 1.4rem; }
+.stcard-b .b-value { font-size: 1.3rem; font-weight: 700; line-height: 1; display: block; }
+.stcard-b .b-label { color: var(--muted); font-size: 0.75rem; display: block; }
+.stcard-b.b-all { border-left: 4px solid var(--accent); }
+.stcard-b.b-run { border-left: 4px solid var(--success); }
+.stcard-b.b-fail { border-left: 4px solid var(--danger); }
+
+/* ── BEFORE pills ── */
+.pills-b { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.pill-b { font-size: 0.78rem; padding: 0.32rem 0.7rem; border-radius: 16px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 0.3rem; }
+.pill-b.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.pill-b .cnt { font-size: 0.66rem; background: var(--surface-2); border-radius: 20px; padding: 1px 6px; color: var(--muted); font-weight: 700; }
+.pill-b.active .cnt { background: rgba(255,255,255,0.22); color: #fff; }
+
+/* ── Toolbar（AFTER：無 pills）── */
+.tb { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+.search { position: relative; flex: 1; min-width: 220px; max-width: 400px; }
+.search input { width: 100%; height: var(--h); padding: 0 3.4rem 0 2.3rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: var(--fs); transition: border-color var(--transition), box-shadow var(--transition); }
+.search input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); outline: none; }
+.search .s-ico { position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; display: flex; }
+.search .s-clear { position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; border: none; background: none; color: var(--muted); cursor: pointer; font-size: 0.8rem; display: none; align-items: center; justify-content: center; }
+.search.has-value .s-clear { display: flex; }
+.search .s-clear:hover { background: var(--border); color: var(--text); }
+.count-inline { font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+.count-inline b { color: var(--accent); }
+.btn { height: var(--h); display: inline-flex; align-items: center; gap: 0.4rem; padding: 0 0.9rem; border-radius: var(--radius-sm); font-size: var(--fs); border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; transition: all var(--transition); white-space: nowrap; font-weight: 500; }
+.btn:hover { background: var(--surface-2); border-color: var(--muted); }
+.btn.secondary { background: var(--surface-2); }
+
+/* ── 迷你表格 ── */
+.mini-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.mini-table td, .mini-table th { padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--border); text-align: left; }
+.mini-table th { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+.mini-table tr.svc-row.hide { display: none; }
+.mini-table .svc { font-family: var(--mono); font-size: 0.8rem; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 0.35rem; }
+.status-dot.run { background: var(--success); }
+.status-dot.fail { background: var(--danger); }
+.status-dot.inact { background: var(--muted); }
+.st-run { color: var(--success); font-weight: 600; }
+.st-fail { color: var(--danger); font-weight: 600; }
+.st-inact { color: var(--muted); }
+.empty-note { padding: 1.6rem 1rem; text-align: center; font-size: 0.8rem; color: var(--muted); }
+.empty-note b { color: var(--accent); }
+
+/* ── 元件解剖 ── */
+.anatomy { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-top: 1.1rem; }
+@media (max-width: 760px) { .anatomy { grid-template-columns: 1fr; } }
+.anat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem 1.1rem; }
+.anat-card h4 { margin: 0 0 0.8rem; font-size: 0.92rem; display: flex; align-items: center; gap: 0.4rem; }
+.anat-card h4 .tag { font-size: 0.62rem; font-weight: 700; background: var(--accent-light); color: var(--accent); border-radius: 20px; padding: 0.12rem 0.5rem; }
+.anat-stage { background: var(--frame); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1rem; margin-bottom: 0.85rem; }
+.anat-stage .scard { max-width: 320px; }
+.anat-dims { font-size: 0.74rem; color: var(--muted); line-height: 1.8; }
+.anat-dims b { color: var(--accent); font-family: var(--mono); }
+
+/* 狀態矩陣表 */
+.states { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 1rem; }
+.states th, .states td { border: 1px solid var(--border); padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+.states th { background: var(--surface-2); font-size: 0.74rem; color: var(--muted); font-weight: 700; }
+.states td:first-child { white-space: nowrap; font-weight: 600; }
+.states .demo-cell { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.states code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0.05rem 0.35rem; font-size: 0.72rem; font-family: var(--mono); }
+
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.5rem 1.5rem; margin-top: 1rem; }
+.anno { display: flex; gap: 0.55rem; font-size: 0.8rem; color: var(--muted); align-items: flex-start; line-height: 1.55; }
+.anno .num { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-light); color: var(--accent); font-size: 0.7rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
+.anno b { color: var(--text); }
+
+.note { font-size: 0.78rem; color: var(--muted); margin-top: 1rem; line-height: 1.7; background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; padding: 0.6rem 0.9rem; }
+.note b { color: var(--accent); }
+
+.demo-hint { font-size: 0.78rem; color: var(--muted); margin-top: 0.7rem; line-height: 1.6; }
+.demo-hint b { color: var(--accent); }
+
+/* Token 卡片 */
+.tokens { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; margin-top: 1rem; }
+.tcard { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.8rem 0.95rem; }
+.tcard .tk { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.4px; }
+.tcard .tv { font-size: 1.05rem; font-weight: 700; color: var(--text); margin-top: 0.2rem; }
+.tcard .td { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; line-height: 1.5; }
+.tcard .tv.accent { color: var(--accent); }
+
+.footnote { margin-top: 2rem; font-size: 0.72rem; color: var(--muted); border-top: 1px dashed var(--border); padding-top: 0.75rem; line-height: 1.7; }
+
+/* mobile 切換 */
+.frame.mobile-frame { display: none; }
+body.view-mobile .frame.mobile-frame { display: block; }
+body.view-mobile .frame.desktop-frame { display: none; }
+.mobile-frame .app-page { max-width: 390px; margin: 0 auto; }
+.mobile-frame .scards { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; padding-bottom: 4px; }
+.mobile-frame .scard { flex: 0 0 auto; min-width: 120px; scroll-snap-align: start; height: 78px; }
+.mobile-frame .tb { flex-direction: column; align-items: stretch; gap: 0.6rem; }
+.mobile-frame .tb .search { max-width: none; }
+.mobile-frame .tb .search input { height: var(--h-mobile); font-size: 16px; }
+.mobile-frame .tb .btn { height: var(--h-mobile); justify-content: center; }
+.mobile-frame .tb-meta { display: flex; align-items: center; justify-content: space-between; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div>
+      <h1>📊 Dashboard 統計卡片 — 升級為狀態過濾</h1>
+      <div class="sub">Linux Service Manager · StatsBar 與 status pills 功能合併（比較稿，可切換主題／裝置，AFTER 面板可直接點擊試玩）</div>
+    </div>
+    <div class="controls">
+      <div class="segmented" id="devSwitch">
+        <button data-dev="desktop" class="active">🖥 Desktop</button>
+        <button data-dev="mobile">📱 Mobile</button>
+      </div>
+      <button class="segmented" id="themeToggle" style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:3px;">🌙 切換深色</button>
+    </div>
+  </div>
+
+  <!-- ══════════ 0. 問題總覽 ══════════ -->
+  <div class="frame">
+    <h2>0️⃣ 問題總覽 — 同一份資訊，兩個元件</h2>
+    <p class="fsub">Dashboard 頂部同時有「不可點的統計卡片」與「可點的狀態 pills」，呈現同一份狀態統計；且兩者的<b>計數口徑不一致</b>（卡片跟 tab、pills 不看 tab；卡片 running 用 active family、pills 用 <code>sub==='running'</code>），造成「數字 ≠ 點擊後的列數」。</p>
+    <table class="states">
+      <tr><th style="width:170px;">問題</th><th>實測依據（code）</th><th>影響</th></tr>
+      <tr><td>功能重複</td><td>卡片：總服務數/執行中/失敗（<code>StatsBar.vue</code>）≈ pills：全部/執行中/失敗/未啟用（<code>Toolbar.vue</code>）</td><td>同一資訊兩次呈現；「未啟用」只有 pills 有</td></tr>
+      <tr><td>計數不看 tab</td><td>卡片用 <code>statsServices</code>（tab-filtered）；pills 用 <code>filterCounts</code>（全部 services）</td><td>「我的服務」tab 下，pills 13 ≠ 表格 8 列</td></tr>
+      <tr><td>running 定義不同</td><td>卡片：<code>active∈{active,running,activating,deactivating,reloading}</code>；filter：<code>sub==='running'</code></td><td>點 pills 後列數 ≠ 卡片數字</td></tr>
+      <tr><td>emoji 圖示</td><td>📋✅❌（跨平台渲染不一致，011 已確立改 SVG 原則）</td><td>視覺品質</td></tr>
+    </table>
+    <p class="note"><b>結論：</b>把「統計」與「過濾」合成一件事 — 卡片即 filter。四張卡片（全部／執行中／失敗／未啟用）構成完整狀態篩選，Toolbar 移除 pills；計數統一為 tab-filtered 且與 filter 述詞一致，讓「卡片數字 = 點擊後的列數」成立。</p>
+  </div>
+
+  <!-- ══════════ 1. BEFORE / AFTER 對比（Desktop） ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>1️⃣ 完整畫面對比（Desktop）</h2>
+    <p class="fsub">BEFORE：3 張不可點卡片 + 4 顆 pills（計數各自為政，13/6/6 與表格 8 列不符）。AFTER：4 張可點卡片，數字 = 點擊後的列數，Toolbar 單列瘦身。</p>
+
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url">https://linux-service-manager/ · 我的服務</span>
+      <span class="elem-count">調整重點：<b>4 處</b></span>
+    </div>
+
+    <div class="vs">
+      <!-- BEFORE -->
+      <div class="col">
+        <span class="vs-label before">✕ BEFORE — 現況</span>
+        <div class="app-page">
+          <div class="tabs"><button class="tab-k active">我的服務 <span class="n">8</span></button><button class="tab-k">系統服務 <span class="n">5</span></button></div>
+          <div class="stats-b">
+            <div class="stcard-b b-all"><span class="b-ico">📋</span><div><span class="b-value">8</span><span class="b-label">總服務數</span></div></div>
+            <div class="stcard-b b-run"><span class="b-ico">✅</span><div><span class="b-value">4</span><span class="b-label">執行中</span></div></div>
+            <div class="stcard-b b-fail"><span class="b-ico">❌</span><div><span class="b-value">1</span><span class="b-label">失敗</span></div></div>
+          </div>
+          <div class="tb">
+            <div class="pills-b">
+              <button class="pill-b active">全部<span class="cnt">13</span></button>
+              <button class="pill-b">執行中<span class="cnt">6</span></button>
+              <button class="pill-b">失敗<span class="cnt">1</span></button>
+              <button class="pill-b">未啟用<span class="cnt">6</span></button>
+            </div>
+            <div class="search">
+              <svg class="s-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
+              <input placeholder="搜尋服務名稱...">
+            </div>
+            <span class="count-inline">顯示 <b>13</b> / 共 13</span>
+            <button class="btn secondary">↻ 重新整理</button>
+          </div>
+          <table class="mini-table">
+            <thead><tr><th>服務名稱</th><th>狀態</th><th>SubState</th></tr></thead>
+            <tbody>
+              <tr><td class="svc">nginx.service</td><td class="st-run"><span class="status-dot run"></span>執行中</td><td>running</td></tr>
+              <tr><td class="svc">mysql.service</td><td class="st-run"><span class="status-dot run"></span>執行中</td><td>running</td></tr>
+              <tr><td class="svc">web-cache.service</td><td class="st-fail"><span class="status-dot fail"></span>失敗</td><td>failed</td></tr>
+              <tr><td class="svc">redis.service</td><td class="st-inact"><span class="status-dot inact"></span>未啟用</td><td>dead</td></tr>
+            </tbody>
+          </table>
+          <div style="padding:0.7rem 1rem;font-size:0.74rem;color:var(--muted);line-height:1.7;">
+            ⚠️ 卡片 8/4/1（跟 tab）與 pills 13/6/6（全部服務）數字不同；表格實際 8 列，但「顯示 13 / 共 13」。「執行中」卡片 4 與 pills 6 的口徑也不同。
+          </div>
+        </div>
+      </div>
+
+      <!-- AFTER（可互動） -->
+      <div class="col">
+        <span class="vs-label after">✓ AFTER — 調整後（點下方卡片試玩）</span>
+        <div class="app-page">
+          <div class="tabs"><button class="tab-k active">我的服務 <span class="n">8</span></button><button class="tab-k">系統服務 <span class="n">5</span></button></div>
+          <div class="scards" id="demoCards" role="group" aria-label="狀態過濾">
+            <button class="scard active" data-filter="all" aria-pressed="true">
+              <span class="sc-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg></span>
+              <span><span class="sc-value">8</span><span class="sc-label">全部</span></span>
+            </button>
+            <button class="scard" data-filter="running" aria-pressed="false">
+              <span class="sc-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg></span>
+              <span><span class="sc-value">4</span><span class="sc-label">執行中</span></span>
+            </button>
+            <button class="scard" data-filter="failed" aria-pressed="false">
+              <span class="sc-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3L2 20h20L12 3z"/><path d="M12 10v4"/><path d="M12 17.5v.01"/></svg></span>
+              <span><span class="sc-value">1</span><span class="sc-label">失敗</span></span>
+            </button>
+            <button class="scard" data-filter="inactive" aria-pressed="false">
+              <span class="sc-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1.5"/><rect x="14" y="4" width="4" height="16" rx="1.5"/></svg></span>
+              <span><span class="sc-value">3</span><span class="sc-label">未啟用</span></span>
+            </button>
+          </div>
+          <div class="tb">
+            <div class="search" id="demoSearchWrap">
+              <svg class="s-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
+              <input id="demoSearch" placeholder="搜尋服務名稱..." autocomplete="off">
+              <button class="s-clear" id="demoClear" aria-label="清除搜尋">✕</button>
+            </div>
+            <span class="count-inline">顯示 <b id="demoCount">8</b> / 共 8</span>
+            <button class="btn secondary">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.3"></path><path d="M21 3v6h-6"></path></svg>
+              重新整理
+            </button>
+          </div>
+          <table class="mini-table" id="demoTable">
+            <thead><tr><th>服務名稱</th><th>狀態</th><th>SubState</th></tr></thead>
+            <tbody>
+              <tr class="svc-row" data-active="running"><td class="svc">nginx.service</td><td class="st-run"><span class="status-dot run"></span>執行中</td><td>running</td></tr>
+              <tr class="svc-row" data-active="running"><td class="svc">mysql.service</td><td class="st-run"><span class="status-dot run"></span>執行中</td><td>running</td></tr>
+              <tr class="svc-row" data-active="running"><td class="svc">php-fpm.service</td><td class="st-run"><span class="status-dot run"></span>執行中</td><td>running</td></tr>
+              <tr class="svc-row" data-active="running"><td class="svc">app-worker.service</td><td class="st-run"><span class="status-dot run"></span>執行中</td><td>running</td></tr>
+              <tr class="svc-row" data-active="inactive"><td class="svc">redis.service</td><td class="st-inact"><span class="status-dot inact"></span>未啟用</td><td>dead</td></tr>
+              <tr class="svc-row" data-active="inactive"><td class="svc">elasticsearch.service</td><td class="st-inact"><span class="status-dot inact"></span>未啟用</td><td>dead</td></tr>
+              <tr class="svc-row" data-active="inactive"><td class="svc">db-backup.service</td><td class="st-inact"><span class="status-dot inact"></span>未啟用</td><td>dead</td></tr>
+              <tr class="svc-row" data-active="failed"><td class="svc">web-cache.service</td><td class="st-fail"><span class="status-dot fail"></span>失敗</td><td>failed</td></tr>
+            </tbody>
+          </table>
+          <div class="empty-note" id="demoEmpty" style="display:none;">
+            沒有符合條件的服務 ・ <b>清除條件</b> 回到全部
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="anno"><span class="num">1</span><span><b>卡片即 filter</b>：點「執行中」→ 表格只剩執行中（4 列）；再點一次 → 回到全部。卡片數字 = 點擊後的列數。</span></div>
+      <div class="anno"><span class="num">2</span><span><b>新增「未啟用」卡片</b>：<code>active==='inactive'</code>（目前沒在跑），與表格狀態欄一致。</span></div>
+      <div class="anno"><span class="num">3</span><span><b>Toolbar 移除 pills</b>：單列只剩 搜尋｜計數｜重新整理；「顯示 X / 共 Y」改為與表格視圖一致。</span></div>
+      <div class="anno"><span class="num">4</span><span><b>計數口徑統一</b>：全部 = tab-filtered 總數、執行中 = <code>sub==='running'</code>、失敗 = <code>active==='failed'</code>、未啟用 = <code>active==='inactive'</code>。</span></div>
+    </div>
+    <p class="demo-hint">👉 互動：<b>點擊卡片</b> 過濾（可再點一次取消）；<b>輸入文字</b> 與卡片 filter 疊加；點 ✕ 清除搜尋。卡片上的數字是「該狀態總數」（不含搜尋條件），搜尋時會比列數多是預期行為。</p>
+  </div>
+
+  <!-- ══════════ 2. 元件解剖 ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>2️⃣ 元件解剖 — 狀態過濾卡片</h2>
+    <p class="fsub">沿用現況 stat-card 骨架，改為 <code>&lt;button&gt;</code>（原生 focus / Enter / Space 支援），新增 active 態與第 4 張「未啟用」卡。</p>
+
+    <div class="anatomy">
+      <div class="anat-card">
+        <h4>Idle 狀態 <span class="tag">預設</span></h4>
+        <div class="anat-stage">
+          <button class="scard" data-filter="all" style="pointer-events:none;">
+            <span class="sc-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg></span>
+            <span><span class="sc-value">8</span><span class="sc-label">全部</span></span>
+          </button>
+        </div>
+        <div class="anat-dims">
+          高度 <b>內容自然高（icon 20px + padding）</b> ・ 圓角 <b>10px</b>（--lms-radius）・ 左邊線 <b>4px</b> ・ 卡片間距 <b>0.6rem</b> ・ 內距 <b>0.6rem / 1rem</b><br>
+          value <b>1.3rem/700</b> ・ label <b>0.75rem muted</b> ・ icon <b>20px</b>
+        </div>
+      </div>
+      <div class="anat-card">
+        <h4>Active 狀態 <span class="tag">filter 生效</span></h4>
+        <div class="anat-stage">
+          <button class="scard active" data-filter="running" style="pointer-events:none;">
+            <span class="sc-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg></span>
+            <span><span class="sc-value">4</span><span class="sc-label">執行中</span></span>
+          </button>
+        </div>
+        <div class="anat-dims">
+          邊框 <b>accent</b>（--lms-accent）・ 底 <b>accent-light</b>（--lms-accent-light）・ 左邊線保留狀態色 <b>4px success</b><br>
+          label 轉 <b>accent</b> ・ <code>aria-pressed="true"</code> ・ hover 上浮 <b>2px + shadow</b>（尊重 reduced-motion）<br>
+          focus-visible <b>2px accent outline + 2px offset</b>（WCAG 2.4.7）
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ 3. 狀態矩陣 ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>3️⃣ 狀態與互動矩陣（stat card）</h2>
+    <p class="fsub">每張卡片都是 <code>&lt;button&gt;</code>，行為與現有 pills 一致（radio 群組、再點一次取消）。</p>
+    <table class="states">
+      <tr><th style="width:140px;">狀態</th><th>視覺</th><th>互動</th></tr>
+      <tr><td>預設 Idle</td><td><span class="demo-cell"><button class="scard" data-filter="all" style="max-width:190px;pointer-events:none;"><span class="sc-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg></span><span><span class="sc-value">4</span><span class="sc-label">執行中</span></span></button>surface 底・border・狀態色左邊線</span></td><td>可點擊（<code>cursor:pointer</code>）</td></tr>
+      <tr><td>Hover</td><td><span class="demo-cell">上浮 2px・shadow・邊框 accent</span></td><td>單擊觸發 filter</td></tr>
+      <tr><td>Focus-visible</td><td><span class="demo-cell">2px accent outline + 2px offset</span></td><td>鍵盤 Enter / Space 觸發（button 原生）</td></tr>
+      <tr><td>Active（filter on）</td><td><span class="demo-cell"><button class="scard active" data-filter="running" style="max-width:190px;pointer-events:none;"><span class="sc-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg></span><span><span class="sc-value">4</span><span class="sc-label">執行中</span></span></button>accent 邊框・accent-light 底・<code>aria-pressed=true</code></span></td><td>再點一次 → 回到「全部」</td></tr>
+      <tr><td>Disabled（loading）</td><td><span class="demo-cell">50% opacity・<code>not-allowed</code></span></td><td>不觸發；<b>保留既有 filter</b>（與現況 pills 相同）</td></tr>
+      <tr><td>空結果（0 筆）</td><td><span class="demo-cell">數字顯示 0，卡片仍可點</span></td><td>表格區顯示 EmptyState + 「清除條件」一鍵重置</td></tr>
+    </table>
+    <div class="note"><b>無障礙：</b>卡片群組 <code>role="group"</code> + <code>aria-label="狀態過濾"</code>；狀態不只靠顏色（卡片有文字標籤 + 數字，符合 WCAG 1.4.1）；觸控目標 mobile 卡片高 78px 遠超 40px（2.5.5）；圖示皆 <code>aria-hidden="true"</code>。</div>
+  </div>
+
+  <!-- ══════════ Mobile ══════════ -->
+  <div class="frame mobile-frame">
+    <h2>1️⃣ Mobile（≤767px）</h2>
+    <p class="fsub">卡片改為<b>橫向捲動</b>（沿用現況 scroll-snap），Toolbar 堆疊：搜尋全寬 44px、計數與重新整理一行。</p>
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url">mobile · 390px</span>
+      <span class="elem-count">觸控目標 <b>44px+</b></span>
+    </div>
+    <div class="app-page is-mobile">
+      <div class="tabs"><button class="tab-k active">我的服務 <span class="n">8</span></button><button class="tab-k">系統服務 <span class="n">5</span></button></div>
+      <div class="scards">
+        <button class="scard active" data-filter="all">
+          <span class="sc-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg></span>
+          <span><span class="sc-value">8</span><span class="sc-label">全部</span></span>
+        </button>
+        <button class="scard" data-filter="running">
+          <span class="sc-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg></span>
+          <span><span class="sc-value">4</span><span class="sc-label">執行中</span></span>
+        </button>
+        <button class="scard" data-filter="failed">
+          <span class="sc-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3L2 20h20L12 3z"/><path d="M12 10v4"/><path d="M12 17.5v.01"/></svg></span>
+          <span><span class="sc-value">1</span><span class="sc-label">失敗</span></span>
+        </button>
+        <button class="scard" data-filter="inactive">
+          <span class="sc-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1.5"/><rect x="14" y="4" width="4" height="16" rx="1.5"/></svg></span>
+          <span><span class="sc-value">3</span><span class="sc-label">未啟用</span></span>
+        </button>
+      </div>
+      <div class="tb">
+        <div class="search" style="max-width:none;">
+          <svg class="s-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
+          <input placeholder="搜尋服務名稱..." style="height:var(--h-mobile);">
+        </div>
+        <div class="tb-meta">
+          <span class="count-inline">顯示 <b>8</b> / 共 8</span>
+          <button class="btn secondary">↻ 重新整理</button>
+        </div>
+      </div>
+      <table class="mini-table">
+        <thead><tr><th>服務名稱</th><th>狀態</th></tr></thead>
+        <tbody>
+          <tr><td class="svc">nginx.service</td><td class="st-run"><span class="status-dot run"></span>執行中</td></tr>
+          <tr><td class="svc">redis.service</td><td class="st-inact"><span class="status-dot inact"></span>未啟用</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note"><b>Mobile 規範：</b>卡片橫向捲動（scroll-snap、min-width 120px），觸控高度 78px ≥ 44px（WCAG 2.5.5）；搜尋輸入 44px 且 font-size 16px（避免 iOS 聚焦放大）。</p>
+  </div>
+
+  <!-- ══════════ 4. 規格摘要 ══════════ -->
+  <div class="frame">
+    <h2>4️⃣ 規格摘要 — Design Token 與 CSS 變數對應</h2>
+    <p class="fsub">實作時直接套用下列變數與結構（對應前端 <code>--lms-*</code>）。</p>
+    <div class="tokens">
+      <div class="tcard"><div class="tk">卡片高度</div><div class="tv">自然高度</div><div class="td">icon 20px + 內距 0.6/1rem，非固定 --lms-h；mobile 78px 觸控</div></div>
+      <div class="tcard"><div class="tk">字級</div><div class="tv">1.3 / 0.75rem</div><div class="td">value 1.3rem/700 ・ label 0.75rem muted</div></div>
+      <div class="tcard"><div class="tk">圓角 / 左邊線</div><div class="tv">10px / 4px</div><div class="td">--lms-radius ・ 狀態色 4px（沿用現況）</div></div>
+      <div class="tcard"><div class="tk">間距</div><div class="tv">0.6rem</div><div class="td">卡片間距 0.6rem；toolbar 群組間 8px</div></div>
+      <div class="tcard"><div class="tk">Active 態</div><div class="tv">accent</div><div class="td">--lms-accent 邊框 + --lms-accent-light 底</div></div>
+      <div class="tcard"><div class="tk">動畫</div><div class="tv">0.2s ease</div><div class="td">--lms-transition；尊重 prefers-reduced-motion</div></div>
+    </div>
+    <table class="states">
+      <tr><th style="width:200px;">項目</th><th>值</th><th>對應</th></tr>
+      <tr><td>卡片背景／邊框</td><td>surface / border</td><td><code>--lms-surface</code> / <code>--lms-border</code></td></tr>
+      <tr><td>左邊線（全部/執行中/失敗/未啟用）</td><td>accent / success / danger / muted</td><td><code>--lms-accent</code> / <code>--lms-success</code> / <code>--lms-danger</code> / <code>--lms-muted</code></td></tr>
+      <tr><td>Active 態</td><td>accent 邊框 + accent-light 底</td><td><code>--lms-accent</code> + <code>--lms-accent-light</code></td></tr>
+      <tr><td>計數語意（統一述詞）</td><td>running=<code>sub==='running'</code>・failed=<code>active==='failed'</code>・inactive=<code>active==='inactive'</code></td><td>與 <code>useServiceFilter.ts</code> 一致（建議抽共用述詞）</td></tr>
+      <tr><td>計數範圍</td><td>tab-filtered（與 TabsBar 對齊）</td><td><code>DashboardView.statsServices</code></td></tr>
+      <tr><td>Toolbar</td><td>搜尋＋計數＋重新整理（無 pills）</td><td><code>Toolbar.vue</code> 移除 status-filters 區塊</td></tr>
+    </table>
+  </div>
+
+  <div class="footnote">
+    📄 設計文件：<b>docs/uiux/014-dashboard-stats-redesign.md</b> ・ 本文件：<b>docs/uiux/014-dashboard-stats-redesign-mockup.html</b><br>
+    調整範圍：<b>StatsBar.vue</b>（卡片化 filter＋未啟用卡）、<b>Toolbar.vue</b>（移除 pills）、<b>DashboardView.vue</b>（計數口徑）、<b>useServiceFilter.ts</b>（述詞共用）、<b>main.css</b>、<b>useI18n.ts</b>。
+  </div>
+</div>
+
+<script>
+// ── 主題切換 ──
+const themeBtn = document.getElementById('themeToggle');
+themeBtn.addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+  themeBtn.textContent = dark ? '🌙 切換深色' : '☀️ 切換淺色';
+});
+
+// ── 裝置切換 ──
+const devSwitch = document.getElementById('devSwitch');
+devSwitch.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+  devSwitch.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  document.body.classList.toggle('view-mobile', b.dataset.dev === 'mobile');
+}));
+
+// ── AFTER 面板互動 Demo：點卡片過濾 ＋ 搜尋疊加 ──
+const cards = document.querySelectorAll('#demoCards .scard');
+const rows = document.querySelectorAll('#demoTable .svc-row');
+const countEl = document.getElementById('demoCount');
+const searchEl = document.getElementById('demoSearch');
+const clearEl = document.getElementById('demoClear');
+const searchWrap = document.getElementById('demoSearchWrap');
+const emptyEl = document.getElementById('demoEmpty');
+let curStatus = 'all';
+
+function counts() {
+  const c = { all: rows.length, running: 0, failed: 0, inactive: 0 };
+  rows.forEach(r => { c[r.dataset.active]++; });
+  return c;
+}
+
+function render() {
+  const q = (searchEl.value || '').toLowerCase();
+  let shown = 0;
+  rows.forEach(r => {
+    const okStatus = curStatus === 'all' || r.dataset.active === curStatus;
+    const okName = !q || r.querySelector('.svc').textContent.toLowerCase().includes(q);
+    const show = okStatus && okName;
+    r.classList.toggle('hide', !show);
+    if (show) shown++;
+  });
+  countEl.textContent = shown;
+  emptyEl.style.display = shown === 0 ? 'block' : 'none';
+  searchWrap.classList.toggle('has-value', q.length > 0);
+
+  const c = counts();
+  cards.forEach(card => {
+    const f = card.dataset.filter;
+    card.classList.toggle('active', curStatus === f);
+    card.setAttribute('aria-pressed', String(curStatus === f));
+    card.querySelector('.sc-value').textContent = c[f];
+  });
+}
+
+cards.forEach(card => card.addEventListener('click', () => {
+  const f = card.dataset.filter;
+  curStatus = (curStatus === f && f !== 'all') ? 'all' : f;
+  render();
+}));
+searchEl.addEventListener('input', render);
+clearEl.addEventListener('click', () => { searchEl.value = ''; render(); searchEl.focus(); });
+render();
+</script>
+</body>
+</html>

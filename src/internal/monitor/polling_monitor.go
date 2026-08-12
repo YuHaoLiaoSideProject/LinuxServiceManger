@@ -81,10 +81,12 @@ func (m *PollingMonitor) compareAndPush() {
 				Active: state.Active, Sub: state.Sub, UnitFileState: state.UnitFileState,
 			})
 		} else if prev != state {
-			m.hub.BroadcastMessage(websocket.Message{
-				Type: "status_change", Name: name,
-				Active: state.Active, Sub: state.Sub, UnitFileState: state.UnitFileState,
-			})
+			if prev.Active != state.Active || prev.Sub != state.Sub {
+				m.hub.BroadcastStatusChange(name, state.Active, state.Sub)
+			}
+			if prev.UnitFileState != state.UnitFileState {
+				m.hub.BroadcastOnBootChange(name, state.UnitFileState)
+			}
 		}
 	}
 	for name := range m.prevSnapshot {

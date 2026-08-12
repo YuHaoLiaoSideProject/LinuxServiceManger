@@ -4,7 +4,7 @@
  * 測試 api/client.ts 中 batchServices() 函數。
  * 函數尚未實作 — 靜態 import 失敗 → 整個 test file 為 RED。
  */
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import api, { batchServices } from '../client'
 
 describe('batchServices — 批次操作 API', () => {

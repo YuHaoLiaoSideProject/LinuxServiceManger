@@ -7,6 +7,11 @@ export interface StatusChangeMessage {
   name: string
   active: string
   sub: string
+}
+
+export interface OnBootChangeMessage {
+  type: 'on_boot_change'
+  name: string
   unitFileState: string
 }
 
@@ -38,7 +43,7 @@ export interface SessionExpiredMessage {
   timestamp: string
 }
 
-export type WsMessage = StatusChangeMessage | ServiceAddedMessage | ServiceRemovedMessage | SnapshotMessage | SessionExpiredMessage
+export type WsMessage = StatusChangeMessage | OnBootChangeMessage | ServiceAddedMessage | ServiceRemovedMessage | SnapshotMessage | SessionExpiredMessage
 
 export function useWebSocket() {
   const status = ref<ConnectionStatus>('connecting')

@@ -31,6 +31,7 @@ type mockSystemd struct {
 	restartErr       error
 	enableErr        error
 	disableErr       error
+	unitFileState    string
 	getServiceLogsFn func(name string, lines int) (string, error)
 	// Per-service error maps for batch operation partial-failure testing.
 	startErrFor   map[string]error
@@ -94,6 +95,10 @@ func (m *mockSystemd) EnableService(name string) error {
 func (m *mockSystemd) DisableService(name string) error {
 	m.disableCalled = append(m.disableCalled, name)
 	return m.disableErr
+}
+
+func (m *mockSystemd) GetUnitFileState(name string) (string, error) {
+	return m.unitFileState, nil
 }
 
 func (m *mockSystemd) GetServiceLogs(name string, lines int) (string, error) {

@@ -315,6 +315,13 @@ func (h *Handler) HandleEnableJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Push WebSocket after confirming actual state change
+	if h.Hub != nil {
+		if state, err := h.systemd.GetUnitFileState(name); err == nil && state != "" {
+			h.Hub.BroadcastOnBootChange(name, state)
+		}
+	}
+
 	writeJSON(w, http.StatusOK, messageJSON{Message: name + " enabled"})
 }
 
@@ -346,6 +353,13 @@ func (h *Handler) HandleDisableJSON(w http.ResponseWriter, r *http.Request) {
 		log.Printf("ERROR disabling %s: %v", name, err)
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "failed to disable " + name})
 		return
+	}
+
+	// Push WebSocket after confirming actual state change
+	if h.Hub != nil {
+		if state, err := h.systemd.GetUnitFileState(name); err == nil && state != "" {
+			h.Hub.BroadcastOnBootChange(name, state)
+		}
 	}
 
 	writeJSON(w, http.StatusOK, messageJSON{Message: name + " disabled"})

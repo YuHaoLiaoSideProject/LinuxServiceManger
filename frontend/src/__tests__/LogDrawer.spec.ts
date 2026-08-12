@@ -10,7 +10,7 @@
  * - 每個測試後清理 document.body
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount, VueWrapper } from '@vue/test-utils'
+import { mount } from '@vue/test-utils'
 import LogDrawer from '../components/LogDrawer.vue'
 
 // ── Mock WebSocket ──
@@ -22,7 +22,7 @@ interface MockWebSocket {
   onmessage: ((event: { data: string }) => void) | null
   onclose: ((event?: { code?: number; reason?: string }) => void) | null
   onerror: ((event?: unknown) => void) | null
-  closeSpy: ReturnType<typeof vi.fn>
+  closeSpy: (code?: number, reason?: string) => void
   close: (code?: number, reason?: string) => void
   sendMessage: (data: string) => void
   triggerError: () => void
@@ -85,8 +85,7 @@ async function tick() {
 
 beforeEach(() => {
   mockInstances = []
-  // @ts-expect-error — MockWS is used as constructor via `new WebSocket()`
-  vi.stubGlobal('WebSocket', MockWS)
+  vi.stubGlobal('WebSocket', MockWS as any)
 })
 
 afterEach(() => {
@@ -148,7 +147,7 @@ describe('開啟 Drawer 與日誌載入', () => {
   })
 
   it('新日誌觸發自動捲動到底部', async () => {
-    const wrapper = mountDrawer({ visible: true })
+    mountDrawer({ visible: true })
     await flushWS()
 
     lastWS()?.sendMessage('first\n')

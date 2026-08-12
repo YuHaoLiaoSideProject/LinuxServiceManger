@@ -151,6 +151,25 @@ func (h *Hub) BroadcastMessage(msg Message) {
 	h.Broadcast <- data
 }
 
+// BroadcastStatusChange sends a status_change message (active/sub only).
+func (h *Hub) BroadcastStatusChange(name, active, sub string) {
+	h.BroadcastMessage(Message{
+		Type:   "status_change",
+		Name:   name,
+		Active: active,
+		Sub:    sub,
+	})
+}
+
+// BroadcastOnBootChange sends an on_boot_change message (unitFileState only).
+func (h *Hub) BroadcastOnBootChange(name, unitFileState string) {
+	h.BroadcastMessage(Message{
+		Type:          "on_boot_change",
+		Name:          name,
+		UnitFileState: unitFileState,
+	})
+}
+
 // Connected returns the number of connected clients.
 func (h *Hub) Connected() int {
 	h.mu.RLock()

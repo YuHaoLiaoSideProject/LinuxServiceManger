@@ -146,6 +146,7 @@ Environment="ADMIN_USER=admin"
 Environment="ADMIN_PASS=change_me"
 Environment="SESSION_KEY=$(openssl rand -hex 32)"
 Environment="PORT=8080"
+Environment="SECURE_COOKIE=false"
 ExecStart=${INSTALL_DIR}/${APP_NAME}
 Restart=on-failure
 RestartSec=5

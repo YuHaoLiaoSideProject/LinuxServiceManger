@@ -24,46 +24,65 @@ func newSM(t *testing.T) (*stateMachine, *time.Time) {
 
 // ── 狀態機轉換（SYS-11 ~ SYS-19）──
 
+// setRunningState 設定服務的語意 running 狀態（含 raw prevActive）。
+func setRunningState(sm *stateMachine, name string, running bool) {
+	sm.running[name] = running
+	if running {
+		sm.prevActive[name] = "active"
+	} else {
+		sm.prevActive[name] = "inactive"
+	}
+}
+
 // SYS-11: active → failed 觸發 failed
 func TestStateMachineFailed(t *testing.T) {
 	sm, _ := newSM(t)
-	sm.prevActive["nginx.service"] = "active"
+	setRunningState(sm, "nginx.service", true)
 
-	ev := sm.Transition("nginx.service", "failed")
+	ev, pending := sm.Transition("nginx.service", "failed")
 	if ev == nil || ev.Kind != EventFailed {
 		t.Fatalf("expected failed event, got %v", ev)
 	}
-}
-
-// SYS-12: active → inactive 觸發 stopped
-func TestStateMachineInactiveStops(t *testing.T) {
-	sm, _ := newSM(t)
-	sm.prevActive["nginx.service"] = "active"
-
-	ev := sm.Transition("nginx.service", "inactive")
-	if ev == nil || ev.Kind != EventStopped {
-		t.Fatalf("expected stopped event, got %v", ev)
+	if pending {
+		t.Error("failed should not be a pending stop")
 	}
 }
 
-// SYS-13: active → dead 觸發 stopped
+// SYS-12: active → inactive 應觸發「延遲 stopped」（pendingStop=true，無立即事件）
+func TestStateMachineInactiveStops(t *testing.T) {
+	sm, _ := newSM(t)
+	setRunningState(sm, "nginx.service", true)
+
+	ev, pending := sm.Transition("nginx.service", "inactive")
+	if ev != nil {
+		t.Fatalf("expected no immediate event (stopped is deferred), got %v", ev)
+	}
+	if !pending {
+		t.Fatal("expected pending stop")
+	}
+}
+
+// SYS-13: active → dead 應觸發「延遲 stopped」
 func TestStateMachineDeadStops(t *testing.T) {
 	sm, _ := newSM(t)
-	sm.prevActive["nginx.service"] = "active"
+	setRunningState(sm, "nginx.service", true)
 
-	ev := sm.Transition("nginx.service", "dead")
-	if ev == nil || ev.Kind != EventStopped {
-		t.Fatalf("expected stopped event, got %v", ev)
+	ev, pending := sm.Transition("nginx.service", "dead")
+	if ev != nil {
+		t.Fatalf("expected no immediate event (stopped is deferred), got %v", ev)
+	}
+	if !pending {
+		t.Fatal("expected pending stop")
 	}
 }
 
 // SYS-14: inactive → active（>5s）觸發 started
 func TestStateMachineStartedAfter5s(t *testing.T) {
 	sm, now := newSM(t)
-	sm.prevActive["nginx.service"] = "inactive"
+	setRunningState(sm, "nginx.service", false)
 	sm.leftActiveAt["nginx.service"] = now.Add(-6 * time.Second)
 
-	ev := sm.Transition("nginx.service", "active")
+	ev, _ := sm.Transition("nginx.service", "active")
 	if ev == nil || ev.Kind != EventStarted {
 		t.Fatalf("expected started event, got %v", ev)
 	}
@@ -72,41 +91,48 @@ func TestStateMachineStartedAfter5s(t *testing.T) {
 // SYS-15: 5 秒內回到 active 觸發 restarted（僅一筆，不重複 stopped+started）
 func TestStateMachineRestartedWithin5s(t *testing.T) {
 	sm, now := newSM(t)
-	sm.prevActive["nginx.service"] = "active"
+	setRunningState(sm, "nginx.service", true)
 
 	// active → deactivating（記錄 leftActiveAt，無事件）
-	if ev := sm.Transition("nginx.service", "deactivating"); ev != nil {
+	if ev, _ := sm.Transition("nginx.service", "deactivating"); ev != nil {
 		t.Fatalf("deactivating should not trigger event, got %v", ev)
 	}
 	if sm.leftActiveAt["nginx.service"].IsZero() {
 		t.Fatal("expected leftActiveAt recorded on deactivating")
 	}
 
-	// deactivating → inactive（無事件）
-	if ev := sm.Transition("nginx.service", "inactive"); ev != nil {
-		t.Fatalf("deactivating→inactive should not trigger event, got %v", ev)
+	// deactivating → inactive（pending stop，無立即事件）
+	ev, pending := sm.Transition("nginx.service", "inactive")
+	if ev != nil {
+		t.Fatalf("deactivating→inactive should not trigger immediate event, got %v", ev)
+	}
+	if !pending {
+		t.Fatal("expected pending stop at inactive")
 	}
 
 	// inactive → active（2 秒內）→ restarted
 	*now = now.Add(2 * time.Second)
-	ev := sm.Transition("nginx.service", "active")
+	ev, _ = sm.Transition("nginx.service", "active")
 	if ev == nil || ev.Kind != EventRestarted {
 		t.Fatalf("expected restarted event, got %v", ev)
 	}
 }
 
-// SYS-16: 超過 5 秒的 stop→start 產生 stopped 與 started 兩筆
+// SYS-16: 超過 5 秒的 stop→start 產生 started（stopped 為延遲事件，另於 Notifier 層驗證）
 func TestStateMachineStopStartOver5s(t *testing.T) {
 	sm, now := newSM(t)
-	sm.prevActive["nginx.service"] = "active"
+	setRunningState(sm, "nginx.service", true)
 
-	ev1 := sm.Transition("nginx.service", "inactive")
-	if ev1 == nil || ev1.Kind != EventStopped {
-		t.Fatalf("expected stopped event first, got %v", ev1)
+	ev1, pending := sm.Transition("nginx.service", "inactive")
+	if ev1 != nil {
+		t.Fatalf("expected no immediate event, got %v", ev1)
+	}
+	if !pending {
+		t.Fatal("expected pending stop")
 	}
 
 	*now = now.Add(8 * time.Second)
-	ev2 := sm.Transition("nginx.service", "active")
+	ev2, _ := sm.Transition("nginx.service", "active")
 	if ev2 == nil || ev2.Kind != EventStarted {
 		t.Fatalf("expected started event after 8s, got %v", ev2)
 	}
@@ -115,11 +141,11 @@ func TestStateMachineStopStartOver5s(t *testing.T) {
 // SYS-17: deactivating 記錄離開時間、不觸發事件
 func TestStateMachineDeactivatingRecordsTime(t *testing.T) {
 	sm, now := newSM(t)
-	sm.prevActive["nginx.service"] = "active"
+	setRunningState(sm, "nginx.service", true)
 
-	ev := sm.Transition("nginx.service", "deactivating")
-	if ev != nil {
-		t.Fatalf("deactivating should not trigger event, got %v", ev)
+	ev, pending := sm.Transition("nginx.service", "deactivating")
+	if ev != nil || pending {
+		t.Fatalf("deactivating should not trigger event, got ev=%v pending=%v", ev, pending)
 	}
 	if sm.leftActiveAt["nginx.service"] != *now {
 		t.Errorf("expected leftActiveAt=%v, got %v", *now, sm.leftActiveAt["nginx.service"])
@@ -129,9 +155,9 @@ func TestStateMachineDeactivatingRecordsTime(t *testing.T) {
 // SYS-18: sub 單獨變更（active 不變）不觸發
 func TestStateMachineSubChangeNoEvent(t *testing.T) {
 	sm, _ := newSM(t)
-	sm.prevActive["nginx.service"] = "active"
+	setRunningState(sm, "nginx.service", true)
 
-	if ev := sm.Transition("nginx.service", "active"); ev != nil {
+	if ev, _ := sm.Transition("nginx.service", "active"); ev != nil {
 		t.Fatalf("same active should skip, got %v", ev)
 	}
 }
@@ -139,10 +165,38 @@ func TestStateMachineSubChangeNoEvent(t *testing.T) {
 // SYS-19: reloaded（未知/無變化狀態）不觸發
 func TestStateMachineReloadedNoEvent(t *testing.T) {
 	sm, _ := newSM(t)
-	sm.prevActive["nginx.service"] = "active"
+	setRunningState(sm, "nginx.service", true)
 
-	if ev := sm.Transition("nginx.service", "reloading"); ev != nil {
+	if ev, _ := sm.Transition("nginx.service", "reloading"); ev != nil {
 		t.Fatalf("reloading should not trigger event, got %v", ev)
+	}
+}
+
+// reload 完成（reloading → active）不應誤發 started
+func TestStateMachineReloadNoSpuriousStarted(t *testing.T) {
+	sm, _ := newSM(t)
+	setRunningState(sm, "nginx.service", true)
+
+	sm.Transition("nginx.service", "reloading")
+	ev, _ := sm.Transition("nginx.service", "active")
+	if ev != nil {
+		t.Fatalf("reload completion should not fire started, got %v", ev)
+	}
+}
+
+// 真實 restart 序列（active → deactivating → inactive → activating → active）判定為 restarted
+func TestStateMachineRestartedThroughActivating(t *testing.T) {
+	sm, now := newSM(t)
+	setRunningState(sm, "nginx.service", true)
+
+	sm.Transition("nginx.service", "deactivating")
+	sm.Transition("nginx.service", "inactive")
+	*now = now.Add(1 * time.Second)
+	sm.Transition("nginx.service", "activating")
+	*now = now.Add(1 * time.Second)
+	ev, _ := sm.Transition("nginx.service", "active")
+	if ev == nil || ev.Kind != EventRestarted {
+		t.Fatalf("expected restarted event, got %v", ev)
 	}
 }
 
@@ -307,5 +361,81 @@ func TestNotifierNoMatchNoSend(t *testing.T) {
 	}
 	if data, err := os.ReadFile(path); err == nil && len(strings.TrimSpace(string(data))) != 0 {
 		t.Errorf("expected no history entry, got: %s", string(data))
+	}
+}
+
+// 真實 stop 序列（active → deactivating → inactive）應於延遲後觸發 stopped
+func TestNotifierStoppedDeferred(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	n, store, path := newTestNotifier(t)
+	n.stoppedDelay = 20 * time.Millisecond
+	_, err := store.Create(&Channel{
+		Type:        ChannelTypeSlack,
+		Name:        "S",
+		URL:         srv.URL,
+		Events:      []string{string(EventStopped)},
+		AllServices: true,
+		Enabled:     true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 模擬 systemctl stop：active → deactivating → inactive
+	n.sm.running["nginx.service"] = true
+	n.sm.prevActive["nginx.service"] = "active"
+	n.HandleStatusChange("nginx.service", "deactivating", "stop-sigterm")
+	n.HandleStatusChange("nginx.service", "inactive", "dead")
+
+	time.Sleep(100 * time.Millisecond) // 等 deferred stopped 觸發
+	n.Shutdown()                        // flush history
+
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), `"event":"stopped"`) {
+		t.Errorf("expected stopped event in history, got: %s", string(data))
+	}
+}
+
+// restart 序列（active → deactivating → inactive → activating → active）只發 restarted，不發 stopped
+func TestNotifierRestartNoStopped(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	n, store, path := newTestNotifier(t)
+	n.stoppedDelay = 30 * time.Millisecond
+	_, err := store.Create(&Channel{
+		Type:        ChannelTypeSlack,
+		Name:        "S",
+		URL:         srv.URL,
+		Events:      []string{string(EventRestarted), string(EventStopped)},
+		AllServices: true,
+		Enabled:     true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	n.sm.running["nginx.service"] = true
+	n.sm.prevActive["nginx.service"] = "active"
+	n.HandleStatusChange("nginx.service", "deactivating", "stop-sigterm")
+	n.HandleStatusChange("nginx.service", "inactive", "dead")
+	n.HandleStatusChange("nginx.service", "activating", "start")
+	n.HandleStatusChange("nginx.service", "active", "running")
+
+	time.Sleep(100 * time.Millisecond)
+	n.Shutdown()
+
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), `"event":"restarted"`) {
+		t.Errorf("expected restarted event, got: %s", string(data))
+	}
+	if strings.Contains(string(data), `"event":"stopped"`) {
+		t.Errorf("restart should not fire stopped, got: %s", string(data))
 	}
 }

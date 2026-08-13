@@ -46,14 +46,15 @@ func (c *Config) defaults() {
 
 // Notifier 是通知模組的門面：事件處理、匹配、生命週期。
 type Notifier struct {
-	store   *ChannelStore
-	history *History
-	sender  *Sender
-	hub     *websocket.Hub
-	sm      *stateMachine
-	cfg     Config
-	done    chan struct{}
-	wg      sync.WaitGroup
+	store        *ChannelStore
+	history      *History
+	sender       *Sender
+	hub          *websocket.Hub
+	sm           *stateMachine
+	cfg          Config
+	stoppedDelay time.Duration // 延遲判定 stopped 的窗口（與 restartWindow 對齊）
+	done         chan struct{}
+	wg           sync.WaitGroup
 
 	shutdownMu sync.RWMutex
 	shutdown   bool
@@ -66,13 +67,14 @@ func New(cfg Config) *Notifier {
 	history := NewHistory(cfg)
 	sender := NewSender(store, history)
 	n := &Notifier{
-		store:   store,
-		history: history,
-		sender:  sender,
-		hub:     cfg.Hub,
-		sm:      newStateMachine(),
-		cfg:     cfg,
-		done:    make(chan struct{}),
+		store:        store,
+		history:      history,
+		sender:       sender,
+		hub:          cfg.Hub,
+		sm:           newStateMachine(),
+		cfg:          cfg,
+		stoppedDelay: 5 * time.Second,
+		done:         make(chan struct{}),
 	}
 	sender.onAutoDisable = n.notifyChannelDisabled
 	return n
@@ -83,11 +85,17 @@ func (n *Notifier) Load() error { return n.store.Load() }
 
 // HandleStatusChange 是 hub.OnStatusChange 的回呼實作（同步快速路徑）。
 func (n *Notifier) HandleStatusChange(name, active, sub string) {
-	ev := n.sm.Transition(name, active)
-	if ev == nil {
-		return
+	ev, pendingStop := n.sm.Transition(name, active)
+	if ev != nil {
+		n.dispatch(*ev)
 	}
+	if pendingStop {
+		n.scheduleStopped(name)
+	}
+}
 
+// dispatch 將事件匹配至啟用的 channel 並背景並行發送。
+func (n *Notifier) dispatch(ev Event) {
 	var matched []*Channel
 	for _, ch := range n.store.List() {
 		if !ch.Enabled {
@@ -96,7 +104,7 @@ func (n *Notifier) HandleStatusChange(name, active, sub string) {
 		if !containsEvent(ch.Events, string(ev.Kind)) {
 			continue
 		}
-		if !matchesService(ch, name) {
+		if !matchesService(ch, ev.Service) {
 			continue
 		}
 		matched = append(matched, ch)
@@ -108,7 +116,29 @@ func (n *Notifier) HandleStatusChange(name, active, sub string) {
 	n.wg.Add(1)
 	go func() {
 		defer n.wg.Done()
-		n.sender.SendBatch(*ev, matched)
+		n.sender.SendBatch(ev, matched)
+	}()
+}
+
+// scheduleStopped 延遲判定 stopped：等待 stoppedDelay 後，若服務仍未回到 active
+// （即為真實 stop 而非 restart），才發送 stopped 事件。
+func (n *Notifier) scheduleStopped(name string) {
+	n.wg.Add(1)
+	go func() {
+		defer n.wg.Done()
+		timer := time.NewTimer(n.stoppedDelay)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-n.done:
+			return
+		}
+
+		running, status := n.sm.snapshot(name)
+		if running || (status != "inactive" && status != "dead") {
+			return // 已 restart / failed / 其他狀態 → 不發 stopped
+		}
+		n.dispatch(Event{Kind: EventStopped, Service: name, Status: status, Timestamp: time.Now().UTC()})
 	}()
 }
 
@@ -198,56 +228,88 @@ func (n *Notifier) TestChannel(ch *Channel) (bool, string) {
 //  stateMachine
 // ============================================================
 
-// stateMachine 將 raw ActiveState 轉換為 4 種觸發事件（決策 1 狀態機）。
+// stateMachine 將 raw ActiveState 轉換為觸發事件。
+// 以「語意 running 狀態」追蹤（running map）而非只比對 raw prevActive，
+// 才能正確處理真實 systemd 的過渡狀態（deactivating/activating/reloading）。
 type stateMachine struct {
 	mu           sync.Mutex
-	prevActive   map[string]string
-	leftActiveAt map[string]time.Time // 記錄離開 active 的時間（restarted 判定用）
+	prevActive   map[string]string    // raw 前次 ActiveState（偵測無變化）
+	running      map[string]bool      // 語意狀態：服務是否在 running（active-like）
+	leftActiveAt map[string]time.Time // 離開 active 的時間（restarted/stopped 判定用）
 	now          func() time.Time
 }
 
 func newStateMachine() *stateMachine {
 	return &stateMachine{
 		prevActive:   make(map[string]string),
+		running:      make(map[string]bool),
 		leftActiveAt: make(map[string]time.Time),
 		now:          time.Now,
 	}
 }
 
-// Transition 依「狀態機轉換規則」判定事件；無觸發事件回 nil。
-func (sm *stateMachine) Transition(name, active string) *Event {
+// restartWindow 是「離開 active 後多久內回到 active 判定為 restarted」的窗口。
+const restartWindow = 5 * time.Second
+
+// Transition 依狀態機規則判定「立即要發送」的事件。
+// 第二回傳值 pendingStop：當服務離開 active 進入 inactive/dead 時為 true，
+// 由 Notifier 在延遲窗口過後確認未回到 active 再發 stopped（避免 restart 誤報 stopped）。
+func (sm *stateMachine) Transition(name, active string) (*Event, bool) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
 	prev := sm.prevActive[name]
 	if active == prev {
-		return nil
+		return nil, false
 	}
 
 	now := sm.now()
+	wasRunning := sm.running[name]
 	var ev *Event
+	pendingStop := false
 
 	switch active {
 	case "failed":
 		ev = &Event{Kind: EventFailed, Service: name, Status: active, Timestamp: now}
+		sm.running[name] = false
+		delete(sm.leftActiveAt, name)
 	case "active":
-		leftAt := sm.leftActiveAt[name]
-		if (prev == "deactivating" || prev == "inactive" || prev == "dead") &&
-			!leftAt.IsZero() && now.Sub(leftAt) <= 5*time.Second {
-			ev = &Event{Kind: EventRestarted, Service: name, Status: active, Timestamp: now}
-		} else {
-			ev = &Event{Kind: EventStarted, Service: name, Status: active, Timestamp: now}
+		if !wasRunning {
+			leftAt := sm.leftActiveAt[name]
+			if !leftAt.IsZero() && now.Sub(leftAt) <= restartWindow {
+				ev = &Event{Kind: EventRestarted, Service: name, Status: active, Timestamp: now}
+			} else {
+				ev = &Event{Kind: EventStarted, Service: name, Status: active, Timestamp: now}
+			}
 		}
+		sm.running[name] = true
+		delete(sm.leftActiveAt, name)
 	case "inactive", "dead":
-		if prev == "active" {
-			ev = &Event{Kind: EventStopped, Service: name, Status: active, Timestamp: now}
+		if wasRunning {
+			if sm.leftActiveAt[name].IsZero() {
+				sm.leftActiveAt[name] = now
+			}
+			pendingStop = true
 		}
+		sm.running[name] = false
 	case "deactivating":
-		sm.leftActiveAt[name] = now
+		if wasRunning {
+			sm.leftActiveAt[name] = now
+		}
+		// running 維持 true（仍算 active 直到進入 inactive/dead）
+	case "activating", "reloading":
+		// 過渡狀態：running 不變
 	}
 
 	sm.prevActive[name] = active
-	return ev
+	return ev, pendingStop
+}
+
+// snapshot 回傳服務目前的語意 running 狀態與 raw ActiveState（供延遲 stopped 判定）。
+func (sm *stateMachine) snapshot(name string) (running bool, status string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	return sm.running[name], sm.prevActive[name]
 }
 
 // containsEvent 判斷 events 清單是否包含指定事件。

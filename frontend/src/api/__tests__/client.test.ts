@@ -5,7 +5,16 @@
  * 函數尚未實作 — 靜態 import 失敗 → 整個 test file 為 RED。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import api, { batchServices } from '../client'
+import api, {
+  batchServices,
+  listChannels,
+  createChannel,
+  updateChannel,
+  deleteChannel,
+  patchChannelEnabled,
+  testChannel,
+  getNotifyHistory,
+} from '../client'
 
 describe('batchServices — 批次操作 API', () => {
   beforeEach(() => {
@@ -130,5 +139,87 @@ describe('batchServices — 批次操作 API', () => {
 
     const config = spy.mock.calls[0]?.[2]
     expect(config?.timeout).toBe(65_000)
+  })
+})
+
+// ============================================================
+//  RED phase — notify 7 個 API 函數（F-AP-01 ~ F-AP-07）
+//  對應 docs/test-plans/013-webhook-notification測試計畫.md §3.5。
+//  函數尚未實作於 client.ts → 靜態 import 失敗即為 RED。
+// ============================================================
+
+describe('notify API 函數 — axios 契約（F-AP-01 ~ F-AP-07）', () => {
+  beforeEach(() => {
+    vi.spyOn(api, 'get').mockResolvedValue({ data: {} })
+    vi.spyOn(api, 'post').mockResolvedValue({ data: {} })
+    vi.spyOn(api, 'put').mockResolvedValue({ data: {} })
+    vi.spyOn(api, 'patch').mockResolvedValue({ data: {} })
+    vi.spyOn(api, 'delete').mockResolvedValue({ data: {} })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('F-AP-01: listChannels → GET /notify/channels', async () => {
+    const spy = vi.spyOn(api, 'get').mockResolvedValue({ data: { data: [] } })
+    await listChannels()
+    expect(spy).toHaveBeenCalledWith('/notify/channels')
+  })
+
+  it('F-AP-02: createChannel → POST /notify/channels（JSON body）', async () => {
+    const spy = vi.spyOn(api, 'post').mockResolvedValue({ data: { data: { id: 'c1' } } })
+    const payload: any = { type: 'slack', name: 'S', url: 'https://hooks.slack.com/services/x', events: ['failed'], all_services: true }
+    await createChannel(payload)
+    expect(spy).toHaveBeenCalledWith('/notify/channels', payload, expect.objectContaining({
+      headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
+    }))
+  })
+
+  it('F-AP-03: updateChannel → PUT /notify/channels/{id}', async () => {
+    const spy = vi.spyOn(api, 'put').mockResolvedValue({ data: { data: { id: 'c1' } } })
+    const payload: any = { type: 'slack', name: 'S', url: 'https://hooks.slack.com/services/x', events: ['failed'], all_services: true }
+    await updateChannel('c1', payload)
+    expect(spy).toHaveBeenCalledWith('/notify/channels/c1', payload, expect.any(Object))
+  })
+
+  it('F-AP-04: deleteChannel → DELETE /notify/channels/{id}', async () => {
+    const spy = vi.spyOn(api, 'delete').mockResolvedValue({ data: {} })
+    await deleteChannel('c1')
+    expect(spy).toHaveBeenCalledWith('/notify/channels/c1')
+  })
+
+  it('F-AP-05: patchChannelEnabled → PATCH /notify/channels/{id} body {enabled}', async () => {
+    const spy = vi.spyOn(api, 'patch').mockResolvedValue({ data: { data: { id: 'c1', enabled: false } } })
+    await patchChannelEnabled('c1', false)
+    expect(spy).toHaveBeenCalledWith('/notify/channels/c1', { enabled: false }, expect.any(Object))
+  })
+
+  it('F-AP-06: testChannel → POST /notify/channels/{id}/test', async () => {
+    const spy = vi.spyOn(api, 'post').mockResolvedValue({ data: { success: true, message: 'ok' } })
+    await testChannel('c1')
+    expect(spy).toHaveBeenCalledWith('/notify/channels/c1/test')
+  })
+
+  it('F-AP-07: getNotifyHistory → GET /notify/history 帶 query params', async () => {
+    const spy = vi.spyOn(api, 'get').mockResolvedValue({ data: { data: [], total: 0, page: 1, limit: 30 } })
+    await getNotifyHistory({ page: 2, limit: 30, channel_id: 'c1', status: 'failure' })
+
+    const callArgs = spy.mock.calls[0]
+    expect(callArgs[0]).toBe('/notify/history')
+    expect(callArgs[1]).toBeDefined()
+    const params = callArgs[1]!.params as URLSearchParams
+    expect(params).toBeInstanceOf(URLSearchParams)
+    expect(params.get('page')).toBe('2')
+    expect(params.get('limit')).toBe('30')
+    expect(params.get('channel_id')).toBe('c1')
+    expect(params.get('status')).toBe('failure')
+  })
+
+  it('F-AP-07: getNotifyHistory status=all 不帶 status 參數', async () => {
+    const spy = vi.spyOn(api, 'get').mockResolvedValue({ data: { data: [], total: 0, page: 1, limit: 30 } })
+    await getNotifyHistory({ status: 'all' })
+    const params = spy.mock.calls[0][1]!.params as URLSearchParams
+    expect(params.has('status')).toBe(false)
   })
 })

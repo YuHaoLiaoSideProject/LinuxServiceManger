@@ -14,6 +14,7 @@ import (
 	"linux-service-manager/internal/handler"
 	"linux-service-manager/internal/middleware"
 	"linux-service-manager/internal/monitor"
+	"linux-service-manager/internal/notify"
 	"linux-service-manager/internal/systemd"
 	"linux-service-manager/internal/token"
 	"linux-service-manager/internal/websocket"
@@ -78,6 +79,22 @@ func main() {
 		}
 		return snapshots
 	}
+
+	// Initialize notify module (webhook notification) — before hub.Run registration
+	notifyMod := notify.New(notify.Config{
+		ChannelsPath:  "/var/lib/linux-service-manager/notify.json",
+		HistoryPath:   "/var/lib/linux-service-manager/notify-history.jsonl",
+		RetentionDays: 30,
+		Hub:           hub,
+	})
+	if err := notifyMod.Load(); err != nil {
+		log.Fatalf("failed to load notify store: %v", err)
+	}
+	hub.OnStatusChange = notifyMod.HandleStatusChange
+	go notifyMod.Run()
+	defer notifyMod.Shutdown()
+	h.Notify = notifyMod
+
 	go hub.Run()
 
 	// Start service status monitor (D-Bus or polling fallback)
@@ -124,6 +141,14 @@ func main() {
 		r.Get("/api/v1/services/{name}/config", h.HandleGetServiceConfig)
 		r.Put("/api/v1/services/{name}/config", h.HandleSaveServiceConfig)
 		r.Post("/api/v1/services/{name}/config/validate", h.HandleValidateServiceConfig)
+		// Webhook notification (013)
+		r.Get("/api/v1/notify/channels", h.HandleListChannels)
+		r.Post("/api/v1/notify/channels", h.HandleCreateChannel)
+		r.Put("/api/v1/notify/channels/{id}", h.HandleUpdateChannel)
+		r.Delete("/api/v1/notify/channels/{id}", h.HandleDeleteChannel)
+		r.Patch("/api/v1/notify/channels/{id}", h.HandlePatchChannelEnabled)
+		r.Post("/api/v1/notify/channels/{id}/test", h.HandleTestChannel)
+		r.Get("/api/v1/notify/history", h.HandleNotifyHistory)
 	})
 
 	// HTML routes (legacy htmx) — protected

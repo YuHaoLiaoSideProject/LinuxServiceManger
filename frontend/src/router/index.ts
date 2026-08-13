@@ -6,6 +6,7 @@ import DashboardView from '../views/DashboardView.vue'
 const AuditLogView = () => import('../views/AuditLogView.vue')
 const TokenManageView = () => import('../views/TokenManageView.vue')
 const ConfigEditorView = () => import('../views/ConfigEditorView.vue')
+const NotificationsView = () => import('../views/NotificationsView.vue')
 
 const router = createRouter({
   history: createWebHistory(),
@@ -15,6 +16,7 @@ const router = createRouter({
     { path: '/audit', name: 'audit', component: AuditLogView, meta: { auth: true } },
     { path: '/tokens', name: 'tokens', component: TokenManageView, meta: { auth: true } },
     { path: '/services/:name/config', name: 'config-editor', component: ConfigEditorView, meta: { auth: true } },
+    { path: '/notifications', name: 'notifications', component: NotificationsView, meta: { auth: true } },
   ],
 })
 

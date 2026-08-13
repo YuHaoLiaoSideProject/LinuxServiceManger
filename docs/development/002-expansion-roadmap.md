@@ -213,7 +213,7 @@
 | 項目 | 內容 |
 |------|------|
 | **現狀** | 無外部通知機制 |
-| **目標** | 服務狀態變更時觸發 webhook，整合 Slack、Discord、LINE Notify、Email |
+| **目標** | 服務狀態變更時觸發 webhook，整合 Slack、Discord、Telegram、Email |
 | **改動範圍** | webhook 模組（`internal/notify/`）、通知規則設定（觸發條件：服務 failed / started / stopped）、前端通知設定頁面、支援多 channel |
 | **擴充可能** | 後續可加入通知群組、靜音時段、告警升級 |
 

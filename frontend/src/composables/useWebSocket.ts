@@ -43,7 +43,14 @@ export interface SessionExpiredMessage {
   timestamp: string
 }
 
-export type WsMessage = StatusChangeMessage | OnBootChangeMessage | ServiceAddedMessage | ServiceRemovedMessage | SnapshotMessage | SessionExpiredMessage
+export interface NotifyChannelDisabledMessage {
+  type: 'notify_channel_disabled'
+  id: string
+  name: string
+  reason: string
+}
+
+export type WsMessage = StatusChangeMessage | OnBootChangeMessage | ServiceAddedMessage | ServiceRemovedMessage | SnapshotMessage | SessionExpiredMessage | NotifyChannelDisabledMessage
 
 export function useWebSocket() {
   const status = ref<ConnectionStatus>('connecting')

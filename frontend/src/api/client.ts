@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { Service, LoginResponse, SessionInfo, MessageResponse, BatchRequest, BatchResponse, TokenListResponse, CreateTokenRequest, CreateTokenResponse, RevokeTokenResponse, ServiceConfigResponse, SaveConfigRequest, SaveConfigResponse, ValidateResponse } from '../types/service'
+import type { Channel, ChannelPayload, NotifyHistoryResult, HistoryQuery, TestChannelResponse } from '../types/notify'
 import { useAuthStore } from '../stores/auth'
 
 const api = axios.create({
@@ -118,5 +119,52 @@ export async function validateServiceConfig(name: string, config: string): Promi
     { config },
     { headers: { 'Content-Type': 'application/json' } },
   )
+  return data
+}
+
+// ── Webhook Notification (013) ──
+
+export async function listChannels(): Promise<Channel[]> {
+  const { data } = await api.get<{ data: Channel[] }>('/notify/channels')
+  return data.data
+}
+
+export async function createChannel(payload: ChannelPayload): Promise<Channel> {
+  const { data } = await api.post<{ data: Channel }>('/notify/channels', payload, {
+    headers: { 'Content-Type': 'application/json' },
+  })
+  return data.data
+}
+
+export async function updateChannel(id: string, payload: ChannelPayload): Promise<Channel> {
+  const { data } = await api.put<{ data: Channel }>(`/notify/channels/${id}`, payload, {
+    headers: { 'Content-Type': 'application/json' },
+  })
+  return data.data
+}
+
+export async function deleteChannel(id: string): Promise<void> {
+  await api.delete(`/notify/channels/${id}`)
+}
+
+export async function patchChannelEnabled(id: string, enabled: boolean): Promise<Channel> {
+  const { data } = await api.patch<{ data: Channel }>(`/notify/channels/${id}`, { enabled }, {
+    headers: { 'Content-Type': 'application/json' },
+  })
+  return data.data
+}
+
+export async function testChannel(id: string): Promise<TestChannelResponse> {
+  const { data } = await api.post<TestChannelResponse>(`/notify/channels/${id}/test`)
+  return data
+}
+
+export async function getNotifyHistory(q: HistoryQuery = {}): Promise<NotifyHistoryResult> {
+  const params = new URLSearchParams()
+  if (q.page) params.set('page', String(q.page))
+  if (q.limit) params.set('limit', String(q.limit))
+  if (q.channel_id) params.set('channel_id', q.channel_id)
+  if (q.status && q.status !== 'all') params.set('status', q.status)
+  const { data } = await api.get<NotifyHistoryResult>('/notify/history', { params })
   return data
 }

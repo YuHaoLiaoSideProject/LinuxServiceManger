@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Webhook 通知設定 互動設計稿 — NotificationsView（完整規格）</title>
+<style>
+
+/* ════════════════════════════════════════════════════════════
+   設計 Token（對應前端 --lms-* 變數）
+   ════════════════════════════════════════════════════════════ */
+:root {
+  --accent: #1a73e8; --accent-hover: #1557b0; --accent-light: rgba(26,115,232,0.12);
+  --success: #188038; --success-light: #e6f4ea; --success-border: #a8dab5;
+  --danger: #c5221f; --danger-light: #fce8e6; --danger-border: #f5c6c2;
+  --warning: #e37400; --warning-light: #fff3e0;
+  --radius: 10px; --radius-sm: 6px; --transition: 0.2s ease;
+  --h: 36px; --h-mobile: 44px; --fs: 0.875rem;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+[data-theme="light"] {
+  --bg: #ffffff; --surface: #ffffff; --surface-2: #f6f7f9; --surface-3: #eef0f3;
+  --border: #e3e6ea; --text: #374151; --muted: #9ca3af;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08); --shadow-lg: 0 12px 32px rgba(0,0,0,0.16);
+  --frame: #eef0f3;
+}
+[data-theme="dark"] {
+  --bg: #11191f; --surface: #181e25; --surface-2: #1e2530; --surface-3: #232c38;
+  --border: #262e38; --text: #c7c9ce; --muted: #7d8590;
+  --shadow: 0 2px 16px rgba(0,0,0,0.45); --shadow-lg: 0 12px 36px rgba(0,0,0,0.6);
+  --frame: #0d1318;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  background: var(--bg); color: var(--text); transition: background var(--transition), color var(--transition);
+  padding: 2rem 1.25rem 4rem;
+}
+.wrap { max-width: 1120px; margin: 0 auto; }
+.topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; }
+h1 { font-size: 1.35rem; margin: 0; }
+.sub { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+.controls { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.segmented { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 2px; }
+.segmented button { border: none; background: none; color: var(--muted); font-size: 0.85rem; padding: 0.45rem 0.9rem; border-radius: 7px; cursor: pointer; transition: all var(--transition); font-weight: 500; }
+.segmented button:hover { color: var(--text); }
+.segmented button.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+
+.frame { background: var(--frame); border: 1px solid var(--border); border-radius: 14px; padding: 1.6rem 1.5rem 1.8rem; margin-bottom: 1.5rem; }
+.frame h2 { margin: 0 0 0.25rem; font-size: 1.1rem; }
+.frame .fsub { color: var(--muted); font-size: 0.82rem; margin: 0 0 1rem; line-height: 1.6; }
+.browser-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 1rem; }
+.bdot { width: 11px; height: 11px; border-radius: 50%; }
+.bdot:nth-child(1){ background:#f87171 } .bdot:nth-child(2){ background:#fbbf24 } .bdot:nth-child(3){ background:#34d399 }
+.browser-url { flex: 1; max-width: 420px; margin-left: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.75rem; color: var(--muted); }
+.elem-count { font-size: 0.72rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 0.2rem 0.7rem; white-space: nowrap; }
+.elem-count b { color: var(--accent); }
+
+.app-page { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); transition: background var(--transition); overflow: hidden; }
+.app-page.is-mobile { max-width: 390px; margin: 0 auto; }
+
+/* ── Mock App Header ── */
+.mock-header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.8rem 1rem; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.mock-header .brand { font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; gap: 0.4rem; }
+.mock-nav { display: flex; gap: 0.35rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
+.mock-nav span { font-size: 0.78rem; font-weight: 500; padding: 0.3rem 0.75rem; border-radius: 7px; color: var(--muted); white-space: nowrap; }
+.mock-nav span.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+.mock-nav span svg { vertical-align: -2px; margin-right: 0.15rem; }
+.mock-acct { font-size: 0.78rem; color: var(--muted); display: flex; align-items: center; gap: 0.4rem; }
+.mock-acct .ava { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 0.68rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+
+/* ── Notifications 頁面 ── */
+.notify-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.1rem 1.25rem 0.6rem; flex-wrap: wrap; }
+.notify-header h3 { margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 0.45rem; }
+.notify-header .hint { margin: 0.2rem 0 0; font-size: 0.78rem; color: var(--muted); }
+.notify-tabs { padding: 0.4rem 1.25rem 0.9rem; }
+.seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 2px; }
+.seg .seg-btn { height: var(--h); border: none; background: none; color: var(--muted); font-size: 0.8125rem; padding: 0 0.9rem; border-radius: 18px; cursor: pointer; display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 500; transition: all var(--transition); white-space: nowrap; }
+.seg .seg-btn:hover { color: var(--text); }
+.seg .seg-btn.active { background: var(--accent); color: #fff; }
+.seg .seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── Channel 卡片 ── */
+.channel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; padding: 0 1.25rem 1.5rem; }
+.channel-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); transition: all var(--transition); }
+.channel-card:hover { box-shadow: var(--shadow); border-color: var(--muted); }
+.channel-card.disabled { opacity: 0.55; }
+.channel-card.removing { opacity: 0; transform: scale(0.96); }
+.auto-banner { display: flex; align-items: center; gap: 0.4rem; font-size: 0.72rem; color: var(--warning); background: var(--warning-light); border: 1px solid rgba(227,116,0,0.35); border-radius: 6px; padding: 0.35rem 0.55rem; margin-bottom: 0.7rem; font-weight: 600; }
+.auto-banner button { border: none; background: none; color: var(--warning); font-weight: 700; text-decoration: underline; cursor: pointer; margin-left: auto; font-size: 0.72rem; padding: 0; }
+.cc-top { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.7rem; }
+.cc-icon { width: 40px; height: 40px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.cc-name { font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
+.cc-type { font-family: var(--mono); font-size: 0.66rem; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0.05rem 0.3rem; }
+.cc-badge-off { font-size: 0.66rem; color: var(--muted); border: 1px solid var(--border); border-radius: 20px; padding: 0.05rem 0.45rem; font-weight: 600; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.55rem 0 0.5rem; }
+.chip { font-size: 0.68rem; font-weight: 600; padding: 0.12rem 0.5rem; border-radius: 6px; white-space: nowrap; }
+.chip.started { background: var(--accent-light); color: var(--accent); }
+.chip.stopped { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+.chip.failed { background: var(--danger-light); color: var(--danger); }
+.chip.restarted { background: var(--warning-light); color: var(--warning); }
+.cc-scope { font-size: 0.74rem; color: var(--muted); margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
+.cc-scope b { color: var(--text); font-weight: 600; }
+.cc-actions { display: flex; align-items: center; gap: 0.5rem; border-top: 1px solid var(--border); padding-top: 0.7rem; }
+.btn-act { width: var(--h); height: var(--h); border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: all var(--transition); flex-shrink: 0; }
+.btn-act:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+.btn-act:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-act .spin { display: none; width: 14px; height: 14px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: rot 0.8s linear infinite; }
+.btn-act.loading .spin { display: inline-block; }
+.btn-act.loading svg { display: none; }
+.btn-act.danger:hover { border-color: var(--danger); color: var(--danger); background: var(--danger-light); }
+@keyframes rot { to { transform: rotate(360deg); } }
+
+/* ── Toggle（role=switch）── */
+.switch { display: inline-flex; align-items: center; gap: 6px; border: none; background: none; cursor: pointer; padding: 2px 4px; border-radius: 6px; font-size: 0.8rem; margin-left: auto; }
+.switch:hover { background: var(--accent-light); }
+.switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sw-track { width: 36px; height: 20px; border-radius: 10px; background: #ccc; position: relative; transition: background 0.2s ease; flex-shrink: 0; }
+.sw-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: left 0.2s ease; }
+.switch.on .sw-track { background: #4caf50; }
+.switch.on .sw-thumb { left: 18px; }
+.switch.loading .sw-track { background: #90a4ae; animation: togglePulse 1s infinite; }
+@keyframes togglePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+.sw-label { font-weight: 600; font-size: 0.75rem; min-width: 30px; color: var(--muted); }
+.switch.on .sw-label { color: var(--success); }
+
+/* ── ChannelForm ── */
+.channel-form { margin: 0 1.25rem 1.25rem; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; animation: fadeIn 0.15s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.cf-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.8rem 1.1rem; background: var(--surface-2); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.cf-head h4 { margin: 0; font-size: 0.9rem; }
+.cf-head .cf-mode { font-size: 0.7rem; color: var(--accent); font-weight: 700; background: var(--accent-light); border-radius: 20px; padding: 0.1rem 0.5rem; }
+.cf-body { padding: 1rem 1.1rem 0.2rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem 1.2rem; }
+.cf-field { display: flex; flex-direction: column; gap: 0.3rem; }
+.cf-field.span2 { grid-column: 1 / -1; }
+.cf-field label { font-size: 0.72rem; font-weight: 600; color: var(--muted); }
+.cf-field label .req { color: var(--danger); }
+.cf-input, .cf-select { height: var(--h); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: var(--fs); padding: 0 0.7rem; width: 100%; transition: border-color var(--transition), box-shadow var(--transition); }
+.cf-input:focus, .cf-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); outline: none; }
+.cf-field.error .cf-input, .cf-field.error .cf-select { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(197,34,31,0.12); }
+.cf-field .err-msg { display: none; font-size: 0.7rem; color: var(--danger); }
+.cf-field.error .err-msg { display: block; }
+.cf-helper { font-size: 0.7rem; color: var(--muted); font-family: var(--mono); }
+.cf-tip { font-size: 0.7rem; color: var(--warning); font-weight: 600; }
+.event-check { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.event-check .chip-check { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.72rem; font-weight: 600; padding: 0.3rem 0.6rem; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; transition: all var(--transition); user-select: none; }
+.event-check .chip-check input { accent-color: var(--accent); width: 14px; height: 14px; margin: 0; }
+.event-check .chip-check.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.event-check .chip-check.on input { accent-color: #fff; }
+.radio-row { display: flex; gap: 1.2rem; font-size: 0.8rem; }
+.radio-row label { display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer; }
+.radio-row input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; }
+.svc-search { display: flex; flex-direction: column; gap: 0.45rem; }
+.svc-search .svc-input { height: var(--h); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 0.7rem; font-size: var(--fs); background: var(--surface); color: var(--text); }
+.svc-search .svc-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+.svc-search .svc-list { max-height: 128px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); padding: 0.3rem; display: none; }
+.svc-search.open .svc-list { display: block; }
+.svc-opt { display: flex; align-items: center; gap: 0.4rem; font-size: 0.76rem; padding: 0.3rem 0.5rem; border-radius: 5px; cursor: pointer; font-family: var(--mono); }
+.svc-opt:hover { background: var(--surface-2); }
+.svc-opt input { accent-color: var(--accent); width: 14px; height: 14px; margin: 0; }
+.svc-selected { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.svc-sel { font-size: 0.7rem; font-family: var(--mono); background: var(--accent-light); color: var(--accent); border-radius: 5px; padding: 0.15rem 0.45rem; display: inline-flex; align-items: center; gap: 0.3rem; }
+.svc-sel button { border: none; background: none; color: inherit; cursor: pointer; font-size: 0.8rem; padding: 0; line-height: 1; }
+.header-ed { display: flex; flex-direction: column; gap: 0.4rem; }
+.header-row { display: flex; gap: 0.4rem; align-items: center; }
+.header-row .k, .header-row .v { height: 32px; font-size: 0.76rem; font-family: var(--mono); border: 1px solid var(--border); border-radius: 5px; background: var(--surface); color: var(--text); padding: 0 0.5rem; }
+.header-row .k { width: 150px; }
+.header-row .v { flex: 1; }
+.header-add { align-self: flex-start; height: 32px; font-size: 0.76rem; border: 1px dashed var(--border); border-radius: 5px; background: none; color: var(--muted); cursor: pointer; padding: 0 0.7rem; }
+.header-add:hover { color: var(--accent); border-color: var(--accent); }
+.cf-foot { display: flex; justify-content: flex-end; gap: 0.6rem; padding: 0.8rem 1.1rem 1.1rem; }
+.cf-alert { grid-column: 1 / -1; display: none; font-size: 0.75rem; color: var(--danger); background: var(--danger-light); border: 1px solid var(--danger-border); border-radius: 6px; padding: 0.45rem 0.7rem; font-weight: 600; }
+.cf-alert.show { display: block; }
+
+/* ── 發送紀錄 ── */
+.history-panel { padding: 0 1.25rem 1.5rem; }
+.hist-filter { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+.hist-filter .select { height: var(--h); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: 0.8rem; padding: 0 0.6rem; min-width: 180px; }
+.hist-filter .seg .seg-btn { height: var(--h); padding: 0 0.75rem; font-size: 0.78rem; }
+.hist-pager { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; font-size: 0.76rem; color: var(--muted); }
+.pg-btn { height: var(--h); min-width: 36px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.8rem; padding: 0 0.5rem; }
+.pg-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.pg-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.hist-table-wrap { overflow-x: auto; }
+.hist-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-width: 640px; }
+.hist-table th { text-align: left; font-size: 0.7rem; color: var(--muted); font-weight: 700; padding: 0.6rem 0.8rem; background: var(--surface-2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+.hist-table td { padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.hist-table tr:last-child td { border-bottom: none; }
+.hist-time { font-family: var(--mono); font-size: 0.74rem; white-space: nowrap; }
+.hist-svc { font-family: var(--mono); font-size: 0.76rem; }
+.result-badge { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.72rem; font-weight: 700; border-radius: 20px; padding: 0.12rem 0.55rem; }
+.result-badge.success { background: var(--success-light); color: var(--success); border: 1px solid var(--success-border); }
+.result-badge.failure { background: var(--danger-light); color: var(--danger); border: 1px solid var(--danger-border); }
+.hist-err { font-family: var(--mono); font-size: 0.7rem; color: var(--danger); margin-top: 0.2rem; word-break: break-all; }
+.hist-count { font-size: 0.74rem; color: var(--muted); margin-top: 0.6rem; }
+
+/* ── Toast / Modal ── */
+.toast-wrap { position: fixed; bottom: 1.2rem; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 0.5rem; z-index: 99; align-items: center; pointer-events: none; }
+.toast { font-size: 0.8rem; padding: 0.6rem 1rem; border-radius: 10px; box-shadow: var(--shadow-lg); display: flex; align-items: center; gap: 0.45rem; animation: slideUp 0.2s ease; max-width: min(90vw, 520px); transition: opacity 0.3s ease; }
+.toast.success { background: var(--success); color: #fff; }
+.toast.error { background: var(--danger); color: #fff; }
+.toast.warning { background: var(--warning); color: #fff; }
+@keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none; align-items: center; justify-content: center; z-index: 98; padding: 1rem; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-lg); width: 100%; max-width: 420px; padding: 1.2rem 1.3rem; animation: fadeIn 0.15s ease; }
+.modal h4 { margin: 0 0 0.4rem; font-size: 0.95rem; }
+.modal p { font-size: 0.82rem; color: var(--muted); line-height: 1.6; margin: 0 0 1.1rem; }
+.modal p b { color: var(--text); }
+.modal-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
+
+/* ── 通用按鈕 ── */
+.btn { height: var(--h); display: inline-flex; align-items: center; gap: 0.4rem; padding: 0 0.9rem; border-radius: var(--radius-sm); font-size: var(--fs); border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; transition: all var(--transition); white-space: nowrap; font-weight: 500; }
+.btn:hover { background: var(--surface-2); border-color: var(--muted); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { background: var(--accent-hover); }
+.btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn.danger:hover { background: #a51c1a; }
+.btn .spin { display: none; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.5); border-top-color: transparent; border-radius: 50%; animation: rot 0.8s linear infinite; }
+.btn.loading .spin { display: inline-block; }
+
+/* ── 狀態 Demo ── */
+.state-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-top: 1rem; }
+.state-demo { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 2rem 1rem; text-align: center; }
+.state-demo .big { font-size: 1.9rem; margin-bottom: 0.6rem; color: var(--muted); }
+.state-demo p { color: var(--muted); font-size: 0.85rem; margin: 0 0 1rem; }
+.spinner-lg { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: rot 0.8s linear infinite; margin: 0 auto 0.8rem; }
+.demo-btns { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-top: 1rem; }
+
+/* ── 元件解剖 ── */
+.anatomy { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-top: 1.1rem; }
+@media (max-width: 760px) { .anatomy { grid-template-columns: 1fr; } }
+.anat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem 1.1rem; }
+.anat-card h4 { margin: 0 0 0.8rem; font-size: 0.92rem; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.anat-card h4 .tag { font-size: 0.62rem; font-weight: 700; background: var(--accent-light); color: var(--accent); border-radius: 20px; padding: 0.12rem 0.5rem; }
+.anat-stage { background: var(--frame); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1rem; margin-bottom: 0.85rem; }
+.anat-dims { font-size: 0.74rem; color: var(--muted); line-height: 1.8; }
+.anat-dims b { color: var(--accent); font-family: var(--mono); }
+
+/* ── 狀態矩陣表 ── */
+.states { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 1rem; }
+.states th, .states td { border: 1px solid var(--border); padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+.states th { background: var(--surface-2); font-size: 0.74rem; color: var(--muted); font-weight: 700; }
+.states td:first-child { white-space: nowrap; font-weight: 600; }
+.states .demo-cell { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.states code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0.05rem 0.35rem; font-size: 0.72rem; font-family: var(--mono); }
+
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.5rem 1.5rem; margin-top: 1rem; }
+.anno { display: flex; gap: 0.55rem; font-size: 0.8rem; color: var(--muted); align-items: flex-start; line-height: 1.55; }
+.anno .num { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-light); color: var(--accent); font-size: 0.7rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
+.anno b { color: var(--text); }
+
+.note { font-size: 0.78rem; color: var(--muted); margin-top: 1rem; line-height: 1.7; background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; padding: 0.6rem 0.9rem; }
+.note b { color: var(--accent); }
+.demo-hint { font-size: 0.78rem; color: var(--muted); margin-top: 0.7rem; line-height: 1.6; }
+.demo-hint b { color: var(--accent); }
+
+/* Token 卡片 */
+.tokens { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; margin-top: 1rem; }
+.tcard { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.8rem 0.95rem; }
+.tcard .tk { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.4px; }
+.tcard .tv { font-size: 1.05rem; font-weight: 700; color: var(--text); margin-top: 0.2rem; }
+.tcard .td { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; line-height: 1.5; }
+.tcard .tv.accent { color: var(--accent); }
+
+.footnote { margin-top: 2rem; font-size: 0.72rem; color: var(--muted); border-top: 1px dashed var(--border); padding-top: 0.75rem; line-height: 1.7; }
+
+/* mobile 切換 */
+.frame.mobile-frame { display: none; }
+body.view-mobile .frame.mobile-frame { display: block; }
+body.view-mobile .frame.desktop-frame { display: none; }
+.mobile-frame .app-page { max-width: 390px; margin: 0 auto; }
+body.view-mobile .channel-grid { grid-template-columns: 1fr; }
+body.view-mobile .cf-body { grid-template-columns: 1fr; }
+body.view-mobile .cf-field.span2 { grid-column: auto; }
+body.view-mobile .seg { width: 100%; }
+body.view-mobile .seg .seg-btn { flex: 1; height: var(--h-mobile); justify-content: center; }
+body.view-mobile .btn { height: var(--h-mobile); }
+body.view-mobile .btn-act { width: var(--h-mobile); height: var(--h-mobile); }
+body.view-mobile .notify-header { flex-direction: column; align-items: stretch; }
+body.view-mobile .notify-header .btn { justify-content: center; }
+body.view-mobile .hist-filter .select { width: 100%; min-width: 0; }
+body.view-mobile .hist-pager { margin-left: 0; width: 100%; justify-content: space-between; }
+body.view-mobile .cc-actions { flex-wrap: wrap; }
+body.view-mobile .mock-nav span { padding: 0.3rem 0.5rem; }
+
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div>
+      <h1>🔔 Webhook 通知設定 — NotificationsView</h1>
+      <div class="sub">單頁完整規格（#013 Webhook Notification）· 互動 mockup：分頁／表單類型切換／toggle／測試／刪除／自動停用／發送紀錄篩選</div>
+    </div>
+    <div class="controls">
+      <div class="segmented" id="devSwitch">
+        <button data-dev="desktop" class="active">🖥 Desktop</button>
+        <button data-dev="mobile">📱 Mobile</button>
+      </div>
+      <button class="segmented" id="themeToggle" style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:3px;">🌙 切換深色</button>
+    </div>
+  </div>
+
+  <!-- ══════════ 1. 設計 Token ══════════ -->
+  <div class="frame">
+    <h2>1️⃣ 設計 Token</h2>
+    <p class="fsub">所有數值對應前端 CSS 變數（--lms-*），與 000-toolbar / 012-config 共用同一套基礎。</p>
+    <div class="tokens">
+      <div class="tcard"><div class="tk">控制高度</div><div class="tv accent">36 / 44px</div><div class="td">desktop 36px · mobile ≤767px 44px（WCAG 2.5.5）</div></div>
+      <div class="tcard"><div class="tk">字級</div><div class="tv">14 / 13 / 12px</div><div class="td">按鈕輸入 / 卡片內容 / chips 與 meta</div></div>
+      <div class="tcard"><div class="tk">圓角</div><div class="tv">6 / 10 / 18px</div><div class="td">輸入按鈕 6px · 卡片 10px · pill 18px</div></div>
+      <div class="tcard"><div class="tk">間距</div><div class="tv">8 / 16px</div><div class="td">群組內 8px · 卡片間 16px</div></div>
+      <div class="tcard"><div class="tk">動畫</div><div class="tv">150–200ms</div><div class="td">淡入／toggle 滑動 · 尊重 reduced-motion</div></div>
+      <div class="tcard"><div class="tk">Focus</div><div class="tv">3px ring</div><div class="td">accent 光圈（--lms-accent-light）</div></div>
+    </div>
+  </div>
+
+  <!-- ══════════ 2. 完整畫面（Desktop） ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>2️⃣ 完整畫面與互動 — Channel 設定分頁</h2>
+    <p class="fsub">點分頁切換「Channel 設定／發送紀錄」；點「＋ 新增 Channel」展開表單；卡片 toggle／測試／編輯／刪除皆可操作；自訂監控卡片示範自動停用態。</p>
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url">https://linux-service-manager/notifications</span>
+      <span class="elem-count">互動：<b>分頁・表單・toggle・測試・刪除・自動停用</b></span>
+    </div>
+    <div class="app-page">
+      <!-- Mock App Header -->
+      <div class="mock-header">
+        <div class="brand"><span style="font-size:1.1rem">🖥</span> Linux Service Manager</div>
+        <div class="mock-nav">
+          <span>🏠 儀表板</span><span>📋 稽核紀錄</span>
+          <span class="active"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Notifications</span>
+        </div>
+        <div class="mock-acct"><span class="ava">A</span> admin ▾</div>
+      </div>
+
+      <!-- Page header -->
+      <div class="notify-header">
+        <div>
+          <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> 通知設定</h3>
+          <p class="hint">服務狀態變更時推送通知至 Slack / Discord / Telegram / 自訂 Webhook</p>
+        </div>
+        <button class="btn primary" id="btn-add-channel" data-testid="btn-add-channel">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          新增 Channel
+        </button>
+      </div>
+
+      <!-- Tabs -->
+      <div class="notify-tabs">
+        <div class="seg" role="tablist" aria-label="通知頁面分頁" id="notify-tabs">
+          <button class="seg-btn active" id="tab-channels" role="tab" aria-selected="true" aria-controls="panel-channels">Channel 設定</button>
+          <button class="seg-btn" id="tab-history" role="tab" aria-selected="false" aria-controls="panel-history">發送紀錄</button>
+        </div>
+      </div>
+
+      <!-- Channel 設定 Panel -->
+      <div id="panel-channels" role="tabpanel" aria-labelledby="tab-channels">
+        <!-- ChannelForm（預設隱藏） -->
+        <div class="channel-form" id="channel-form" style="display:none" data-testid="channel-form">
+          <div class="cf-head">
+            <h4 id="cf-title">新增 Channel</h4>
+            <span class="cf-mode" id="cf-mode">NEW</span>
+          </div>
+          <div class="cf-body">
+            <div class="cf-field" id="f-type">
+              <label for="cf-type">Channel 類型 <span class="req">*</span></label>
+              <select class="cf-select" id="cf-type" data-testid="cf-type">
+                <option value="slack">Slack</option>
+                <option value="discord">Discord</option>
+                <option value="tg">Telegram</option>
+                <option value="custom">自訂 Webhook</option>
+              </select>
+            </div>
+            <div class="cf-field" id="f-name">
+              <label for="cf-name">Channel 名稱 <span class="req">*</span></label>
+              <input class="cf-input" id="cf-name" placeholder="例：團隊 Slack" data-testid="cf-name">
+              <span class="err-msg">請填寫 Channel 名稱</span>
+            </div>
+
+            <!-- Slack / Discord 專屬 -->
+            <div class="cf-field span2 type-fields type-slack type-discord">
+              <label for="cf-url">Webhook URL <span class="req">*</span></label>
+              <input class="cf-input" id="cf-url" placeholder="https://hooks.slack.com/services/...">
+              <span class="cf-helper">格式：https://hooks.slack.com/services/… 或 https://discord.com/api/webhooks/…</span>
+            </div>
+            <!-- Telegram 專屬 -->
+            <div class="cf-field span2 type-fields type-tg" style="display:none">
+              <label for="cf-token">Telegram Bot Token <span class="req">*</span></label>
+              <input class="cf-input" id="cf-token" placeholder="123456789:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" type="password">
+              <span class="cf-tip">請先向 @BotFather 建立 Bot 取得 Token；編輯時顯示 ****xxxx，留空 = 不變更</span>
+            </div>
+            <div class="cf-field span2 type-fields type-tg" style="display:none">
+              <label for="cf-chat-id">Chat ID <span class="req">*</span></label>
+              <input class="cf-input" id="cf-chat-id" placeholder="例：-1001234567890（群組）或 123456789（個人）">
+              <span class="cf-helper">通知將發送至該 Chat；可在 @userinfobot 查詢個人 Chat ID</span>
+            </div>
+            <!-- 自訂專屬 -->
+            <div class="cf-field span2 type-fields type-custom" style="display:none">
+              <label for="cf-custom-url">Webhook URL <span class="req">*</span></label>
+              <input class="cf-input" id="cf-custom-url" placeholder="https://your-server/hook">
+              <div style="display:flex;gap:.6rem;margin-top:.5rem;flex-wrap:wrap;align-items:flex-end">
+                <div style="display:flex;flex-direction:column;gap:.3rem;min-width:140px">
+                  <label for="cf-method" style="font-size:.72rem;font-weight:600;color:var(--muted)">HTTP Method</label>
+                  <select class="cf-select" id="cf-method"><option>POST</option><option>PUT</option></select>
+                </div>
+                <div class="header-ed" style="flex:1;min-width:220px">
+                  <label style="font-size:.72rem;font-weight:600;color:var(--muted)">自訂 Headers（最多 10 組）</label>
+                  <div class="header-row">
+                    <input class="k" placeholder="Header 名稱" value="Authorization">
+                    <input class="v" placeholder="值" value="Bearer xxxxx">
+                    <button class="btn-act" style="width:32px;height:32px" aria-label="移除 Header"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                  </div>
+                  <div class="header-row">
+                    <input class="k" placeholder="Header 名稱" value="X-Custom">
+                    <input class="v" placeholder="值">
+                    <button class="btn-act" style="width:32px;height:32px" aria-label="移除 Header"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                  </div>
+                  <button class="header-add" id="btn-add-header">＋ 新增 Header</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 觸發事件 -->
+            <div class="cf-field span2" id="f-events">
+              <label>觸發事件 <span class="req">*</span>（至少勾選一個）</label>
+              <div class="event-check" id="event-check">
+                <label class="chip-check on" data-ev="started"><input type="checkbox" checked> started</label>
+                <label class="chip-check" data-ev="stopped"><input type="checkbox"> stopped</label>
+                <label class="chip-check on" data-ev="failed"><input type="checkbox" checked> failed</label>
+                <label class="chip-check" data-ev="restarted"><input type="checkbox"> restarted</label>
+              </div>
+              <span class="err-msg" id="ev-err" style="font-size:.7rem;color:var(--danger);display:none">至少需勾選一個觸發事件</span>
+            </div>
+
+            <!-- 服務範圍 -->
+            <div class="cf-field span2">
+              <label>服務範圍</label>
+              <div class="radio-row">
+                <label><input type="radio" name="scope" value="all" checked> 全部服務</label>
+                <label><input type="radio" name="scope" value="some" id="scope-some"> 指定服務</label>
+              </div>
+              <div class="svc-search" id="svc-search" style="display:none">
+                <input class="svc-input" id="svc-input" placeholder="輸入關鍵字過濾服務...">
+                <div class="svc-list" id="svc-list">
+                  <label class="svc-opt"><input type="checkbox" value="nginx.service"> nginx.service</label>
+                  <label class="svc-opt"><input type="checkbox" value="postgresql.service"> postgresql.service</label>
+                  <label class="svc-opt"><input type="checkbox" value="mysql.service"> mysql.service</label>
+                  <label class="svc-opt"><input type="checkbox" value="redis.service"> redis.service</label>
+                  <label class="svc-opt"><input type="checkbox" value="docker.service"> docker.service</label>
+                </div>
+                <div class="svc-selected" id="svc-selected"></div>
+              </div>
+            </div>
+
+            <div class="cf-alert" id="cf-alert">請填寫必要欄位</div>
+          </div>
+          <div class="cf-foot">
+            <button class="btn" id="cf-cancel">取消</button>
+            <button class="btn primary" id="cf-save" data-testid="cf-save">儲存</button>
+          </div>
+        </div>
+
+        <!-- Channel 卡片 grid -->
+        <div class="channel-grid" id="channel-grid" data-testid="channel-grid">
+          <!-- 1. 團隊 Slack（啟用） -->
+          <div class="channel-card" id="card-slack" data-card="slack">
+            <div class="cc-top">
+              <div class="cc-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24"><g fill="#36C5F0"><rect x="7" y="3" width="4" height="8" rx="2"/></g><g fill="#E01E5A"><rect x="13" y="3" width="4" height="8" rx="2"/></g><g fill="#2EB67D"><rect x="7" y="13" width="4" height="8" rx="2"/></g><g fill="#ECB22E"><rect x="13" y="13" width="4" height="8" rx="2"/></g></svg>
+              </div>
+              <div>
+                <div class="cc-name">團隊 Slack <span class="cc-type">slack</span></div>
+                <div class="cc-scope" style="margin:0">全部服務</div>
+              </div>
+              <button class="switch on" id="sw-slack" role="switch" aria-checked="true" aria-label="啟用 團隊 Slack channel"><span class="sw-track"><span class="sw-thumb"></span></span><span class="sw-label">啟用</span></button>
+            </div>
+            <div class="chips"><span class="chip failed">failed</span><span class="chip started">started</span><span class="chip stopped">stopped</span></div>
+            <div class="cc-actions">
+              <button class="btn-act btn-test" data-card="slack" aria-label="測試 團隊 Slack" title="測試"><span class="spin"></span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+              <button class="btn-act btn-edit" data-card="slack" aria-label="編輯 團隊 Slack" title="編輯"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
+              <button class="btn-act danger btn-del" data-card="slack" aria-label="刪除 團隊 Slack" title="刪除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+            </div>
+          </div>
+
+          <!-- 2. 團隊 Discord（停用） -->
+          <div class="channel-card disabled" id="card-discord" data-card="discord">
+            <div class="cc-top">
+              <div class="cc-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="#5865F2"><rect x="2" y="7" width="20" height="10" rx="5"/><path d="M7 10.5v3M5.5 12h3" stroke="#fff" stroke-width="1.6" stroke-linecap="round" fill="none"/><circle cx="16.5" cy="10.8" r="1" fill="#fff"/><circle cx="18.8" cy="13.2" r="1" fill="#fff"/></svg>
+              </div>
+              <div>
+                <div class="cc-name">團隊 Discord <span class="cc-type">discord</span></div>
+                <div class="cc-scope" style="margin:0">指定 2 個服務</div>
+              </div>
+              <button class="switch" id="sw-discord" role="switch" aria-checked="false" aria-label="啟用 團隊 Discord channel"><span class="sw-track"><span class="sw-thumb"></span></span><span class="sw-label">停用</span></button>
+            </div>
+            <div class="chips"><span class="chip started">started</span><span class="chip restarted">restarted</span></div>
+            <div class="cc-scope">範圍：<b>nginx.service</b>、<b>postgresql.service</b></div>
+            <div class="cc-actions">
+              <button class="btn-act btn-test" data-card="discord" aria-label="測試 團隊 Discord" title="測試"><span class="spin"></span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+              <button class="btn-act btn-edit" data-card="discord" aria-label="編輯 團隊 Discord" title="編輯"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
+              <button class="btn-act danger btn-del" data-card="discord" aria-label="刪除 團隊 Discord" title="刪除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+            </div>
+          </div>
+
+          <!-- 3. 個人 TG（啟用） -->
+          <div class="channel-card" id="card-tg" data-card="tg">
+            <div class="cc-top">
+              <div class="cc-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="#26A5E4" d="M9.04 15.51l-.38 5.34c.54 0 .78-.24 1.06-.52l2.55-2.44 5.28 3.87c.97.53 1.66.25 1.92-.9l3.48-16.32c.31-1.46-.52-2.03-1.46-1.67L1.11 9.94c-1.39.54-1.37 1.32-.24 1.67l4.87 1.52L18.36 5.2c.57-.38 1.09-.17.66.21L9.04 15.51z"/></svg>
+              </div>
+              <div>
+                <div class="cc-name">個人 TG <span class="cc-type">telegram</span></div>
+                <div class="cc-scope" style="margin:0">全部服務</div>
+              </div>
+              <button class="switch on" id="sw-tg" role="switch" aria-checked="true" aria-label="啟用 個人 TG channel"><span class="sw-track"><span class="sw-thumb"></span></span><span class="sw-label">啟用</span></button>
+            </div>
+            <div class="chips"><span class="chip restarted">restarted</span><span class="chip stopped">stopped</span></div>
+            <div class="cc-scope">Bot：<b>****a3f9</b> · Chat：<b>-1001***90</b></div>
+            <div class="cc-actions">
+              <button class="btn-act btn-test" data-card="tg" aria-label="測試 個人 TG" title="測試"><span class="spin"></span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+              <button class="btn-act btn-edit" data-card="tg" aria-label="編輯 個人 TG" title="編輯"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
+              <button class="btn-act danger btn-del" data-card="tg" aria-label="刪除 個人 TG" title="刪除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+            </div>
+          </div>
+
+          <!-- 4. 自訂監控（自動停用） -->
+          <div class="channel-card disabled" id="card-custom" data-card="custom">
+            <div class="auto-banner">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              已自動停用：連續失敗 10 次
+              <button id="btn-reenable" data-testid="btn-reenable">重新啟用</button>
+            </div>
+            <div class="cc-top">
+              <div class="cc-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              </div>
+              <div>
+                <div class="cc-name">自訂監控 <span class="cc-type">custom</span></div>
+                <div class="cc-scope" style="margin:0">全部服務</div>
+              </div>
+              <button class="switch" id="sw-custom" role="switch" aria-checked="false" aria-label="啟用 自訂監控 channel"><span class="sw-track"><span class="sw-thumb"></span></span><span class="sw-label">停用</span></button>
+            </div>
+            <div class="chips"><span class="chip failed">failed</span></div>
+            <div class="cc-scope">Method：<b>POST</b> · 2 組 Headers</div>
+            <div class="cc-actions">
+              <button class="btn-act btn-test" data-card="custom" aria-label="測試 自訂監控" title="測試"><span class="spin"></span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+              <button class="btn-act btn-edit" data-card="custom" aria-label="編輯 自訂監控" title="編輯"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
+              <button class="btn-act danger btn-del" data-card="custom" aria-label="刪除 自訂監控" title="刪除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 發送紀錄 Panel（預設隱藏） -->
+      <div id="panel-history" role="tabpanel" aria-labelledby="tab-history" style="display:none">
+        <div class="history-panel">
+          <div class="hist-filter">
+            <select class="select" id="hist-channel" data-testid="hist-channel">
+              <option value="all">Channel：全部</option>
+              <option value="slack">團隊 Slack</option>
+              <option value="tg">個人 TG</option>
+              <option value="custom">自訂監控</option>
+            </select>
+            <div class="seg" id="hist-result-tabs">
+              <button class="seg-btn active" id="res-all" data-res="all">全部</button>
+              <button class="seg-btn" id="res-success" data-res="success">成功</button>
+              <button class="seg-btn" id="res-failure" data-res="failure">失敗</button>
+            </div>
+            <div class="hist-pager">
+              <button class="pg-btn" id="pg-prev" aria-label="上一頁">‹</button>
+              <span id="pg-label">第 1 / 3 頁</span>
+              <button class="pg-btn" id="pg-next" aria-label="下一頁">›</button>
+            </div>
+          </div>
+          <div class="hist-table-wrap">
+            <table class="hist-table" data-testid="hist-table">
+              <thead><tr><th>時間</th><th>Channel</th><th>觸發事件</th><th>目標服務</th><th>結果</th></tr></thead>
+              <tbody id="hist-tbody">
+                <tr data-status="success" data-chan="slack"><td class="hist-time">2025-08-16 10:03:12</td><td>團隊 Slack</td><td><span class="chip failed">failed</span></td><td class="hist-svc">nginx.service</td><td><span class="result-badge success">成功</span></td></tr>
+                <tr data-status="success" data-chan="tg"><td class="hist-time">2025-08-16 09:58:41</td><td>個人 TG</td><td><span class="chip started">started</span></td><td class="hist-svc">postgresql.service</td><td><span class="result-badge success">成功</span></td></tr>
+                <tr data-status="failure" data-chan="custom"><td class="hist-time">2025-08-15 23:11:05</td><td>自訂監控</td><td><span class="chip failed">failed</span></td><td class="hist-svc">mysql.service</td><td><span class="result-badge failure">失敗</span><div class="hist-err">HTTP 500：internal server error</div></td></tr>
+                <tr data-status="success" data-chan="slack"><td class="hist-time">2025-08-15 21:47:30</td><td>團隊 Slack</td><td><span class="chip stopped">stopped</span></td><td class="hist-svc">nginx.service</td><td><span class="result-badge success">成功</span></td></tr>
+                <tr data-status="failure" data-chan="tg"><td class="hist-time">2025-08-15 19:02:18</td><td>個人 TG</td><td><span class="chip restarted">restarted</span></td><td class="hist-svc">redis.service</td><td><span class="result-badge failure">失敗</span><div class="hist-err">連線逾時（10s）· retry 仍失敗</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="hist-count" id="hist-count">顯示 1–5 / 共 87 筆（時間倒序）</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="anno"><span class="num">1</span><div><b>分頁 pills</b> — segmented control（18px 圓角、active 填 accent 白字）；<code>role="tablist"</code></div></div>
+      <div class="anno"><span class="num">2</span><div><b>Channel 卡片</b> — 類型圖示 40px + 名稱 + 事件 chips + 服務範圍 + toggle</div></div>
+      <div class="anno"><span class="num">3</span><div><b>Toggle</b> — 沿用既有 <code>.toggle-switch</code>（36×20 track）；樂觀更新，失敗回復</div></div>
+      <div class="anno"><span class="num">4</span><div><b>測試按鈕</b> — 點擊轉 spinner → 成功/失敗/平台異常 Toast</div></div>
+      <div class="anno"><span class="num">5</span><div><b>自動停用</b> — 黃色警告橫幅 + 原因 + 「重新啟用」（WS 全域 Toast 雙通道）</div></div>
+      <div class="anno"><span class="num">6</span><div><b>停用態</b> — 卡片 <code>opacity:0.55</code> 灰化 + 「停用」文字（不以顏色單獨傳達）</div></div>
+    </div>
+  </div>
+
+  <!-- ══════════ 3. 發送紀錄分頁（Desktop） ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>3️⃣ 發送紀錄分頁 — 篩選／色標／分頁</h2>
+    <p class="fsub">點「發送紀錄」分頁查看；可依 Channel 下拉、結果 pills 篩選，分頁翻頁。成功綠 badge、失敗紅 badge + 錯誤訊息（文字＋色彩雙重傳達）。</p>
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url">https://linux-service-manager/notifications · 發送紀錄分頁</span>
+      <span class="elem-count">互動：<b>Channel 篩選・結果切換・翻頁</b></span>
+    </div>
+    <div class="app-page">
+      <div class="mock-header">
+        <div class="brand"><span style="font-size:1.1rem">🖥</span> Linux Service Manager</div>
+        <div class="mock-nav"><span>🏠 儀表板</span><span>📋 稽核紀錄</span><span class="active">🔔 Notifications</span></div>
+        <div class="mock-acct"><span class="ava">A</span> admin ▾</div>
+      </div>
+      <div class="notify-header">
+        <div><h3>🔔 通知設定</h3><p class="hint">發送紀錄僅保留最近 30 天，超過自動清理</p></div>
+      </div>
+      <div class="notify-tabs">
+        <div class="seg" role="tablist" aria-label="通知頁面分頁">
+          <button class="seg-btn" id="tab-channels-b">Channel 設定</button>
+          <button class="seg-btn active" id="tab-history-b">發送紀錄</button>
+        </div>
+      </div>
+      <div class="history-panel">
+        <div class="hist-filter">
+          <select class="select" id="hist-channel-b">
+            <option value="all">Channel：全部</option>
+            <option value="slack">團隊 Slack</option>
+            <option value="tg">個人 TG</option>
+            <option value="custom">自訂監控</option>
+          </select>
+          <div class="seg" id="hist-result-tabs-b">
+            <button class="seg-btn active" data-res="all">全部</button>
+            <button class="seg-btn" data-res="success">成功</button>
+            <button class="seg-btn" data-res="failure">失敗</button>
+          </div>
+          <div class="hist-pager">
+            <button class="pg-btn" id="pg-prev-b" aria-label="上一頁">‹</button>
+            <span id="pg-label-b">第 1 / 3 頁</span>
+            <button class="pg-btn" id="pg-next-b" aria-label="下一頁">›</button>
+          </div>
+        </div>
+        <div class="hist-table-wrap">
+          <table class="hist-table">
+            <thead><tr><th>時間</th><th>Channel</th><th>觸發事件</th><th>目標服務</th><th>結果</th></tr></thead>
+            <tbody id="hist-tbody-b">
+              <tr data-status="success" data-chan="slack"><td class="hist-time">2025-08-16 10:03:12</td><td>團隊 Slack</td><td><span class="chip failed">failed</span></td><td class="hist-svc">nginx.service</td><td><span class="result-badge success">成功</span></td></tr>
+              <tr data-status="success" data-chan="tg"><td class="hist-time">2025-08-16 09:58:41</td><td>個人 TG</td><td><span class="chip started">started</span></td><td class="hist-svc">postgresql.service</td><td><span class="result-badge success">成功</span></td></tr>
+              <tr data-status="failure" data-chan="custom"><td class="hist-time">2025-08-15 23:11:05</td><td>自訂監控</td><td><span class="chip failed">failed</span></td><td class="hist-svc">mysql.service</td><td><span class="result-badge failure">失敗</span><div class="hist-err">HTTP 500：internal server error</div></td></tr>
+              <tr data-status="success" data-chan="slack"><td class="hist-time">2025-08-15 21:47:30</td><td>團隊 Slack</td><td><span class="chip stopped">stopped</span></td><td class="hist-svc">nginx.service</td><td><span class="result-badge success">成功</span></td></tr>
+              <tr data-status="failure" data-chan="tg"><td class="hist-time">2025-08-15 19:02:18</td><td>個人 TG</td><td><span class="chip restarted">restarted</span></td><td class="hist-svc">redis.service</td><td><span class="result-badge failure">失敗</span><div class="hist-err">連線逾時（10s）· retry 仍失敗</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="hist-count" id="hist-count-b">顯示 1–5 / 共 87 筆（時間倒序）</div>
+      </div>
+    </div>
+    <div class="note"><b>無障礙：</b>結果以「成功／失敗」文字 badge + 色彩雙重傳達（WCAG 1.4.1）；錯誤訊息以 mono 換行顯示不截斷；每頁 30 筆（BDD @history），分頁控件含 aria-label。</div>
+  </div>
+
+  <!-- ══════════ 4. 頁面狀態 Demo ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>4️⃣ 頁面狀態 Demo — 空狀態／載入／錯誤／測試三態 Toast</h2>
+    <p class="fsub">BDD 要求含 disabled／loading／error／空結果；點下方按鈕觸發三種測試結果 Toast。</p>
+    <div class="state-row">
+      <div class="state-demo">
+        <div class="big">🔔</div>
+        <p>尚未設定任何通知 Channel</p>
+        <button class="btn primary">＋ 新增 Channel</button>
+      </div>
+      <div class="state-demo">
+        <div class="spinner-lg" aria-hidden="true"></div>
+        <p>載入中...（GET /api/v1/notify/channels）</p>
+      </div>
+      <div class="state-demo">
+        <div class="big" style="color:var(--danger)">⚠️</div>
+        <p>載入失敗：無法連接伺服器</p>
+        <button class="btn">重試</button>
+      </div>
+    </div>
+    <div class="demo-btns">
+      <button class="btn" id="btn-toast-success">Demo：測試成功</button>
+      <button class="btn" id="btn-toast-error">Demo：測試失敗</button>
+      <button class="btn" id="btn-toast-warning">Demo：平台異常</button>
+      <button class="btn" id="btn-toast-disabled">Demo：WS 自動停用</button>
+    </div>
+    <p class="demo-hint"><b>測試三態文案：</b>成功「測試通知已發送 ✅，請檢查目標平台」／失敗「測試失敗 ❌：{原因}」／平台異常「⚠️ 請求已送出但目標平台回覆異常，請檢查 URL/Token」／自動停用「Channel「XXX」因連續失敗已自動停用」。</p>
+  </div>
+
+  <!-- ══════════ 5. 元件解剖 ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>5️⃣ 元件解剖</h2>
+    <p class="fsub">ChannelCard、Toggle、分頁 pills、結果 badge 的放大渲染與尺寸註記。</p>
+    <div class="anatomy">
+      <div class="anat-card">
+        <h4>ChannelCard <span class="tag">卡片</span></h4>
+        <div class="anat-stage">
+          <div class="channel-card" style="max-width:320px;margin:0 auto">
+            <div class="cc-top">
+              <div class="cc-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24"><g fill="#36C5F0"><rect x="7" y="3" width="4" height="8" rx="2"/></g><g fill="#E01E5A"><rect x="13" y="3" width="4" height="8" rx="2"/></g><g fill="#2EB67D"><rect x="7" y="13" width="4" height="8" rx="2"/></g><g fill="#ECB22E"><rect x="13" y="13" width="4" height="8" rx="2"/></g></svg></div>
+              <div>
+                <div class="cc-name">團隊 Slack <span class="cc-type">slack</span></div>
+                <div class="cc-scope" style="margin:0">全部服務</div>
+              </div>
+              <button class="switch on" role="switch" aria-checked="true" aria-label="啟用 團隊 Slack"><span class="sw-track"><span class="sw-thumb"></span></span><span class="sw-label">啟用</span></button>
+            </div>
+            <div class="chips"><span class="chip failed">failed</span><span class="chip started">started</span></div>
+            <div class="cc-actions">
+              <button class="btn-act" aria-label="測試"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+              <button class="btn-act" aria-label="編輯"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
+              <button class="btn-act danger" aria-label="刪除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+            </div>
+          </div>
+        </div>
+        <div class="anat-dims">
+          類型圖示 <b>40×40px</b>（surface-2 底）· 卡片圓角 <b>10px</b> · 動作按鈕 <b>36px</b>（mobile 44px）<br>
+          事件 chips <b>0.68rem</b> · 停用態 <b>opacity 0.55</b> + 「停用」文字標籤
+        </div>
+      </div>
+      <div class="anat-card">
+        <h4>Toggle 開關 <span class="tag">role=switch</span></h4>
+        <div class="anat-stage">
+          <div style="display:flex;gap:2rem;flex-wrap:wrap;align-items:center;justify-content:center">
+            <button class="switch on" role="switch" aria-checked="true" aria-label="啟用"><span class="sw-track"><span class="sw-thumb"></span></span><span class="sw-label">啟用</span></button>
+            <button class="switch" role="switch" aria-checked="false" aria-label="停用"><span class="sw-track"><span class="sw-thumb"></span></span><span class="sw-label">停用</span></button>
+            <button class="switch loading" role="switch" aria-checked="true" aria-label="更新中"><span class="sw-track"><span class="sw-thumb"></span></span><span class="sw-label">更新中</span></button>
+          </div>
+        </div>
+        <div class="anat-dims">
+          track <b>36×20px</b>（圓角 10px）· thumb <b>16px</b> · ON 綠 <b>#4caf50</b> / OFF 灰<br>
+          沿用 <code>main.css .toggle-switch</code>（~1233 行）零新增樣式 · <b>aria-checked</b> 同步
+        </div>
+      </div>
+      <div class="anat-card">
+        <h4>分頁 pills <span class="tag">tablist</span></h4>
+        <div class="anat-stage">
+          <div class="seg" style="margin:0 auto;display:flex">
+            <button class="seg-btn active" role="tab" aria-selected="true">Channel 設定</button>
+            <button class="seg-btn" role="tab" aria-selected="false">發送紀錄</button>
+          </div>
+        </div>
+        <div class="anat-dims">
+          高度 <b>36px</b>（mobile 44px 全寬 flex:1）· 圓角 <b>18px</b> · active 填 <b>--lms-accent</b> 白字<br>
+          <code>role="tablist/tab"</code> + <code>aria-selected</code> · 鍵盤方向鍵切換
+        </div>
+      </div>
+      <div class="anat-card">
+        <h4>結果 badge <span class="tag">成功/失敗</span></h4>
+        <div class="anat-stage">
+          <div style="display:flex;gap:1rem;flex-wrap:wrap;justify-content:center">
+            <span class="result-badge success">成功</span>
+            <span class="result-badge failure">失敗</span>
+            <div><span class="result-badge failure">失敗</span><div class="hist-err" style="color:var(--danger)">HTTP 500：internal server error</div></div>
+          </div>
+        </div>
+        <div class="anat-dims">
+          pill 圓角 <b>20px</b> · 成功 <b>--lms-success-light</b> 底 / 失敗 <b>--lms-danger-light</b> 底<br>
+          文字＋色彩雙重傳達（WCAG 1.4.1）· 錯誤訊息 mono <b>0.7rem</b>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ 6. 狀態矩陣 ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>6️⃣ 狀態矩陣</h2>
+    <p class="fsub">完整涵蓋 idle／hover／focus／disabled／loading／error／空結果。</p>
+    <table class="states">
+      <tr><th style="width:150px;">狀態</th><th>視覺</th><th>互動</th></tr>
+      <tr><td>ChannelCard · Idle（啟用）</td><td>正常卡片、toggle ON 綠</td><td>測試／編輯／刪除可用；toggle 可點</td></tr>
+      <tr><td>Hover / Focus</td><td>卡片 shadow 提升；動作按鈕 accent；focus ring 3px</td><td>按鈕可點</td></tr>
+      <tr><td>停用（enabled=false）</td><td><span class="demo-cell">卡片 <code>opacity:0.55</code> ＋ 「停用」標籤</span></td><td>toggle OFF；測試／編輯仍可用；刪除可用</td></tr>
+      <tr><td>自動停用（failures≥10）</td><td><span class="demo-cell">黃色橫幅「已自動停用：{原因}」</span></td><td>「重新啟用」→ PATCH enabled=true（failures 歸零、橫幅消失）</td></tr>
+      <tr><td>測試中</td><td>測試按鈕 spinner ＋ 卡片動作鎖定</td><td>其餘動作 disabled；完成恢復</td></tr>
+      <tr><td>刪除確認</td><td>ConfirmModal「確定刪除 Channel「XXX」？此操作無法復原。」</td><td>確認 → DELETE ＋ 卡片淡出；取消 → 關閉</td></tr>
+      <tr><td>表單 · 必填錯誤</td><td><span class="demo-cell">欄位紅框 ＋ 「請填寫必要欄位」</span></td><td>前端攔截不發 API</td></tr>
+      <tr><td>表單 · 事件未勾選</td><td>事件區紅框 ＋「至少需勾選一個觸發事件」</td><td>前端攔截</td></tr>
+      <tr><td>表單 · Saving</td><td>儲存按鈕 spinner ＋ disabled</td><td>不可重複送出</td></tr>
+      <tr><td>表單 · 儲存失敗</td><td>Toast 錯誤原因</td><td><b>表單內容保留</b>供修正</td></tr>
+      <tr><td>上限 20</td><td>Toast「Channel 數量已達上限」</td><td>新增被攔截</td></tr>
+      <tr><td>發送紀錄 · 空結果</td><td>「尚無通知發送紀錄」</td><td>—</td></tr>
+      <tr><td>發送紀錄 · 失敗列</td><td><span class="demo-cell">紅 badge「失敗」＋ mono 錯誤訊息</span></td><td>title 顯示全文</td></tr>
+    </table>
+  </div>
+
+  <!-- ══════════ 7. Mobile ══════════ -->
+  <div class="frame mobile-frame">
+    <h2>7️⃣ Mobile（≤767px）</h2>
+    <p class="fsub">分頁 pills 全寬 44px、卡片單欄、表單欄位堆疊、觸控目標 44px（WCAG 2.5.5）。</p>
+    <div class="app-page is-mobile">
+      <div class="mock-header">
+        <div class="brand"><span style="font-size:1.05rem">🖥</span> Linux Service Manager</div>
+        <div class="mock-nav"><span class="active">🔔 Notifications</span></div>
+      </div>
+      <div class="notify-header">
+        <div><h3>🔔 通知設定</h3><p class="hint">服務狀態變更時推送通知</p></div>
+        <button class="btn primary">＋ 新增 Channel</button>
+      </div>
+      <div class="notify-tabs">
+        <div class="seg" role="tablist" aria-label="通知頁面分頁">
+          <button class="seg-btn active" role="tab" aria-selected="true">Channel 設定</button>
+          <button class="seg-btn" role="tab" aria-selected="false">發送紀錄</button>
+        </div>
+      </div>
+      <div class="channel-grid">
+        <div class="channel-card">
+          <div class="cc-top">
+            <div class="cc-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24"><g fill="#36C5F0"><rect x="7" y="3" width="4" height="8" rx="2"/></g><g fill="#E01E5A"><rect x="13" y="3" width="4" height="8" rx="2"/></g><g fill="#2EB67D"><rect x="7" y="13" width="4" height="8" rx="2"/></g><g fill="#ECB22E"><rect x="13" y="13" width="4" height="8" rx="2"/></g></svg></div>
+            <div>
+              <div class="cc-name">團隊 Slack <span class="cc-type">slack</span></div>
+              <div class="cc-scope" style="margin:0">全部服務</div>
+            </div>
+            <button class="switch on" role="switch" aria-checked="true" aria-label="啟用 團隊 Slack"><span class="sw-track"><span class="sw-thumb"></span></span><span class="sw-label">啟用</span></button>
+          </div>
+          <div class="chips"><span class="chip failed">failed</span><span class="chip started">started</span></div>
+          <div class="cc-actions">
+            <button class="btn-act" aria-label="測試"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+            <button class="btn-act" aria-label="編輯"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
+            <button class="btn-act danger" aria-label="刪除"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          </div>
+        </div>
+        <div class="channel-card disabled">
+          <div class="cc-top">
+            <div class="cc-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="#5865F2"><rect x="2" y="7" width="20" height="10" rx="5"/><path d="M7 10.5v3M5.5 12h3" stroke="#fff" stroke-width="1.6" stroke-linecap="round" fill="none"/><circle cx="16.5" cy="10.8" r="1" fill="#fff"/><circle cx="18.8" cy="13.2" r="1" fill="#fff"/></svg></div>
+            <div>
+              <div class="cc-name">團隊 Discord <span class="cc-type">discord</span></div>
+              <div class="cc-scope" style="margin:0">指定 2 個服務</div>
+            </div>
+            <button class="switch" role="switch" aria-checked="false" aria-label="啟用 團隊 Discord"><span class="sw-track"><span class="sw-thumb"></span></span><span class="sw-label">停用</span></button>
+          </div>
+          <div class="chips"><span class="chip started">started</span></div>
+          <div class="cc-actions">
+            <button class="btn-act" aria-label="測試"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+            <button class="btn-act" aria-label="編輯"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
+            <button class="btn-act danger" aria-label="刪除"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="note"><b>Mobile 規範：</b>分頁 pills 全寬 <b>44px</b>；卡片單欄（<code>grid-template-columns:1fr</code>）；表單欄位單欄堆疊；動作按鈕 <b>44px</b>；發送紀錄表格橫向捲動（<code>overflow-x:auto</code>）。</p>
+  </div>
+
+  <!-- ══════════ 8. 規格摘要 ══════════ -->
+  <div class="frame">
+    <h2>8️⃣ 規格摘要 — CSS 變數對應</h2>
+    <p class="fsub">實作時直接套用下列變數與結構。</p>
+    <table class="states">
+      <tr><th style="width:200px;">項目</th><th>值</th><th>對應</th></tr>
+      <tr><td>分頁 pills</td><td>36 / 44px、18px 圓角、active 填 accent</td><td><code>--lms-h</code> / <code>--lms-h-mobile</code> / <code>--lms-accent</code></td></tr>
+      <tr><td>Channel 卡片</td><td>border 1px、圓角 10px、停用 opacity 0.55</td><td><code>--lms-border</code> / <code>--lms-radius</code> / <code>--lms-surface</code></td></tr>
+      <tr><td>Toggle</td><td>track 36×20、ON 綠 / OFF 灰、loading pulse</td><td><code>.toggle-switch</code>（main.css 既有）</td></tr>
+      <tr><td>事件 chips</td><td>started accent／stopped muted／failed danger／restarted warning</td><td><code>--lms-accent-light</code> / <code>--lms-danger-light</code> / <code>--lms-warning-light</code></td></tr>
+      <tr><td>自動停用橫幅</td><td>黃底 warning 字 + 「重新啟用」</td><td><code>--lms-warning</code> / <code>--lms-warning-light</code></td></tr>
+      <tr><td>結果 badge</td><td>成功綠底／失敗紅底 + 文字</td><td><code>--lms-success-light</code> / <code>--lms-danger-light</code></td></tr>
+      <tr><td>表單錯誤</td><td>紅框 + 3px red ring + role=alert</td><td><code>--lms-danger</code> / <code>rgba(197,34,31,.12)</code></td></tr>
+      <tr><td>Toast / Modal</td><td>success/error/warning 三型態；alertdialog</td><td><code>useToast</code> + <code>ConfirmModal.vue</code>（既有）</td></tr>
+    </table>
+  </div>
+
+  <!-- 刪除確認 Modal -->
+  <div class="modal-overlay" id="delete-modal" role="dialog" aria-modal="true" aria-labelledby="del-title">
+    <div class="modal">
+      <h4 id="del-title">刪除 Channel</h4>
+      <p id="del-message">確定刪除 Channel「<b>團隊 Slack</b>」？此操作無法復原。</p>
+      <div class="modal-actions">
+        <button class="btn" id="del-cancel">取消</button>
+        <button class="btn danger" id="del-confirm">確認刪除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 容器 -->
+  <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
+
+  <div class="footnote">
+    📄 設計文件：<b>docs/uiux/013-webhook-notification-design.md</b> ・ 本文件：<b>docs/uiux/013-webhook-notification-design.html</b><br>
+    實作範圍：<b>frontend NotificationsView.vue / ChannelCard.vue / ChannelForm.vue / ChannelHistoryTable.vue / useNotifyChannels.ts / types/notify.ts / AppHeader 導覽 / useWebSocket notify_channel_disabled</b>（Tech Decision 013 §3.1）
+  </div>
+</div>
+
+<script>
+// ── 通用切換（模板內建，勿刪）──
+const themeBtn = document.getElementById('themeToggle');
+themeBtn.addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+  themeBtn.textContent = dark ? '🌙 切換深色' : '☀️ 切換淺色';
+});
+const devSwitch = document.getElementById('devSwitch');
+devSwitch.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+  devSwitch.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  document.body.classList.toggle('view-mobile', b.dataset.dev === 'mobile');
+}));
+
+// ── Toast helper ──
+const toastWrap = document.getElementById('toast-wrap');
+function toast(msg, type) {
+  if (!toastWrap) return;
+  const el = document.createElement('div');
+  el.className = 'toast ' + (type || 'success');
+  el.setAttribute('role', type === 'success' ? 'status' : 'alert');
+  el.textContent = msg;
+  toastWrap.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; }, 3000);
+  setTimeout(() => el.remove(), 3350);
+}
+
+// ── 分頁切換（主畫面）──
+const tabCh = document.getElementById('tab-channels');
+const tabHist = document.getElementById('tab-history');
+const panelCh = document.getElementById('panel-channels');
+const panelHist = document.getElementById('panel-history');
+function switchTab(which) {
+  const ch = which === 'channels';
+  tabCh.classList.toggle('active', ch);
+  tabHist.classList.toggle('active', !ch);
+  tabCh.setAttribute('aria-selected', String(ch));
+  tabHist.setAttribute('aria-selected', String(!ch));
+  panelCh.style.display = ch ? '' : 'none';
+  panelHist.style.display = ch ? 'none' : '';
+}
+tabCh.addEventListener('click', () => switchTab('channels'));
+tabHist.addEventListener('click', () => switchTab('history'));
+
+// 附屬畫面分頁（frame 3 的 -b 按鈕跳回主分頁）
+const tabChB = document.getElementById('tab-channels-b');
+const tabHistB = document.getElementById('tab-history-b');
+if (tabChB) tabChB.addEventListener('click', () => switchTab('channels'));
+if (tabHistB) tabHistB.addEventListener('click', () => switchTab('history'));
+
+// ── Toggle 開關（樂觀更新 demo）──
+document.querySelectorAll('.switch[data-toggle-id]').forEach(() => {});
+['sw-slack', 'sw-discord', 'sw-tg', 'sw-custom'].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('click', () => {
+    if (el.classList.contains('loading')) return;
+    el.classList.add('loading');
+    const cardId = el.closest('.channel-card').id;
+    setTimeout(() => {
+      el.classList.remove('loading');
+      const on = !el.classList.contains('on');
+      el.classList.toggle('on', on);
+      el.setAttribute('aria-checked', String(on));
+      el.querySelector('.sw-label').textContent = on ? '啟用' : '停用';
+      const card = document.getElementById(cardId);
+      if (card) card.classList.toggle('disabled', !on);
+      // 自動停用卡：重新啟用時移除橫幅
+      if (cardId === 'card-custom' && on) {
+        const banner = card.querySelector('.auto-banner');
+        if (banner) banner.remove();
+        toast('Channel「自訂監控」已重新啟用（failures 歸零）', 'success');
+      }
+    }, 400);
+  });
+});
+
+// ── 測試按鈕 ──
+document.querySelectorAll('.btn-test').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const card = btn.closest('.channel-card');
+    const name = card.querySelector('.cc-name').textContent.replace(/\s+(slack|discord|tg|telegram|custom)/, '').trim();
+    btn.classList.add('loading');
+    btn.disabled = true;
+    card.querySelectorAll('.btn-act').forEach(b => { if (b !== btn) b.disabled = true; });
+    toast('正在發送測試通知...', 'warning');
+    const results = {
+      slack: ['success', '測試通知已發送 ✅，請檢查目標平台'],
+      discord: ['success', '測試通知已發送 ✅，請檢查目標平台'],
+      tg: ['success', '測試通知已發送 ✅，請檢查目標平台'],
+      custom: ['error', '測試失敗 ❌：連線逾時（10s）'],
+    };
+    const r = results[card.dataset.card] || ['success', '測試通知已發送 ✅'];
+    setTimeout(() => {
+      btn.classList.remove('loading');
+      btn.disabled = false;
+      card.querySelectorAll('.btn-act').forEach(b => { b.disabled = false; });
+      toast(r[1], r[0]);
+    }, 900);
+  });
+});
+
+// ── 刪除流程 ──
+let pendingDel = null;
+const delModal = document.getElementById('delete-modal');
+const delMessage = document.getElementById('del-message');
+const delNameEl = delMessage.querySelector('b');
+document.querySelectorAll('.btn-del').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const card = btn.closest('.channel-card');
+    pendingDel = card;
+    const name = card.querySelector('.cc-name').textContent.replace(/\s+(slack|discord|tg|telegram|custom)/, '').trim();
+    delNameEl.textContent = name;
+    delModal.classList.add('open');
+  });
+});
+document.getElementById('del-cancel').addEventListener('click', () => {
+  delModal.classList.remove('open');
+  pendingDel = null;
+});
+document.getElementById('del-confirm').addEventListener('click', () => {
+  delModal.classList.remove('open');
+  if (pendingDel) {
+    const card = pendingDel;
+    const name = card.querySelector('.cc-name').textContent.replace(/\s+(slack|discord|tg|telegram|custom)/, '').trim();
+    card.classList.add('removing');
+    setTimeout(() => {
+      card.style.display = 'none';
+      toast('Channel「' + name + '」已刪除', 'success');
+    }, 320);
+    pendingDel = null;
+  }
+});
+
+// ── 新增 / 編輯表單 ──
+const form = document.getElementById('channel-form');
+const btnAdd = document.getElementById('btn-add-channel');
+const cfTitle = document.getElementById('cf-title');
+const cfMode = document.getElementById('cf-mode');
+function openForm(mode, name) {
+  form.style.display = '';
+  form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  cfTitle.textContent = (mode === 'edit' ? '編輯 Channel' : '新增 Channel');
+  cfMode.textContent = mode === 'edit' ? 'EDIT' : 'NEW';
+  if (mode === 'edit' && name) { document.getElementById('cf-name').value = name; }
+  document.getElementById('cf-alert').classList.remove('show');
+  document.getElementById('f-name').classList.remove('error');
+}
+btnAdd.addEventListener('click', () => openForm('add'));
+document.querySelectorAll('.btn-edit').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const name = btn.closest('.channel-card').querySelector('.cc-name').textContent.replace(/\s+(slack|discord|tg|telegram|custom)/, '').trim();
+    openForm('edit', name);
+  });
+});
+document.getElementById('cf-cancel').addEventListener('click', () => { form.style.display = 'none'; });
+
+// 表單：類型動態欄位
+const cfType = document.getElementById('cf-type');
+function syncTypeFields() {
+  const t = cfType.value;
+  document.querySelectorAll('.type-fields').forEach(f => { f.style.display = 'none'; });
+  document.querySelectorAll('.type-' + t).forEach(f => { f.style.display = ''; });
+}
+cfType.addEventListener('change', syncTypeFields);
+syncTypeFields();
+
+// 表單：事件 chips
+document.querySelectorAll('.chip-check').forEach(ch => {
+  ch.addEventListener('click', () => {
+    ch.classList.toggle('on');
+    const cb = ch.querySelector('input');
+    cb.checked = ch.classList.contains('on');
+  });
+});
+
+// 表單：服務範圍
+const scopeSome = document.getElementById('scope-some');
+const svcSearch = document.getElementById('svc-search');
+document.querySelectorAll('input[name="scope"]').forEach(r => {
+  r.addEventListener('change', () => {
+    const show = r.value === 'some' && r.checked;
+    svcSearch.style.display = show ? '' : 'none';
+    svcSearch.classList.toggle('open', false);
+  });
+});
+scopeSome.addEventListener('change', () => { svcSearch.style.display = ''; });
+document.getElementById('svc-input').addEventListener('focus', () => svcSearch.classList.add('open'));
+document.getElementById('svc-input').addEventListener('blur', () => setTimeout(() => svcSearch.classList.remove('open'), 150));
+document.getElementById('svc-input').addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase();
+  document.querySelectorAll('.svc-opt').forEach(o => {
+    o.style.display = o.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+const svcSelected = document.getElementById('svc-selected');
+const selectedSvcs = new Set();
+document.querySelectorAll('.svc-opt input').forEach(cb => {
+  cb.addEventListener('change', () => {
+    if (cb.checked) { selectedSvcs.add(cb.value); }
+    else { selectedSvcs.delete(cb.value); }
+    renderSelected();
+  });
+});
+function renderSelected() {
+  svcSelected.innerHTML = '';
+  selectedSvcs.forEach(s => {
+    const span = document.createElement('span');
+    span.className = 'svc-sel';
+    span.textContent = s;
+    const rm = document.createElement('button');
+    rm.textContent = '✕';
+    rm.setAttribute('aria-label', '移除 ' + s);
+    rm.addEventListener('click', () => {
+      selectedSvcs.delete(s);
+      document.querySelectorAll('.svc-opt input').forEach(cb => { if (cb.value === s) cb.checked = false; });
+      renderSelected();
+    });
+    span.appendChild(rm);
+    svcSelected.appendChild(span);
+  });
+}
+
+// 表單：headers（demo 簡化 — 提示最多 10 組）
+document.getElementById('btn-add-header').addEventListener('click', () => {
+  toast('Demo：headers 最多 10 組（第 11 組會被前端攔截）', 'warning');
+});
+
+// 表單：儲存驗證
+document.getElementById('cf-save').addEventListener('click', () => {
+  const name = document.getElementById('cf-name').value.trim();
+  const fName = document.getElementById('f-name');
+  const alertEl = document.getElementById('cf-alert');
+  const eventsOn = document.querySelectorAll('.chip-check.on').length;
+  let ok = true;
+  fName.classList.toggle('error', !name);
+  document.getElementById('ev-err').style.display = eventsOn === 0 ? 'block' : 'none';
+  if (!name || eventsOn === 0) { ok = false; }
+  if (!ok) {
+    alertEl.textContent = !name ? '請填寫必要欄位' : '至少需勾選一個觸發事件';
+    alertEl.classList.add('show');
+    return;
+  }
+  alertEl.classList.remove('show');
+  const btnSave = document.getElementById('cf-save');
+  btnSave.disabled = true;
+  btnSave.classList.add('loading');
+  setTimeout(() => {
+    btnSave.disabled = false;
+    btnSave.classList.remove('loading');
+    form.style.display = 'none';
+    toast('Channel「' + name + '」已建立', 'success');
+  }, 700);
+});
+
+// ── 自動停用：重新啟用 ──
+const btnReenable = document.getElementById('btn-reenable');
+btnReenable.addEventListener('click', () => {
+  const card = document.getElementById('card-custom');
+  card.classList.remove('disabled');
+  const banner = card.querySelector('.auto-banner');
+  if (banner) banner.remove();
+  const sw = document.getElementById('sw-custom');
+  sw.classList.add('on');
+  sw.setAttribute('aria-checked', 'true');
+  sw.querySelector('.sw-label').textContent = '啟用';
+  toast('Channel「自訂監控」因連續失敗已自動停用 → 已手動重新啟用', 'success');
+});
+
+// ── 發送紀錄：篩選 + 分頁（主畫面 + frame 3 共用邏輯）──
+function bindHistory(filterSelId, resTabsId, prevId, nextId, labelId, tbodyId, countId) {
+  const filterSel = document.getElementById(filterSelId);
+  const resTabs = document.getElementById(resTabsId);
+  const prevBtn = document.getElementById(prevId);
+  const nextBtn = document.getElementById(nextId);
+  const label = document.getElementById(labelId);
+  const tbody = document.getElementById(tbodyId);
+  const countEl = document.getElementById(countId);
+  if (!tbody) return;
+  let page = 1; let pageCount = 3;
+  function applyFilter() {
+    const chan = filterSel ? filterSel.value : 'all';
+    const res = resTabs.querySelector('.seg-btn.active').dataset.res;
+    let visible = 0;
+    tbody.querySelectorAll('tr').forEach(tr => {
+      const show = (chan === 'all' || tr.dataset.chan === chan) && (res === 'all' || tr.dataset.status === res);
+      tr.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    if (countEl) {
+      countEl.textContent = '顯示 ' + (visible === 0 ? 0 : 1) + '–' + visible + ' / 共 87 筆（時間倒序）';
+    }
+  }
+  if (filterSel) filterSel.addEventListener('change', applyFilter);
+  resTabs.querySelectorAll('.seg-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      resTabs.querySelectorAll('.seg-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      applyFilter();
+    });
+  });
+  function updLabel() { label.textContent = '第 ' + page + ' / ' + pageCount + ' 頁'; }
+  prevBtn.addEventListener('click', () => { if (page > 1) { page--; updLabel(); } });
+  nextBtn.addEventListener('click', () => { if (page < pageCount) { page++; updLabel(); } });
+  applyFilter();
+}
+bindHistory('hist-channel', 'hist-result-tabs', 'pg-prev', 'pg-next', 'pg-label', 'hist-tbody', 'hist-count');
+bindHistory('hist-channel-b', 'hist-result-tabs-b', 'pg-prev-b', 'pg-next-b', 'pg-label-b', 'hist-tbody-b', 'hist-count-b');
+
+// ── Toast demo 按鈕 ──
+document.getElementById('btn-toast-success').addEventListener('click', () => toast('測試通知已發送 ✅，請檢查目標平台', 'success'));
+document.getElementById('btn-toast-error').addEventListener('click', () => toast('測試失敗 ❌：連線逾時（10s）', 'error'));
+document.getElementById('btn-toast-warning').addEventListener('click', () => toast('⚠️ 請求已送出但目標平台回覆異常，請檢查 URL/Token', 'warning'));
+document.getElementById('btn-toast-disabled').addEventListener('click', () => toast('Channel「團隊 Slack」因連續失敗已自動停用', 'warning'));
+</script>
+</body>
+</html>

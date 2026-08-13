@@ -3,13 +3,13 @@
 > **對應 Roadmap**：Phase 3 — `docs/development/002-expansion-roadmap.md` 項目 #18
 > **狀態**：設計中
 > **設計日期**：2025-08-09
-> **最後更新**：2025-08-09
+> **最後更新**：2025-08-13
 
 ---
 
 ## 1. 功能概述
 
-當 systemd 服務狀態變更時（started / stopped / failed / restarted），自動觸發 webhook 通知到外部服務（Slack、Discord、LINE Notify、自訂 webhook URL），讓管理員無需盯螢幕也能即時掌握服務狀態變化。
+當 systemd 服務狀態變更時（started / stopped / failed / restarted），自動觸發 webhook 通知到外部服務（Slack、Discord、Telegram、自訂 webhook URL），讓管理員無需盯螢幕也能即時掌握服務狀態變化。
 
 **核心價值**：從「被動查看」升級為「主動通知」，服務異常時第一時間推送到管理員常用的通訊平台，降低服務中斷的察覺延遲。
 
@@ -100,15 +100,16 @@ flowchart TD
     Webhook URL 輸入框]
     SelectType -- Discord --> DiscordFields[顯示 Discord 專屬欄位：
     Webhook URL 輸入框]
-    SelectType -- LINE Notify --> LINEFields[顯示 LINE 專屬欄位：
-    Access Token 輸入框]
+    SelectType -- Telegram --> TelegramFields[顯示 Telegram 專屬欄位：
+    Bot Token 輸入框 +
+    Chat ID 輸入框]
     SelectType -- 自訂 Webhook --> CustomFields[顯示自訂欄位：
     Webhook URL 輸入框 +
     HTTP Method + Headers 選填]
 
     SlackFields --> CommonFields
     DiscordFields --> CommonFields
-    LINEFields --> CommonFields
+    TelegramFields --> CommonFields
     CustomFields --> CommonFields
 
     CommonFields[填寫通用欄位：
@@ -200,7 +201,7 @@ flowchart TD
     CheckService -- 不匹配 --> SkipChannel
     CheckService -- 匹配 --> BuildPayload[依 channel 類型
     建構通知 payload：
-    Slack / Discord / LINE / 自訂格式]
+    Slack / Discord / Telegram / 自訂格式]
 
     BuildPayload --> SendWebhook[發送 HTTP POST
     含 timeout 10s + retry 1 次]
@@ -269,7 +270,7 @@ flowchart TD
 | **觸發** | 管理員點擊 Header 中的「🔔 Notifications」導覽連結 |
 | **操作前** | 管理員在 Dashboard 頁面（或其他頁面） |
 | **系統回應** | 路由導航至 `/notifications`。載入 NotificationsView 元件，顯示 loading spinner，呼叫 `GET /api/v1/notify/channels` |
-| **操作後** | 顯示 Channel 列表（或空狀態）。每個 channel 卡片顯示：類型圖示（Slack/Discord/LINE/自訂）、名稱、觸發事件摘要、服務範圍摘要、啟用/停用 toggle |
+| **操作後** | 顯示 Channel 列表（或空狀態）。每個 channel 卡片顯示：類型圖示（Slack/Discord/Telegram/自訂）、名稱、觸發事件摘要、服務範圍摘要、啟用/停用 toggle |
 | **狀態變化** | 頁面：Dashboard → Notifications<br>Channel 列表：loading → 顯示已設定的 channels |
 
 ### 步驟 2：新增 Channel
@@ -286,9 +287,9 @@ flowchart TD
 
 | | 描述 |
 |---|------|
-| **觸發** | 管理員在類型下拉選單中選擇（Slack / Discord / LINE Notify / 自訂 Webhook） |
+| **觸發** | 管理員在類型下拉選單中選擇（Slack / Discord / Telegram / 自訂 Webhook） |
 | **操作前** | 類型下拉顯示 placeholder「請選擇 Channel 類型」 |
-| **系統回應** | 依選擇的類型動態切換下方欄位：<br>• Slack：Webhook URL 輸入框 + 提示「格式：https://hooks.slack.com/services/...」<br>• Discord：Webhook URL 輸入框 + 提示「格式：https://discord.com/api/webhooks/...」<br>• LINE Notify：Access Token 輸入框 + 提示「請先至 LINE Notify 取得 token」<br>• 自訂 Webhook：URL 輸入框 + 選填 HTTP Method（預設 POST）+ 自訂 Headers（key-value 編輯） |
+| **系統回應** | 依選擇的類型動態切換下方欄位：<br>• Slack：Webhook URL 輸入框 + 提示「格式：https://hooks.slack.com/services/...」<br>• Discord：Webhook URL 輸入框 + 提示「格式：https://discord.com/api/webhooks/...」<br>• Telegram：Bot Token 輸入框 + Chat ID 輸入框 + 提示「請先至 @BotFather 建立 bot 取得 token，並向 @userinfobot 取得 chat_id」<br>• 自訂 Webhook：URL 輸入框 + 選填 HTTP Method（預設 POST）+ 自訂 Headers（key-value 編輯） |
 | **操作後** | 對應欄位顯示，管理員繼續填寫 |
 | **狀態變化** | 表單欄位依類型動態切換，無關欄位隱藏 |
 
@@ -359,7 +360,7 @@ flowchart TD
 | **觸發** | systemd 服務狀態發生變更（如 nginx.service → failed） |
 | **操作前** | 系統正常運作中，WebSocket 已連線，D-Bus 監聽運作中 |
 | **系統回應** | D-Bus PropertiesChanged 訊號 → internal/notify/ 模組接收事件 → 載入所有已啟用 channels → 逐一檢查觸發條件（事件類型 + 服務名稱）→ 匹配的 channel 建構對應 payload → 發送 HTTP POST → 寫入通知發送紀錄。每個 webhook 請求 timeout 10 秒，失敗自動重試 1 次 |
-| **操作後** | 管理員在 Slack/Discord/LINE 收到通知訊息。通知發送紀錄新增一筆 |
+| **操作後** | 管理員在 Slack/Discord/Telegram 收到通知訊息。通知發送紀錄新增一筆 |
 | **狀態變化** | 對管理員目前操作無感知影響。channel toggle OFF 的不會收到通知 |
 
 ### 步驟 11：查看通知發送紀錄
@@ -399,7 +400,7 @@ flowchart TD
 | **觸發事件** | started、stopped、failed、restarted。不包含 reloaded（systemctl reload） |
 | **連續失敗保護** | 同一 channel 連續失敗 10 次後自動停用，防止無效請求 |
 | **通知發送紀錄** | 保留 30 天，超過自動清理 |
-| **LINE Notify 限制** | LINE Notify 每小時上限 1000 則，API 回應包含 rate limit 資訊，後端記錄但不強制阻擋 |
+| **Telegram Bot API 限制** | Telegram Bot API 速率限制（整體約 30 msg/s、單一 chat 約 1 msg/s、群組約 20 msg/min）。收到 429 回應（含 `retry_after`）時記錄於 detail，但不強制阻擋 |
 | **自訂 Webhook** | 支援 POST/PUT，自訂 headers（最多 10 組 key-value）。payload 為 JSON 格式 |
 | **服務名稱匹配** | 使用 systemd unit name（如 `nginx.service`）精確匹配。不支援 regex 或 glob pattern（初期） |
 | **並發發送** | 多 channel 並行發送，使用 goroutine + waitgroup，不阻塞主流程 |
@@ -415,10 +416,10 @@ flowchart TD
 - [ ] `internal/notify/` 模組初始化，註冊狀態變更事件監聽
 - [ ] 從 D-Bus PropertiesChanged 或內部事件接收服務狀態變更
 - [ ] 載入已啟用的 channels，逐一檢查觸發條件（事件類型 + 服務範圍）
-- [ ] 支援 4 種 channel 類型：Slack、Discord、LINE Notify、自訂 Webhook
+- [ ] 支援 4 種 channel 類型：Slack、Discord、Telegram、自訂 Webhook
 - [ ] Slack payload 格式正確（含 color=good/warning/danger 對應 started/stopped/failed）
 - [ ] Discord payload 格式正確（含 embed color）
-- [ ] LINE Notify payload 格式正確（Bearer token + message parameter）
+- [ ] Telegram payload 格式正確（token 內嵌於 URL + JSON {chat_id, text}）
 - [ ] 自訂 Webhook 支援 HTTP method + custom headers
 - [ ] Webhook 請求 timeout 10 秒，失敗重試 1 次
 - [ ] 連續失敗 10 次自動停用 channel，並記錄原因
@@ -443,7 +444,7 @@ flowchart TD
 - [ ] Channel 列表顯示每個 channel 的類型圖示、名稱、觸發事件摘要、服務範圍、toggle 開關
 - [ ] 無 channel 時顯示空狀態 + 提示新增
 - [ ] 新增 Channel 按鈕展開表單（或 Modal）
-- [ ] 類型下拉選單動態切換專屬欄位（Slack/Discord/LINE/自訂）
+- [ ] 類型下拉選單動態切換專屬欄位（Slack/Discord/Telegram/自訂）
 - [ ] 自訂 Webhook 顯示 HTTP Method 下拉 + Headers key-value 編輯
 - [ ] 觸發事件 checkbox 群組（started/stopped/failed/restarted）
 - [ ] 服務範圍 radio（全部服務 / 指定服務）+ 多選搜尋下拉
@@ -476,4 +477,4 @@ flowchart TD
 
 ---
 
-*最後更新：2025-08-09*
+*最後更新：2025-08-13*

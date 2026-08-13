@@ -34,6 +34,11 @@ const (
 	ActionTokenRevoke Action = "token_revoke"
 	ActionConfigView  Action = "config_view" // GET config 成功時（含鎖定服務唯讀檢視）
 	ActionConfigSave  Action = "config_save" // PUT config 成功（含 reload 失敗已寫入之半成功）
+	ActionNotifyCreate Action = "notify_create"
+	ActionNotifyUpdate Action = "notify_update"
+	ActionNotifyDelete Action = "notify_delete"
+	ActionNotifyToggle Action = "notify_toggle"
+	ActionNotifyTest   Action = "notify_test"
 )
 
 var validActions = map[Action]bool{
@@ -48,6 +53,11 @@ var validActions = map[Action]bool{
 	ActionTokenRevoke: true,
 	ActionConfigView:  true,
 	ActionConfigSave:  true,
+	ActionNotifyCreate: true,
+	ActionNotifyUpdate: true,
+	ActionNotifyDelete: true,
+	ActionNotifyToggle: true,
+	ActionNotifyTest:   true,
 }
 
 // actionDisplayLabels maps each audit action to its localized display label
@@ -67,6 +77,11 @@ var actionDisplayLabels = map[Action]string{
 	ActionTokenRevoke: "撤銷 Token",
 	ActionConfigView:  "檢視設定檔",
 	ActionConfigSave:  "儲存設定檔",
+	ActionNotifyCreate: "建立通知 Channel",
+	ActionNotifyUpdate: "更新通知 Channel",
+	ActionNotifyDelete: "刪除通知 Channel",
+	ActionNotifyToggle: "切換通知 Channel",
+	ActionNotifyTest:   "測試通知 Channel",
 }
 
 // Result represents the outcome of an audited operation.

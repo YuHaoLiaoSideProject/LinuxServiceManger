@@ -12,10 +12,12 @@ import (
 // Message represents a WebSocket push message
 type Message struct {
 	Type          string            `json:"type"`
+	ID            string            `json:"id,omitempty"`
 	Name          string            `json:"name,omitempty"`
 	Active        string            `json:"active,omitempty"`
 	Sub           string            `json:"sub,omitempty"`
 	UnitFileState string            `json:"unitFileState,omitempty"`
+	Reason        string            `json:"reason,omitempty"`
 	Timestamp     string            `json:"timestamp,omitempty"`
 	Services      []ServiceSnapshot `json:"services,omitempty"`
 }
@@ -48,7 +50,10 @@ type Hub struct {
 	Register   chan *Client
 	Unregister chan *Client
 	OnSnapshot func() []ServiceSnapshot
-	SessionTTL time.Duration // 0 means use DefaultSessionTTL
+	// OnStatusChange 於 BroadcastStatusChange 廣播前呼叫（nil 檢查）。
+	// 由 main.go 註冊為 notifier.HandleStatusChange；回呼須快速返回。
+	OnStatusChange func(name, active, sub string)
+	SessionTTL     time.Duration // 0 means use DefaultSessionTTL
 }
 
 const channelBufferSize = 256
@@ -158,6 +163,9 @@ func (h *Hub) BroadcastMessage(msg Message) {
 
 // BroadcastStatusChange sends a status_change message (active/sub only).
 func (h *Hub) BroadcastStatusChange(name, active, sub string) {
+	if h.OnStatusChange != nil {
+		h.OnStatusChange(name, active, sub)
+	}
 	h.BroadcastMessage(Message{
 		Type:   "status_change",
 		Name:   name,

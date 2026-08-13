@@ -118,12 +118,20 @@ func buildDiscordPayload(ev Event) ([]byte, string, error) {
 	return data, "application/json", err
 }
 
-// buildTelegramPayload：JSON body {"chat_id":"<ChatID>","text":"🔔 nginx.service failed（🟢 started ⏱ ...）"}。
+// buildTelegramPayload：JSON body {"chat_id":"<ChatID>","text":"..."}。
+// 當 SubChatID（forum topic 的 message_thread_id）非空時，附上 "message_thread_id"（整數）。
 func buildTelegramPayload(ch *Channel, ev Event) ([]byte, string, error) {
 	text := fmt.Sprintf("🔔 %s（%s）", eventTitle(ev), summaryText(ev))
 	payload := map[string]interface{}{
 		"chat_id": ch.ChatID,
 		"text":    text,
+	}
+	if ch.SubChatID != "" {
+		tid, err := strconv.ParseInt(ch.SubChatID, 10, 64)
+		if err != nil {
+			return nil, "", fmt.Errorf("invalid sub_chat_id: %w", err)
+		}
+		payload["message_thread_id"] = tid
 	}
 	data, err := json.Marshal(payload)
 	return data, "application/json", err

@@ -581,3 +581,38 @@ func TestNotifyEndpointsRequireAuth(t *testing.T) {
 		}
 	}
 }
+
+// ── Telegram sub_chat_id（forum topic 的 message_thread_id）──
+
+func TestNotifyCreateTelegramSubChatID(t *testing.T) {
+	_, router := newNotifyHandlerSeeded(t, nil, nil)
+	cookie := loginCookie(t, router)
+
+	body := fmt.Sprintf(`{"type":"telegram","name":"個人群組","token":%q,"chat_id":"123456789","sub_chat_id":"42","events":["failed"],"all_services":true}`, validBotToken)
+	w := doConfigReq(t, router, http.MethodPost, "/api/v1/notify/channels", body, cookie)
+	if w.Code != http.StatusOK && w.Code != http.StatusCreated {
+		t.Fatalf("expected create success, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := assertJSON(t, w, w.Code)
+	data := resp["data"].(map[string]interface{})
+	if data["sub_chat_id"] != "42" {
+		t.Errorf("expected sub_chat_id=42 in response, got %v", data["sub_chat_id"])
+	}
+
+	channels := listChannels(t, router, cookie)
+	if len(channels) != 1 || channels[0]["sub_chat_id"] != "42" {
+		t.Errorf("expected sub_chat_id persisted, got %#v", channels)
+	}
+}
+
+func TestNotifyTelegramSubChatIDValidation(t *testing.T) {
+	_, router := newNotifyHandlerSeeded(t, nil, nil)
+	cookie := loginCookie(t, router)
+
+	body := fmt.Sprintf(`{"type":"telegram","name":"x","token":%q,"chat_id":"123","sub_chat_id":"abc","events":["failed"],"all_services":true}`, validBotToken)
+	w := doConfigReq(t, router, http.MethodPost, "/api/v1/notify/channels", body, cookie)
+	resp := assertJSON(t, w, http.StatusBadRequest)
+	if !strings.Contains(fmt.Sprint(resp["error"]), "子 Chat ID") {
+		t.Errorf("expected sub_chat_id error message, got %#v", resp["error"])
+	}
+}

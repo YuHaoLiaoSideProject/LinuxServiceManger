@@ -30,6 +30,7 @@ type ChannelPayload struct {
 	URL         string             `json:"url"`
 	Token       string             `json:"token"`
 	ChatID      string             `json:"chat_id"`
+	SubChatID   string             `json:"sub_chat_id"`
 	Method      string             `json:"method"`
 	Headers     map[string]string  `json:"headers"`
 	Events      []string           `json:"events"`
@@ -51,6 +52,7 @@ type TestResponse struct {
 }
 
 var telegramTokenRe = regexp.MustCompile(`^\d+:[A-Za-z0-9_-]{30,}$`)
+var telegramSubChatIDRe = regexp.MustCompile(`^\d+$`)
 
 // ============================================================
 //  GET /api/v1/notify/channels
@@ -337,6 +339,9 @@ func validateChannelPayload(p *ChannelPayload) string {
 		if strings.TrimSpace(p.ChatID) == "" {
 			return "Telegram Chat ID 為必填"
 		}
+		if p.SubChatID != "" && !telegramSubChatIDRe.MatchString(p.SubChatID) {
+			return "Telegram 子 Chat ID 必須為正整數"
+		}
 	}
 
 	if len(p.Events) == 0 {
@@ -387,6 +392,7 @@ func buildChannelFromPayload(p *ChannelPayload, existing *notify.Channel) *notif
 		URL:         p.URL,
 		Token:       p.Token,
 		ChatID:      p.ChatID,
+		SubChatID:   p.SubChatID,
 		Method:      p.Method,
 		Headers:     p.Headers,
 		Events:      p.Events,

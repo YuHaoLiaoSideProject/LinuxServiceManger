@@ -223,3 +223,50 @@ describe('ChannelForm — 編輯預填與送出（F-CF-11/13）', () => {
     expect(payload.events.length).toBeGreaterThanOrEqual(1)
   })
 })
+
+describe('ChannelForm — Telegram 子 Chat ID（sub_chat_id）', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    seedServices()
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('F-CF-15: Telegram 顯示選填「子 Chat ID」欄位並納入 payload', async () => {
+    const wrapper = await mountForm()
+    await selectType(wrapper, 'telegram')
+
+    const subChatInput = wrapper.find('[data-testid="channel-sub-chatid"]')
+    expect(subChatInput.exists()).toBe(true)
+
+    await wrapper.find('#channel-token').setValue('123456789:AA...')
+    await wrapper.find('#channel-chatid').setValue('123456789')
+    await subChatInput.setValue('42')
+    const firstEvent = wrapper.find('input[type="checkbox"]')
+    await firstEvent.setValue(true)
+
+    await wrapper.find('form').trigger('submit')
+
+    const emitted = wrapper.emitted('save')
+    expect(emitted).toBeTruthy()
+    const payload = emitted![0][0] as any
+    expect(payload.sub_chat_id).toBe('42')
+  })
+
+  it('F-CF-16: 未填子 Chat ID 時 payload.sub_chat_id 為空（選填）', async () => {
+    const wrapper = await mountForm()
+    await selectType(wrapper, 'telegram')
+
+    await wrapper.find('#channel-token').setValue('123456789:AA...')
+    await wrapper.find('#channel-chatid').setValue('123456789')
+    const firstEvent = wrapper.find('input[type="checkbox"]')
+    await firstEvent.setValue(true)
+
+    await wrapper.find('form').trigger('submit')
+
+    const payload = wrapper.emitted('save')![0][0] as any
+    expect(payload.sub_chat_id).toBe('')
+  })
+})

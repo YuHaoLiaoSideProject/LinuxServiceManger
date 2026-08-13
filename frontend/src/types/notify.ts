@@ -9,6 +9,7 @@ export interface Channel {
   url?: string
   token?: string            // Telegram bot token；API 回傳 masked（'****xxxx'）；編輯時留空表示不變更
   chat_id?: string          // Telegram chat id（僅 telegram；整數或 @channelusername）
+  sub_chat_id?: string      // Telegram 子 Chat ID（forum topic 的 message_thread_id，選填）
   method?: HttpMethod       // custom，預設 POST
   headers?: Record<string, string>  // custom，≤10 組
   events: TriggerEvent[]
@@ -27,6 +28,7 @@ export interface ChannelPayload {
   url: string
   token: string
   chat_id: string
+  sub_chat_id: string
   method: HttpMethod
   headers: Record<string, string>
   events: TriggerEvent[]

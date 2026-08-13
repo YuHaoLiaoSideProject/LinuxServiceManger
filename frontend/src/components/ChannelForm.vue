@@ -18,6 +18,7 @@ const form = reactive({
   url: '',
   token: '',
   chatId: '',
+  subChatId: '',
   method: 'POST' as HttpMethod,
   headers: [{ key: '', value: '' }] as Array<{ key: string; value: string }>,
   events: [] as TriggerEvent[],
@@ -35,6 +36,7 @@ if (props.channel) {
   form.url = props.channel.url || ''
   form.token = props.channel.token || ''
   form.chatId = props.channel.chat_id || ''
+  form.subChatId = props.channel.sub_chat_id || ''
   form.method = props.channel.method || 'POST'
   form.headers = Object.entries(props.channel.headers || {}).map(([key, value]) => ({ key, value }))
   if (form.headers.length === 0) form.headers = [{ key: '', value: '' }]
@@ -72,6 +74,7 @@ function buildPayload(): ChannelPayload {
     url: form.url,
     token: form.token,
     chat_id: form.chatId,
+    sub_chat_id: form.subChatId,
     method: form.method,
     headers,
     events: [...form.events],
@@ -158,6 +161,10 @@ function handleSubmit(): void {
         <div class="form-field form-field--full">
           <label for="channel-chatid">Chat ID（整數或 @channelusername）</label>
           <input id="channel-chatid" v-model="form.chatId" placeholder="123456789 或 @channelusername" :class="{ 'field-error': errors.chatId }" />
+        </div>
+        <div class="form-field form-field--full">
+          <label for="channel-sub-chatid">子 Chat ID（選填，forum topic 的 message_thread_id）</label>
+          <input id="channel-sub-chatid" v-model="form.subChatId" placeholder="選填，例如 42" data-testid="channel-sub-chatid" />
         </div>
         <p class="field-hint">請先至 @BotFather 建立 bot 取得 token，並向 @userinfobot 取得 chat_id</p>
       </template>

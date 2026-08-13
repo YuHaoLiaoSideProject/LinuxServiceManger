@@ -190,6 +190,31 @@ func TestPayloadContainsNoLog(t *testing.T) {
 	}
 }
 
+// sub_chat_id（Telegram forum topic 的 message_thread_id）支援
+func TestBuildTelegramPayloadWithSubChatID(t *testing.T) {
+	ch := &Channel{Type: ChannelTypeTelegram, Token: "123456789:AA...", ChatID: "123456789", SubChatID: "42"}
+	body, _, err := BuildPayload(ch, testEvent(EventFailed, "nginx.service"))
+	if err != nil {
+		t.Fatalf("BuildPayload: %v", err)
+	}
+	m := decodeBody(t, body)
+	if m["message_thread_id"] != float64(42) {
+		t.Errorf("expected message_thread_id=42, got %v", m["message_thread_id"])
+	}
+}
+
+func TestBuildTelegramPayloadWithoutSubChatID(t *testing.T) {
+	ch := &Channel{Type: ChannelTypeTelegram, Token: "123456789:AA...", ChatID: "123456789"}
+	body, _, err := BuildPayload(ch, testEvent(EventFailed, "nginx.service"))
+	if err != nil {
+		t.Fatalf("BuildPayload: %v", err)
+	}
+	m := decodeBody(t, body)
+	if _, ok := m["message_thread_id"]; ok {
+		t.Errorf("expected no message_thread_id when sub_chat_id empty, got %v", m["message_thread_id"])
+	}
+}
+
 // 測試訊息
 func TestBuildTestMessage(t *testing.T) {
 	ch := &Channel{Type: ChannelTypeSlack}

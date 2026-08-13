@@ -72,6 +72,7 @@ type Channel struct {
 	URL                string            `json:"url,omitempty"`                   // Slack/Discord/custom 的 webhook URL；telegram 為空
 	Token              string            `json:"token,omitempty"`                 // Telegram bot token（僅 telegram；API 回應 masked）
 	ChatID             string            `json:"chat_id,omitempty"`               // Telegram chat id（僅 telegram）
+	SubChatID          string            `json:"sub_chat_id,omitempty"`          // Telegram 子 Chat ID（forum topic 的 message_thread_id，選填）
 	Method             string            `json:"method,omitempty"`                // custom：POST/PUT，預設 POST
 	Headers            map[string]string `json:"headers,omitempty"`               // custom：≤10 組 key-value
 	Events             []string          `json:"events"`                          // ⊆ started/stopped/failed/restarted，≥1

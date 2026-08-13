@@ -18,6 +18,7 @@ import BatchResultPanel from '../components/BatchResultPanel.vue'
 import ConfirmModal from '../components/ConfirmModal.vue'
 import ToastContainer from '../components/ToastContainer.vue'
 import LogDrawer from '../components/LogDrawer.vue'
+import ConfigEditorModal from '../components/ConfigEditorModal.vue'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -423,5 +424,6 @@ onUnmounted(() => {
       :visible="logDrawerVisible"
       @close="closeLogDrawer"
     />
+    <ConfigEditorModal />
   </main>
 </template>

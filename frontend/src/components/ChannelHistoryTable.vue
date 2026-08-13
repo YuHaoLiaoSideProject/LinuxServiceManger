@@ -30,6 +30,18 @@ async function load(page = 1): Promise<void> {
   }
 }
 
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n)
+}
+
+// 固定格式 YYYY-MM-DD HH:mm:ss（本地時間）
+function formatTime(iso: string): string {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
+}
+
 function onChannelFilter(): void { load(1) }
 function onStatusFilter(): void { load(1) }
 function nextPage(): void { load(currentPage.value + 1) }
@@ -69,7 +81,7 @@ onMounted(() => { load(1) })
         </thead>
         <tbody>
           <tr v-for="h in result.data" :key="h.timestamp + h.channel_id">
-            <td>{{ new Date(h.timestamp).toLocaleString() }}</td>
+            <td>{{ formatTime(h.timestamp) }}</td>
             <td>{{ h.channel_name }}</td>
             <td>{{ h.event }}</td>
             <td>{{ h.service }}</td>
@@ -158,6 +170,9 @@ onMounted(() => { load(1) })
 }
 .history-table {
   width: 100%;
+  /* 覆寫 global `table { table-layout: fixed }`：讓各欄依內容自動分配寬度，
+     避免固定均分欄寬造成「時間」過長 overflow 而與 Channel 欄位重疊 */
+  table-layout: auto;
   border-collapse: collapse;
   font-size: 0.85rem;
   min-width: 720px;

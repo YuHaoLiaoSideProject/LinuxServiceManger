@@ -305,6 +305,46 @@ func TestNotifyUpdateChannel(t *testing.T) {
 	assertJSON(t, w, http.StatusBadRequest)
 }
 
+// ── HDL-29: 編輯 Telegram 留空/masked token = 保留原值 ──
+
+func TestNotifyUpdateTelegramKeepsToken(t *testing.T) {
+	seed := map[string]notify.Channel{
+		"c-tg": {
+			ID: "c-tg", Type: notify.ChannelTypeTelegram, Name: "TG",
+			Token: validBotToken, ChatID: "123456789",
+			Events: []string{"failed"}, AllServices: true, Enabled: true,
+		},
+	}
+
+	for _, tc := range []struct {
+		name  string
+		token string
+	}{
+		{"留空 token", ""},
+		{"masked token", "****J9KK"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, router := newNotifyHandlerSeeded(t, seed, nil)
+			cookie := loginCookie(t, router)
+
+			body := fmt.Sprintf(`{"type":"telegram","name":"TG 更新","token":%q,"chat_id":"123456789","events":["failed"],"all_services":true}`, tc.token)
+			w := doConfigReq(t, router, http.MethodPut, "/api/v1/notify/channels/c-tg", body, cookie)
+			if w.Code != http.StatusOK {
+				t.Fatalf("expected update success, got %d: %s", w.Code, w.Body.String())
+			}
+
+			// 儲存中的 token 仍為原始值
+			got := h.Notify.GetChannel("c-tg")
+			if got == nil || got.Token != validBotToken {
+				t.Fatalf("expected original token preserved, got %+v", got)
+			}
+			if got.Name != "TG 更新" {
+				t.Fatalf("expected updated name, got %q", got.Name)
+			}
+		})
+	}
+}
+
 // ── HDL-13: PUT 不存在回 404 ──
 
 func TestNotifyUpdateNotFound(t *testing.T) {

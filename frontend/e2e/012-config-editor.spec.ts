@@ -90,13 +90,24 @@ export async function setupConfigMocks(page: Page, options: ConfigMockOptions = 
   })
 }
 
-/** 登入並開啟 nginx.service 編輯器 */
+/** 登入並開啟 nginx.service 編輯器（responsive-aware：桌面 → Modal；手機 → 全頁路由） */
 async function openEditor(page: Page, options: ConfigMockOptions = {}, waitFor = '.cm-content') {
   await setupApiMocks(page, { authenticated: false, includeActions: true })
   await setupConfigMocks(page, options)
   await loginViaUI(page)
+
+  const viewport = page.viewportSize()
+  const isDesktop = (viewport?.width ?? 1280) >= 768
+
   await getServiceRow(page, 'nginx.service').locator('button.btn-edit-config').click()
-  await page.waitForURL('**/services/nginx.service/config')
+
+  if (isDesktop) {
+    // 桌面 ≥768px：開啟 Modal，不換 route
+    await expect(page.locator('.config-modal-dialog')).toBeVisible()
+  } else {
+    // 手機 ≤767px：維持全頁路由導航
+    await page.waitForURL('**/services/nginx.service/config')
+  }
   await page.waitForSelector(waitFor, { timeout: 10_000 })
   return page
 }
@@ -203,6 +214,8 @@ test.describe('E2E 編輯與 dirty（@editor）', () => {
   })
 
   test('E2E-11: 瀏覽器返回鍵 dirty-check 彈出確認框', async ({ page }) => {
+    // 瀏覽器返回鍵防護只發生在全頁路由（手機）；桌面 Modal 不變 URL、無 history entry
+    await page.setViewportSize({ width: 375, height: 667 })
     await openEditor(page)
     await typeInEditor(page, '\nEnvironment=FOO=bar')
     await page.goBack()
@@ -420,6 +433,84 @@ test.describe('E2E 整合情境（@integration）', () => {
     await page.getByRole('button', { name: 'Save Changes' }).click()
     await expect(page).toHaveURL(/\//, { timeout: 10_000 })
     await expect(getServiceRow(page, 'nginx.service').locator('button.btn-edit-config')).toBeVisible()
+  })
+})
+
+test.describe('E2E 桌面 Modal（@modal）', () => {
+  test('E2E-M1: 桌面點 Edit Config 開啟 Modal、不導航、背景 Dashboard 保留', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await setupConfigMocks(page)
+    await loginViaUI(page)
+
+    await getServiceRow(page, 'nginx.service').locator('button.btn-edit-config').click()
+
+    await expect(page.locator('.config-modal-dialog')).toBeVisible()
+    await expect(page).toHaveURL(/\/$/)
+    // 背景 Dashboard 仍在（Modal 以 overlay 呈現，不遮擋 DOM）
+    await expect(getServiceRow(page, 'nginx.service')).toBeVisible()
+  })
+
+  test('E2E-M2: clean 狀態 Esc 關閉 Modal', async ({ page }) => {
+    await openEditor(page)
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.config-modal-overlay')).toHaveCount(0)
+    await expect(page).toHaveURL(/\/$/)
+  })
+
+  test('E2E-M3: clean 狀態 backdrop 點擊關閉', async ({ page }) => {
+    await openEditor(page)
+    await page.locator('.config-modal-overlay').click({ position: { x: 5, y: 5 } })
+    await expect(page.locator('.config-modal-overlay')).toHaveCount(0)
+  })
+
+  test('E2E-M4: clean 狀態 ✕ 關閉鍵關閉', async ({ page }) => {
+    await openEditor(page)
+    await page.locator('.config-close-btn').click()
+    await expect(page.locator('.config-modal-overlay')).toHaveCount(0)
+  })
+
+  test('E2E-M5: dirty 後 Esc → ConfirmModal → Stay 保留內容', async ({ page }) => {
+    await openEditor(page)
+    await typeInEditor(page, '\nEnvironment=FOO=bar')
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.lms-modal-overlay')).toBeVisible()
+    await expect(page.locator('.lms-modal')).toContainText('Unsaved changes')
+    await page.getByRole('button', { name: 'Stay' }).click()
+    await expect(page.locator('.lms-modal-overlay')).toHaveCount(0)
+    // 內容保留 + 編輯器 Modal 仍開啟
+    await expect(page.locator('.config-modal-dialog')).toBeVisible()
+    await expect(page.locator('.cm-content')).toContainText('Environment=FOO=bar')
+    await expect(page.locator('.dirty-dot')).toBeVisible()
+  })
+
+  test('E2E-M6: dirty 後 ✕ → ConfirmModal → Discard Changes 關閉', async ({ page }) => {
+    await openEditor(page)
+    await typeInEditor(page, '\nEnvironment=FOO=bar')
+    await page.locator('.config-close-btn').click()
+    await expect(page.locator('.lms-modal-overlay')).toContainText('Unsaved changes')
+    await page.getByRole('button', { name: 'Discard Changes' }).click()
+    await expect(page.locator('.config-modal-overlay')).toHaveCount(0)
+    await expect(page).toHaveURL(/\/$/)
+  })
+
+  test('E2E-M7: dirty 後 backdrop → ConfirmModal → Discard Changes 關閉', async ({ page }) => {
+    await openEditor(page)
+    await typeInEditor(page, '\nEnvironment=FOO=bar')
+    await page.locator('.config-modal-overlay').click({ position: { x: 5, y: 5 } })
+    await expect(page.locator('.lms-modal-overlay')).toContainText('Unsaved changes')
+    await page.getByRole('button', { name: 'Discard Changes' }).click()
+    await expect(page.locator('.config-modal-overlay')).toHaveCount(0)
+    await expect(page).toHaveURL(/\/$/)
+  })
+})
+
+test.describe('E2E 手機全頁（@mobile）', () => {
+  test('E2E-M8: 手機點 Edit Config 導航到全頁、無 Modal overlay', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 })
+    await openEditor(page)
+    await page.waitForURL('**/services/nginx.service/config')
+    await expect(page.locator('.config-modal-overlay')).toHaveCount(0)
+    await expect(page.locator('.cm-content')).toContainText('[Unit]')
   })
 })
 

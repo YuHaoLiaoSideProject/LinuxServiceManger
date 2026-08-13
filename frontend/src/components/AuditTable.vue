@@ -9,9 +9,16 @@ defineProps<{
 
 const { t } = useI18n()
 
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n)
+}
+
+// 固定格式 YYYY-MM-DD HH:mm:ss（將 UTC 時間戳轉換為使用者系統本地時區）
 function formatTime(iso: string): string {
   if (!iso) return '-'
-  return iso.replace('T', ' ').replace(/\.\d+Z$/, '').replace('Z', '')
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
 }
 
 function actionLabel(action: string): string {

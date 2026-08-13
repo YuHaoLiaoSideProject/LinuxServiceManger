@@ -1110,7 +1110,7 @@ async function handleSave(payload: ChannelPayload): Promise<void> {
 
 ### 2.7 ChannelForm.vue
 
-**職責**：新增/編輯表單。類型下拉（Slack / Discord / Telegram / 自訂 Webhook）動態切換專屬欄位；通用欄位（名稱、觸發事件 checkbox 群組、服務範圍 radio + 多選搜尋）；前端驗證（必填標紅、至少一事件、headers ≤10）；提交時按鈕 loading。
+**職責**：新增/編輯表單。類型下拉（Slack / Discord / Telegram / 自訂 Webhook）動態切換專屬欄位；通用欄位（名稱、觸發事件 checkbox 群組、服務範圍 radio + 多選（我的/系統服務分組 + 框選））；前端驗證（必填標紅、至少一事件、headers ≤10）；提交時按鈕 loading。
 
 ```vue
 <script setup lang="ts">
@@ -1141,8 +1141,8 @@ const form = reactive({
 })
 const saving = ref(false)
 const errors = ref<Record<string, string>>({})   // 必填欄位標紅（BDD @validation）
-const serviceSearch = ref('')                    // 指定服務搜尋關鍵字
-const serviceKeyword = ref('')
+const serviceKeyword = ref('')                   // 指定服務搜尋關鍵字
+const showSystemServices = ref(false)            // 系統服務分組收合狀態
 
 // 編輯模式預填（BDD @happy-path）：props.channel 非 null 時將 events/headers 陣列化填回
 if (props.channel) {
@@ -1168,12 +1168,16 @@ const typeFields = computed(() => ({
   custom:   { url: true, method: true, headers: true, urlPlaceholder: 'https://...' },
 }))
 
-/** 指定服務搜尋（服務範圍 radio = 指定服務時啟用） */
-const filteredServices = computed(() => {
+/** 指定服務分組 + 搜尋（服務範圍 radio = 指定服務時啟用） */
+const myServices = computed(() => {
   const kw = serviceKeyword.value.trim().toLowerCase()
-  const list = serviceStore.services.map(s => s.name)
-  return kw ? list.filter(n => n.toLowerCase().includes(kw)) : list
+  return serviceStore.services.filter(s => !s.locked && (!kw || s.name.toLowerCase().includes(kw)))
 })
+const systemServices = computed(() => {
+  const kw = serviceKeyword.value.trim().toLowerCase()
+  return serviceStore.services.filter(s => s.locked && (!kw || s.name.toLowerCase().includes(kw)))
+})
+const systemExpanded = computed(() => showSystemServices.value || serviceKeyword.value.trim() !== '')
 
 function toggleEvent(ev: TriggerEvent): void { /* TODO */ }
 
@@ -1225,7 +1229,7 @@ function handleSubmit(): void { /* TODO */ }
       </div>
     </template>
 
-    <!-- 通用欄位：名稱 / 觸發事件 checkbox / 服務範圍 radio + 多選搜尋 -->
+    <!-- 通用欄位：名稱 / 觸發事件 checkbox / 服務範圍 radio + 分組多選 -->
     <label>Channel 名稱</label>
     <input v-model="form.name" :class="{ 'field-error': errors.name }" />
 
@@ -1244,13 +1248,30 @@ function handleSubmit(): void { /* TODO */ }
       <div v-if="!form.all_services">
         <input v-model="serviceKeyword" :placeholder="t('notify.searchServices')" />
         <div class="service-multiselect">
-          <label v-for="name in filteredServices" :key="name" class="checkbox">
-            <input type="checkbox" :value="name" v-model="form.services" /> {{ name }}
-          </label>
+          <div class="service-group">
+            <div class="service-group-head"><span class="service-group-label">我的服務</span><span class="service-group-count">{{ myServices.length }}</span></div>
+            <label v-for="s in myServices" :key="s.name" class="service-option">
+              <input type="checkbox" :value="s.name" v-model="form.services" />
+              <span class="service-option-name">{{ s.name }}</span>
+            </label>
+            <p v-if="!myServices.length" class="service-empty">沒有符合的服務</p>
+          </div>
+          <div class="service-group">
+            <button type="button" class="service-group-toggle" :aria-expanded="systemExpanded" @click="showSystemServices = !showSystemServices">
+              <span class="service-group-label">系統服務</span>
+              <span class="service-group-count">{{ systemServices.length }}</span>
+              <span class="service-group-chevron">{{ systemExpanded ? '▾' : '▸' }}</span>
+            </button>
+            <template v-if="systemExpanded">
+              <label v-for="s in systemServices" :key="s.name" class="service-option">
+                <input type="checkbox" :value="s.name" v-model="form.services" />
+                <span class="service-option-name">{{ s.name }}</span>
+              </label>
+              <p v-if="!systemServices.length" class="service-empty">沒有符合的服務</p>
+            </template>
+          </div>
         </div>
-        <div class="selected-services">
-          <span v-for="s in form.services" :key="s" class="service-chip">{{ s }} ✕</span>
-        </div>
+        <p class="selected-count">已選 {{ form.services.length }} 個服務</p>
       </div>
     </fieldset>
 
@@ -1751,8 +1772,14 @@ flowchart TD
 
 /* headers key-value 編輯器 */
 .headers-editor .header-row { display: flex; gap: .5rem; margin-bottom: .5rem; }
-.service-multiselect { max-height: 180px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; padding: .5rem; }
-.service-chip { display: inline-block; background: var(--accent-soft, #e3f2fd); border-radius: 999px; padding: 2px 10px; margin: 2px; font-size: .8rem; }
+.service-multiselect { max-height: 240px; overflow-y: auto; border: 1px solid var(--border, #ddd); border-radius: 6px; padding: .5rem; display: flex; flex-direction: column; gap: .5rem; }
+.service-option { position: relative; display: flex; align-items: center; gap: .5rem; padding: .5rem .6rem; border: 1px solid transparent; border-radius: var(--radius-sm, 6px); cursor: pointer; }
+.service-option:hover { background: var(--surface-2, #f2f2f2); }
+.service-option input { position: absolute; opacity: 0; pointer-events: none; }
+.service-option::before { content: ''; width: 16px; height: 16px; flex: none; display: grid; place-items: center; border: 1px solid var(--border, #ddd); border-radius: 4px; background: var(--surface, #fff); color: #fff; font-size: 11px; line-height: 1; }
+.service-option:has(input:checked) { background: var(--accent-light, #e3f2fd); border-color: var(--accent, #1976d2); color: var(--accent, #1976d2); font-weight: 600; }
+.service-option:has(input:checked)::before { content: '✓'; background: var(--accent, #1976d2); border-color: var(--accent, #1976d2); }
+.selected-count { font-size: .75rem; color: var(--muted, #888); }
 ```
 
 ---
@@ -1821,7 +1848,7 @@ flowchart TD
 | 5 | 新增 4 類型 Channel Outline ×4（@channel） | 2.7 ChannelForm、3.3 POST、1.4 Create | F-CF-01~05/11, INT-01, E2E-04~07 |
 | 6 | 必填欄位空白攔截（@validation） | 2.7 前端驗證、1.9 validateChannelPayload | F-CF-06, E2E-08 |
 | 7 | 至少勾選一個觸發事件（@business-rules） | 2.7、1.9 events 驗證 | F-CF-07, E2E-09 |
-| 8 | 指定服務範圍多選搜尋（@happy-path） | 2.7 服務範圍 radio + 搜尋 | F-CF-08~09, E2E-10 |
+| 8 | 指定服務範圍多選搜尋（分組 + 框選）（@happy-path） | 2.7 服務範圍 radio + 分組清單 | F-CF-08~09, E2E-10 |
 | 9 | Channel 儲存失敗保留表單（@channel-save） | 2.4 createChannel 錯誤處理、2.7 | F-CF-12/14, E2E-11 |
 | 10 | 編輯預填更新（@happy-path） | 2.7 編輯模式、3.3 PUT | F-CF-13, E2E-12 |
 | 11 | 編輯儲存失敗顯示錯誤（@error-handling） | 2.4 updateChannel、2.7 | E2E-13 |

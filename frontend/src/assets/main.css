@@ -17,6 +17,8 @@
   --lms-danger-border: #f5c6c2;
   --lms-warning: #e37400;
   --lms-warning-light: #fff3e0;
+  --lms-warning-border: #ffe082;
+  --lms-error-text: #c62828;
   --lms-bg: var(--pico-background-color);
   --lms-surface: var(--pico-card-background-color);
   --lms-border: var(--pico-muted-border-color);
@@ -40,6 +42,8 @@
   --lms-surface-2: #1e2530;
   --lms-surface-3: #232c38;
   --lms-warning-light: rgba(227, 116, 0, 0.18);
+  --lms-warning-border: rgba(255, 224, 130, 0.35);
+  --lms-error-text: #f2a19d;
 }
 
 /* ── Accessibility: prefers-reduced-motion ── */

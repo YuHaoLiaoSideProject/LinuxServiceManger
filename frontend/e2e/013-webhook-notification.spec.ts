@@ -349,7 +349,7 @@ test.describe('Webhook 通知設定 — 新增 / 編輯 Channel', () => {
     await page.fill('#channel-url', 'https://hooks.slack.com/services/T000/B000/XXXX')
     await page.fill('#channel-name', '團隊 Slack')
     await checkEvent(page, 'failed')
-    await page.click('[data-testid="channel-save"]')
+    await page.click('[data-testid="channel-save-footer"]')
 
     // POST 已送出且 body 正確
     expect(mocks.stats.post).toBe(1)
@@ -396,7 +396,7 @@ test.describe('Webhook 通知設定 — 新增 / 編輯 Channel', () => {
     await page.fill('#channel-chatid', '123456789')
     await page.fill('#channel-name', 'TG 通知')
     await checkEvent(page, 'failed')
-    await page.click('[data-testid="channel-save"]')
+    await page.click('[data-testid="channel-save-footer"]')
 
     expect(mocks.lastPostBody).toMatchObject({ type: 'telegram', chat_id: '123456789' })
     await expect(page.locator('#toast-container')).toContainText('Channel「TG 通知」已建立')
@@ -416,7 +416,7 @@ test.describe('Webhook 通知設定 — 新增 / 編輯 Channel', () => {
     await page.locator('.header-row input[aria-label="Header 名稱"]').first().fill('X-Custom')
     await page.locator('.header-row input[aria-label="Header 值"]').first().fill('v1')
     await checkEvent(page, 'stopped')
-    await page.click('[data-testid="channel-save"]')
+    await page.click('[data-testid="channel-save-footer"]')
 
     expect(mocks.lastPostBody).toMatchObject({ type: 'custom', method: 'PUT' })
     expect(mocks.lastPostBody.headers).toMatchObject({ 'X-Custom': 'v1' })
@@ -430,7 +430,7 @@ test.describe('Webhook 通知設定 — 新增 / 編輯 Channel', () => {
     await openCreateForm(page)
 
     // 不填任何欄位直接儲存
-    await page.click('[data-testid="channel-save"]')
+    await page.click('[data-testid="channel-save-footer"]')
 
     await expect(page.locator('#toast-container')).toContainText('請填寫必要欄位')
     expect(mocks.stats.post).toBe(0)
@@ -445,7 +445,7 @@ test.describe('Webhook 通知設定 — 新增 / 編輯 Channel', () => {
     await page.fill('#channel-url', 'https://hooks.slack.com/services/T000/B000/XXXX')
     await page.fill('#channel-name', '團隊 Slack')
     // 不勾事件
-    await page.click('[data-testid="channel-save"]')
+    await page.click('[data-testid="channel-save-footer"]')
 
     await expect(page.locator('#toast-container')).toContainText('請至少勾選一個觸發事件')
     expect(mocks.stats.post).toBe(0)
@@ -464,7 +464,7 @@ test.describe('Webhook 通知設定 — 新增 / 編輯 Channel', () => {
     await expect(page.locator('[data-testid="channel-type"]')).toHaveValue('slack')
 
     await page.fill('#channel-name', '團隊 Slack 更新')
-    await page.click('[data-testid="channel-save"]')
+    await page.click('[data-testid="channel-save-footer"]')
 
     expect(mocks.stats.put).toBe(1)
     expect(mocks.lastPutBody).toMatchObject({ name: '團隊 Slack 更新' })

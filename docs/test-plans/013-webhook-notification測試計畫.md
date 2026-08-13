@@ -237,7 +237,7 @@ BDD 與 Tech Decision 存在下列技術細節，本測試計畫**以 Tech Decis
 | F-CF-05 | 類型切換即時切換欄位 | 已選 Slack 後切到 Telegram | 切換類型 | 表單欄位動態切換；無關欄位隱藏 |
 | F-CF-06 | 必填欄位驗證標紅並攔截 | 未填必要欄位 | click 儲存 | 前端攔截，**無 API 呼叫**；必填欄位紅色標示；顯示「請填寫必要欄位」（BDD @validation） |
 | F-CF-07 | 至少勾選一個觸發事件 | 名稱與專屬欄位已填、4 事件皆未勾 | click 儲存 | 前端攔截並提示需至少勾選一個觸發事件；channel 未建立（BDD @business-rules） |
-| F-CF-08 | 指定服務範圍搜尋多選 | 選「指定服務」radio | 輸入關鍵字過濾並勾選 | 搜尋框過濾服務列表；顯示已選取服務清單；可多選（BDD @happy-path） |
+| F-CF-08 | 指定服務範圍搜尋多選（分組 + 框選） | 選「指定服務」radio | 輸入關鍵字過濾並勾選 | 搜尋框過濾服務列表；「我的服務」預設展開、「系統服務」收合（輸入關鍵字自動展開）；勾選整列反白；下方顯示「已選 N 個服務」計數；可多選（BDD @happy-path） |
 | F-CF-09 | 全部服務 radio 預設 | 開啟表單 | 檢查範圍區塊 | 「全部服務」radio 預設選中 |
 | F-CF-10 | headers 11 組拒絕 | 自訂型已設 11 組 headers | click 儲存 | 前端驗證失敗提示 headers 最多 10 組；無 API 呼叫（BDD @edge-case） |
 | F-CF-11 | 儲存成功關閉表單 + Toast | POST 200 | click 儲存 | Toast「Channel「XXX」已建立」；表單關閉；列表重整顯示新 channel；新 toggle 預設開啟 |
@@ -336,7 +336,7 @@ BDD 與 Tech Decision 存在下列技術細節，本測試計畫**以 Tech Decis
 | E2E-07 | 新增自訂 Webhook Channel | 同上，類型自訂 Webhook、填 URL + Method POST + 自訂 Headers 1 組 | 顯示 URL/Method/Headers 編輯器；建立成功（Outline row 4） |
 | E2E-08 | 必填欄位空白攔截 | 1. 開啟新增表單<br>2. 不填任何欄位直接儲存 | 前端攔截、**無 API 呼叫**；必填欄位紅色標示；顯示「請填寫必要欄位」 |
 | E2E-09 | 未勾選觸發事件攔截 | 1. 填名稱與專屬欄位<br>2. 不勾任何事件<br>3. 儲存 | 前端攔截並提示需至少勾選一個觸發事件；無 POST 請求 |
-| E2E-10 | 指定服務搜尋多選 | 1. 選「指定服務」<br>2. 搜尋框輸入關鍵字<br>3. 勾選 nginx、postgresql<br>4. 儲存 | 表單顯示已選服務清單；儲存後僅這些服務變更觸發通知 |
+| E2E-10 | 指定服務搜尋多選（分組 + 框選） | 1. 選「指定服務」<br>2. 搜尋框輸入關鍵字<br>3. 勾選 nginx、postgresql<br>4. 儲存 | 勾選的服務整列反白；下方顯示「已選 N 個服務」計數；儲存後僅這些服務變更觸發通知 |
 | E2E-11 | 儲存失敗保留表單 | 1. 攔截 POST 回 500<br>2. 填妥表單儲存 | Toast 錯誤訊息；**表單內容保留**；修正後可重新送出 |
 | E2E-12 | 編輯 Channel 預填更新 | 1. 點 channel「編輯」<br>2. 檢查預填值<br>3. 修改後儲存 | 表單預填目前設定；PUT 發送；Toast「Channel 已更新」；卡片顯示更新後內容 |
 | E2E-13 | 編輯失敗 | 1. 攔截 PUT 回 500<br>2. 修改並儲存 | Toast 錯誤原因；channel 卡片維持原設定不變 |
@@ -469,7 +469,7 @@ BDD 與 Tech Decision 存在下列技術細節，本測試計畫**以 Tech Decis
 | 5 | 新增 Channel 類型並成功建立（Outline ×4：Slack/Discord/Telegram/自訂） | F-CF-01~05, F-CF-11 | INT-01 | E2E-04~07 | — |
 | 6 | 必填欄位空白時儲存被攔截並標示錯誤（@validation） | F-CF-06 | — | E2E-08 | — |
 | 7 | 至少需勾選一個觸發事件才能儲存（@business-rules） | F-CF-07 | — | E2E-09 | — |
-| 8 | 指定服務範圍時可透過搜尋多選服務（@happy-path） | F-CF-08~09 | — | E2E-10 | — |
+| 8 | 指定服務範圍時可透過搜尋多選服務（分組 + 框選）（@happy-path） | F-CF-08~09 | — | E2E-10 | — |
 | 9 | Channel 儲存失敗時顯示錯誤並保留表單內容（@channel-save） | F-CF-12, F-CF-14 | — | E2E-11 | — |
 | 10 | 點擊編輯展開預填表單並成功更新（@happy-path） | F-CF-13 | — | E2E-12 | — |
 | 11 | 編輯儲存失敗時顯示錯誤訊息（@error-handling） | F-CF-12（編輯路徑） | — | E2E-13 | — |

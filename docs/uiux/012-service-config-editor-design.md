@@ -3,7 +3,7 @@
 > **對應功能**：#012 Service Config Editor（服務設定檔編輯器）
 > **畫面文件**：`docs/uiux/012-service-config-editor-design.html`（互動 mockup，可切換主題／裝置／驗證狀態）
 > **設計日期**：2025-08-15
-> **狀態**：設計完成，待實作
+> **狀態**：設計完成（v2：桌面 Modal／手機全頁），待實作
 > **上游文件**：
 > - `docs/interaction-flows/012-service-config-editor.md`（主流程 + 儲存/驗證子流程圖 + 異常處理）
 > - `docs/bdds/012-service-config-editor.feature`（67 個 Scenario）
@@ -29,10 +29,12 @@
 
 | # | 元件 | 位置 | 說明 |
 |---|------|------|------|
-| 1 | **ConfigEditorView.vue** | `frontend/src/views/` | 編輯器頁面主元件（載入/錯誤/404 三態、驗證面板、儲存流程、dirty 三層 guard） |
-| 2 | **UnitFileEditor.vue** | `frontend/src/components/` | CodeMirror 6 封裝（INI 高亮、行號、錯誤標記、主題 compartment、readOnly） |
-| 3 | **useConfigEditor.ts** | `frontend/src/composables/` | dirty state / baseChecksum / load / verify / save / beforeunload |
-| 4 | **API client 擴充** | `frontend/src/api/client.ts` | `getServiceConfig` / `saveServiceConfig` / `validateServiceConfig` |
+| 1 | **ConfigEditorContent.vue** | `frontend/src/components/` | 共用編輯內容（標題/路徑/驗證橫幅/CodeMirror/footer），Modal 與全頁共用 |
+| 2 | **ConfigEditorModal.vue** | `frontend/src/components/` | 桌面 Modal shell（overlay + dialog + focus trap + Esc/backdrop 關閉 + dirty close confirm） |
+| 3 | **ConfigEditorView.vue** | `frontend/src/views/` | 手機全頁 shell（`/services/:name/config`，`onBeforeRouteLeave` dirty 防護） |
+| 4 | **UnitFileEditor.vue** | `frontend/src/components/` | CodeMirror 6 封裝（INI 高亮、行號、錯誤標記、主題 compartment、readOnly） |
+| 5 | **useConfigEditor.ts** | `frontend/src/composables/` | dirty state / baseChecksum / load / verify / save / beforeunload |
+| 6 | **API client 擴充** | `frontend/src/api/client.ts` | `getServiceConfig` / `saveServiceConfig` / `validateServiceConfig` |
 
 ### 1.3 排版事實（實測數據 — playwright getBoundingClientRect）
 
@@ -78,6 +80,19 @@
 
 **若產品堅持可見文字**：採方案 B，但僅能在 ≥1280px 視窗完整呈現，1025–1279px 需降級為 icon-only（CSS media query），維護成本高 — 不建議。
 
+### 決策 1b：呈現方式 — 桌面 Modal／手機全頁（responsive surface）
+
+編輯器需要最大垂直空間與 touch/keyboard 便利，但使用者希望在桌面保留 Dashboard 上下文，因此採 **responsive 雙軌**：
+
+| 裝置 | 呈現 | 進入點行為 | URL / deep link |
+|------|------|-----------|-----------------|
+| **桌面 ≥768px** | Modal 彈窗（Dashboard 背景 dim 保留） | icon 按鈕 → 開啟 overlay（不換 route） | 無（狀態式 overlay，重整會關閉） |
+| **手機 ≤767px** | 全頁（`/services/:name/config` 路由） | icon 按鈕 → `router.push` 導航 | ✅ 有（可分享/重整） |
+
+- 共用同一份編輯內容：抽出 `ConfigEditorContent`（標題/路徑/驗證橫幅/CodeMirror/footer），Modal 與全頁只差 shell。
+- 桌面 Modal 尺寸：`max-width:min(96vw, 960px)`、`max-height:92vh`，CodeMirror 以 `scrollParent` 固定高 + 內部捲動。
+- 取捨：桌面失去 deep link（重整即關閉並回到 Dashboard）；若日後需要可改以 query param（`/?config=nginx.service`）補上，本次不實作。
+
 ### 決策 2：編輯器 — CodeMirror 6（決策依 Tech Decision D-1）
 
 Monaco → CodeMirror 6 的對應（Tech Decision D-1，~130KB vs 1.2MB gzip）：
@@ -97,9 +112,15 @@ Monaco → CodeMirror 6 的對應（Tech Decision D-1，~130KB vs 1.2MB gzip）�
 - **失敗**：紅色錯誤面板（逐條 `Line {n}: {message}`）+ 編輯器該行紅色波浪線 + gutter ❌ 標記
 - **不可用 / 錯誤**：黃色警告橫幅，**不阻塞**儲存流程
 
-### 決策 4：dirty 防護三層（決策依 Tech Decision D-9）
+### 決策 4：dirty 防護（決策依 Tech Decision D-9）
 
-`onBeforeRouteLeave`（含瀏覽器返回鍵）→ 頁內 Cancel → `beforeunload`；三層共用同一 `isDirty`（內容比對，非 flag 累計）。
+`isDirty`（內容比對，非 flag 累計）為單一來源，依呈現方式套用不同守門：
+
+| 裝置 | 離開路徑 | 防護 |
+|------|---------|------|
+| **桌面 Modal** | Esc / 點擊 backdrop / 頁內 Cancel | dirty 時先跳出 ConfirmModal「有未儲存的變更…」Stay / Discard Changes |
+| **手機 全頁** | 瀏覽器返回鍵 / 頁內 Cancel | `onBeforeRouteLeave` + 頁內 Cancel 共用同一 `isDirty` |
+| **兩者皆適用** | 重新整理 / 關閉分頁 | `beforeunload` 瀏覽器原生確認框 |
 
 ### 決策 5：表單元件一致化
 
@@ -119,14 +140,17 @@ Validate / Save / Cancel 沿用既有 `.outline.secondary` / `.primary` 按鈕�
 
 ## 4. 目標設計
 
-### 4.1 頁面結構（Desktop ≥1024px）
+### 4.1 呈現方式總覽
+
+- **桌面 ≥768px**：Modal 彈窗（Dashboard 背景 dim）→ §4.1.1
+- **手機 ≤767px**：全頁（`/services/:name/config`）→ §4.1.2
+
+#### 4.1.1 桌面 Modal（≥768px）
 
 ```
+░░░░ Dashboard 背景 dim（rgba(0,0,0,.45)，點擊 backdrop 觸發 dirty close confirm）░░░░
 ┌──────────────────────────────────────────────────────────────┐
-│ 🖥 Linux Service Manager    [🏠 服務管理] [📋 稽核記錄]     [👤 A] ← AppHeader（既有）
-├──────────────────────────────────────────────────────────────┤
-│ nginx.service ●                                   ← 標題列   │
-│ /etc/systemd/system/nginx.service                   ← 路徑    │
+│ nginx.service ●  /etc/systemd/system/nginx.service     [✕]  │ ← Modal header（sticky）
 │  ● = 未儲存變更指示（dirty dot，僅 dirty 時顯示）             │
 ├──────────────────────────────────────────────────────────────┤
 │ ┌─ 語法驗證通過 ✅（綠橫幅，成功時）───────────────────────┐  │
@@ -139,14 +163,18 @@ Validate / Save / Cancel 沿用既有 `.outline.secondary` / `.primary` 按鈕�
 │ ┌────────────────────────────────────────────────────────┐   │
 │ │  1 [Unit]                     ← CodeMirror 編輯器      │   │
 │ │  2 Description=nginx          （INI 高亮、行號、）      │   │
-│ │  3 ...                        （2 空格縮排、自動換行）   │   │
 │ │ 12 ExecStartt=/usr/sbin/nginx  ← 錯誤行：紅色波浪線+❌ │   │
 │ └────────────────────────────────────────────────────────┘   │
 ├──────────────────────────────────────────────────────────────┤
-│ [Validate]  [Save]  [Cancel]      ← 底部按鈕列（dirty 才啟用 Save）│
-│ 唯讀模式：[Close] 單一按鈕                                    │
+│ [Validate]  [Save]  [Cancel]      ← footer（sticky，dirty 才啟用 Save）│
 └──────────────────────────────────────────────────────────────┘
 ```
+
+Modal 尺寸 `max-width:min(96vw, 960px)`、`max-height:92vh`；`role="dialog" aria-modal="true"`、focus trap、Esc 關閉（dirty 時先 ConfirmModal）；CodeMirror 以 `scrollParent` 固定高 + 內部捲動。
+
+#### 4.1.2 手機全頁（≤767px）
+
+內容與 Modal 相同（標題/路徑/驗證橫幅/CodeMirror/footer），但**無 backdrop**、以整頁呈現；footer「Validate/Save/Cancel」`flex:1` 全寬堆疊；CodeMirror 橫向捲動、行號欄隱藏；標題列名稱+路徑上下堆疊。
 
 ### 4.2 ServiceRow 進入點（Actions 區域）
 
@@ -197,10 +225,12 @@ Validate / Save / Cancel 沿用既有 `.outline.secondary` / `.primary` 按鈕�
 
 ## 5. 狀態矩陣
 
-### 5.1 ConfigEditorView 頁面
+### 5.1 ConfigEditor（Modal／全頁共用）
 
 | 狀態 | 視覺 | 互動 |
 |------|------|------|
+| **Modal 開啟（桌面）** | backdrop 淡入 + dialog 滑入；Dashboard 背景 dim | 焦點移至編輯器；focus trap；背景捲動鎖定 |
+| **Modal 關閉（桌面）** | backdrop 淡出 + dialog 淡出 | Esc / 點擊 backdrop / Cancel；dirty 時先 ConfirmModal |
 | **Loading** | 頁面中央 spinner（accent 頂邊 32px）+「載入設定檔中...」 | 不可操作；GET 完成後轉態 |
 | **Ready（clean）** | 編輯器顯示原始內容，Save disabled、無 dirty dot | 可編輯、Validate/Cancel 可用 |
 | **Ready（dirty）** | 標題旁 `●`（warning 色）+ Save enabled | 編輯後即 dirty；內容還原即回 clean |
@@ -233,19 +263,20 @@ Validate / Save / Cancel 沿用既有 `.outline.secondary` / `.primary` 按鈕�
 
 | 狀態 | 視覺 | 互動 |
 |------|------|------|
-| clean 離開 | 直接返回 Dashboard | 無阻擋 |
-| dirty 離開 | Modal「有未儲存的變更...」Stay / Discard Changes | Stay → 回編輯器；Discard → 回 Dashboard + 灰色 Toast「已放棄未儲存的變更」 |
-| 分頁關閉 | 瀏覽器原生確認框 | `beforeunload` 第三層 |
+| clean 離開 | 直接返回 Dashboard（全頁）／直接關閉（Modal） | 無阻擋 |
+| dirty 離開 | ConfirmModal「有未儲存的變更...」Stay / Discard Changes | Stay → 回編輯器；Discard → 回 Dashboard（全頁）或關閉 Modal（桌面）+ 灰色 Toast「已放棄未儲存的變更」 |
+| 全頁返回鍵 | 同 dirty 離開（`onBeforeRouteLeave`） | 手機全頁專屬 |
+| 分頁關閉 | 瀏覽器原生確認框 | `beforeunload`（兩者皆適用） |
 
 ---
 
 ## 6. RWD 行為表
 
-| 斷點 | 編輯器 | 底部按鈕 | ServiceRow 進入點 | 觸控目標 |
-|------|--------|---------|------------------|:---:|
-| **≥1024px** | 完整 CodeMirror，字級 0.85rem | Validate/Save/Cancel 並排，`flex-wrap` 不溢出 | Actions 4 顆並排（icon-only config 36px） | 36px |
-| **768–1023px** | 同左，容器收窄 | 同左 | Actions `flex-wrap`；Start/Stop 全寬色塊 + 48px icon 按鈕 | 36px |
-| **≤767px** | `max-width:100vw; overflow-x:auto`（或縮小字級）；行號欄隱藏（省寬） | 按鈕 `flex:1` 全寬 44px 堆疊 | 卡片布局；全部 48px | 44px |
+| 斷點 | 呈現方式 | 編輯器 | 底部按鈕 | ServiceRow 進入點 | 觸控目標 |
+|------|---------|--------|---------|------------------|:---:|
+| **≥1024px** | **Modal**（96vw/960px, 92vh） | CodeMirror `scrollParent` 固定高 + 內部捲動，字級 0.85rem | Validate/Save/Cancel 並排 | Actions 4 顆並排（icon-only 36px，點擊開 Modal） | 36px |
+| **768–1023px** | **Modal** | 同左，容器收窄 | 同左 | Actions `flex-wrap`；48px icon（點擊開 Modal） | 36px |
+| **≤767px** | **全頁**（route） | `max-width:100vw; overflow-x:auto`；行號欄隱藏 | 按鈕 `flex:1` 全寬 44px 堆疊 | 卡片布局；點擊導航 `/services/:name/config` | 44px |
 
 Mobile 標題列：服務名稱 + 路徑改上下堆疊（`flex-direction: column; align-items: flex-start`）。
 
@@ -258,9 +289,9 @@ Mobile 標題列：服務名稱 + 路徑改上下堆疊（`flex-direction: colum
 | **1.4.1 色彩** | 不以顏色單獨傳達 | 驗證橫幅有文字（「語法驗證通過」「Line 12: ...」）+ 色彩；狀態點有文字標籤 |
 | **2.4.7 焦點** | 所有互動元件可見 focus ring | `box-shadow: 0 0 0 3px var(--lms-accent-light)`；編輯器內 Tab 順序：Validate → Save → Cancel |
 | **2.5.5 觸控** | 觸控目標 ≥44×44px | Mobile 底部按鈕 44px；ServiceRow 48px icon 按鈕 |
-| **4.1.2 名稱/角色** | 自訂元件正確 ARIA | 驗證橫幅 `role="status"/"alert"`；ConfirmModal `role="alertdialog" aria-modal="true"`（既有）；icon-only 按鈕 `aria-label`；dirty dot `aria-hidden` + 標題文字提示 |
+| **4.1.2 名稱/角色** | 自訂元件正確 ARIA | 驗證橫幅 `role="status"/"alert"`；ConfirmModal `role="alertdialog" aria-modal="true"`；ConfigEditorModal `role="dialog" aria-modal="true" aria-labelledby`；icon-only 按鈕 `aria-label`；dirty dot `aria-hidden` + 標題文字提示 |
 | **1.4.3 對比** | 文字對比 ≥4.5:1 | warning 橫幅文字 `#8a6d00`（深色主題下用淺黃）；編輯器字色 `--lms-text` |
-| **2.1.1 鍵盤** | 所有功能鍵盤可達 | 編輯器保留 CodeMirror 預設 keymap；Modal focus trap（既有元件） |
+| **2.1.1 鍵盤** | 所有功能鍵盤可達 | 編輯器保留 CodeMirror 預設 keymap；ConfigEditorModal focus trap + Esc 關閉；ConfirmModal focus trap（既有） |
 
 ---
 
@@ -307,6 +338,8 @@ Mobile 標題列：服務名稱 + 路徑改上下堆疊（`flex-direction: colum
 | `.unit-file-editor` | `font-family: var(--lms-mono); font-size: 0.85rem` |
 | `.config-footer` | `display:flex; gap:0.5rem; flex-wrap:wrap`；mobile 全寬 |
 | `.btn-act-config` | 36px icon 按鈕（desktop）/ 48px（mobile）；SVG 填色 `--lms-muted` hover `--lms-accent` |
+| `.config-modal-overlay` | 桌面 Modal backdrop `rgba(0,0,0,.45)` + 居中容器；淡入/淡出動畫 |
+| `.config-modal-dialog` | `max-width:min(96vw,960px); max-height:92vh; display:flex; flex-direction:column`；header/footer sticky、body 內部捲動 |
 
 ---
 
@@ -324,6 +357,8 @@ Mobile 標題列：服務名稱 + 路徑改上下堆疊（`flex-direction: colum
 - [ ] ServiceRow 4 顆按鈕同列不換行（實測單列 32px）
 - [ ] icon-only config 按鈕有 tooltip + aria-label（「編輯/檢視 {name} 設定檔」）
 - [ ] RWD：desktop 完整編輯器 → mobile 全寬按鈕 + 橫向捲動編輯器
+- [ ] 桌面 ≥768px 編輯器以 Modal 呈現（backdrop + dialog + focus trap + Esc 關閉）；手機 ≤767px 以全頁呈現（route）
+- [ ] 桌面 Modal dirty 關閉先 ConfirmModal；手機全頁 `onBeforeRouteLeave` 防護
 - [ ] Focus ring 在所有互動元件上可見；橫幅 role 正確
 - [ ] 所有圖示為 inline SVG，無 emoji-as-icon
 - [ ] `prefers-reduced-motion` 生效（動畫近零）

@@ -33,9 +33,9 @@
 
 | # | 元件 | 位置 | 說明 |
 |---|------|------|------|
-| 1 | **NotificationsView.vue** | `frontend/src/views/` | `/notifications` 頁面主元件（loading/error/empty 四態、兩分頁切換、ChannelForm 展開、WS 停用事件） |
+| 1 | **NotificationsView.vue** | `frontend/src/views/` | `/notifications` 頁面主元件（loading/error/empty 四態、兩分頁切換、ChannelForm Modal、WS 停用事件） |
 | 2 | **ChannelCard.vue** | `frontend/src/components/` | channel 卡片（類型圖示、名稱、事件 chips、服務範圍摘要、toggle、測試/編輯/刪除動作） |
-| 3 | **ChannelForm.vue** | `frontend/src/components/` | 新增/編輯表單（類型下拉動態欄位、headers key-value 編輯、事件 checkbox 群組、服務範圍 radio + 多選搜尋、驗證） |
+| 3 | **ChannelForm.vue** | `frontend/src/components/` | 新增/編輯表單（類型下拉動態欄位、headers key-value 編輯、事件 checkbox 群組、服務範圍 radio + 分組多選（我的/系統服務）、驗證） |
 | 4 | **ChannelHistoryTable.vue** | `frontend/src/components/` | 發送紀錄表格（Channel 下拉篩選、結果 pills、分頁、成功/失敗色標） |
 | 5 | **useNotifyChannels.ts** | `frontend/src/composables/` | channels 狀態、CRUD、test、WS 停用事件處理（含 auto_disabled sessionStorage 去重） |
 | 6 | **types/notify.ts** | `frontend/src/types/` | Channel / ChannelType / HistoryEntry 型別（對齊 Tech Decision §2 資料模型） |
@@ -95,16 +95,21 @@ BDD「頁面提供『Channel 設定』分頁（預設顯示）與『發送紀錄
 
 卡片 grid：**desktop ≥1024px 三欄、768–1023px 兩欄、≤767px 單欄**（`repeat(auto-fill, minmax(280px, 1fr))`）。
 
-### 決策 4：表單 — 頁面內展開卡片式（非 Modal）
+### 決策 4：表單 — Modal 彈窗（桌面居中 / mobile 全螢幕 sheet）
 
-Tech Decision 前端結構已定 `ChannelForm.vue`；BDD 允許「頁面內展開或 Modal」。設計採**頁面內展開**（accordion 卡片置於列表上方）：
+Tech Decision 前端結構已定 `ChannelForm.vue`；BDD 允許「頁面內展開或 Modal」。設計採 **Modal 彈窗**：
 
 | 情境 | 行為 |
 |------|------|
-| 新增 | 「＋ 新增 Channel」→ 展開空白表單（焦點移至類型下拉）；提交成功/取消 → 收起 |
-| 編輯 | 卡片「編輯」→ 展開預填表單；同時間僅一張表單存在（展開新表單前自動收起舊表單） |
+| 新增 | 「＋ 新增 Channel」→ 開啟空白 Modal（backdrop 淡入、焦點移至類型下拉）；提交成功 → 關閉 + Toast |
+| 編輯 | 卡片「編輯」→ 開啟預填 Modal；同時間僅一個 Modal（不疊加） |
+| 關閉 | 取消 / Esc / 點擊 backdrop → 關閉；**表單有輸入時先跳出 ConfirmModal 確認**（避免誤關丟失） |
 
-理由：表單欄位多（類型專屬欄位 + 4 事件 + 服務範圍多選 + 可能 headers 編輯），Modal 高度接近視窗高度，頁面內展開在 mobile 捲動更自然；且「表單與列表並存」符合 BDD「列表重整顯示新 channel」的上下文連續性。
+理由：channel 數量上限 20、新增/編輯是「單一聚焦任務」，Modal 保留列表上下文（背景 dim）、不把列表擠到下方，且 focus trap + `role="dialog"` 語意成熟。原顧慮的「表單太長」改以結構化解法處理：
+
+- **桌面 ≥768px**：居中 Modal，`max-width:720px`、`max-height:85vh`，header/footer sticky、body 內部捲動
+- **mobile ≤767px**：全螢幕 bottom sheet（貼底滑入、頂部圓角、可下滑關閉），`max-height:100dvh`
+- 「指定服務」多選清單設獨立 `max-height:240px` 內部捲動，避免「捲動中再捲動」陷阱
 
 ### 決策 5：類型專屬欄位 — 動態切換（BDD Scenario Outline 四型）
 
@@ -120,7 +125,9 @@ Tech Decision 前端結構已定 `ChannelForm.vue`；BDD 允許「頁面內展�
 ### 決策 6：觸發條件 — 事件 chips + 服務範圍 radio（全部 / 指定 + 多選搜尋）
 
 - 觸發事件：4 個 checkbox 群組（started/stopped/failed/restarted），以 chip 樣式呈現勾選；**至少需選 1**（BDD @business-rules，前端攔截）
-- 服務範圍：radio「全部服務」預設選中；「指定服務」切換後啟用多選搜尋（輸入關鍵字過濾服務列表、勾選多個、下方顯示已選 chips + 移除）
+- 服務範圍：radio「全部服務」預設選中；「指定服務」切換後啟用多選清單（單欄列表、整列反白的「框選效果」：勾選後整列 accent 反白 + ✓ 勾選方塊 + 文字加粗）
+- 服務分組：多選清單依既有 `locked` 分類分成「我的服務」（`locked=false`，unit file 在 `/etc/systemd/system/`，預設展開、排上方）與「系統服務」（`locked=true`，含 apt 套件與 systemd 內部 unit，預設收合、僅顯示數量與 ▸/▾ 展開鈕）；**零後端改動**，沿用 Dashboard 既有的分類。輸入關鍵字時自動展開系統服務，避免漏選
+- 已選摘要：清單下方以「已選 N 個服務」計數取代重複的已選 chips（選取態已在清單內整列反白呈現，不需二次顯示，消除視覺混亂）
 - 服務名稱精確匹配（BDD @service-matching：不支援 regex/glob），搜尋框僅過濾顯示，選擇以 systemd unit name 為準
 
 ### 決策 7：Toggle — 沿用既有 `.toggle-switch`，樂觀更新（BDD @channel）
@@ -172,7 +179,7 @@ Tech Decision 前端結構已定 `ChannelForm.vue`；BDD 允許「頁面內展�
 2. **漸進式揭露** — 類型專屬欄位選型才顯示；headers 編輯器收合於「＋ 新增 Header」；自動停用原因以徽章形式揭露，不常駐
 3. **Contextual 不佔位** — 錯誤/警告 Toast 與卡片徽章僅在真實狀態出現；空狀態才顯示大圖示引導；正常狀態下介面乾淨
 4. **語意化圖示** — 全部 inline SVG（Slack/Discord/Telegram/自訂類型圖示、鈴鐺、測試、編輯、刪除、警告）；不用 emoji-as-icon；成功/失敗以文字 + 色彩雙重傳達
-5. **觸控與鍵盤優先** — 控制元件 36px desktop / 44px mobile（WCAG 2.5.5）；focus ring 可見；toggle `role="switch"`、分頁 `role="tablist"`、Modal `role="alertdialog"`
+5. **觸控與鍵盤優先** — 控制元件 36px desktop / 44px mobile（WCAG 2.5.5）；focus ring 可見；toggle `role="switch"`、分頁 `role="tablist"`、ConfirmModal `role="alertdialog"`、ChannelForm Modal `role="dialog"`
 
 ---
 
@@ -199,18 +206,28 @@ Tech Decision 前端結構已定 `ChannelForm.vue`；BDD 允許「頁面內展�
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-### 4.2 ChannelForm（展開於列表上方）
+### 4.2 ChannelForm（Modal 彈窗）
+
+> 桌面 ≥768px 居中 Modal（`max-width:720px`、`max-height:85vh`、body 內部捲動、header/footer sticky）；mobile ≤767px 全螢幕 bottom sheet。
 
 ```
+░░░░░░ backdrop：rgba(0,0,0,.45)，點擊關閉（表單有輸入時先 ConfirmModal 確認）░░░░░░
 ┌──────────────────────────────────────────────────────────────────────┐
-│ Channel 設定                                    [取消] [儲存]         │ ← 表單標題 + 動作（36px 按鈕）
+│ Channel 設定                                    [取消] [儲存]         │ ← Modal header（sticky）+ 動作 36px
 │ ──────────────────────────────────────────────────────────────────  │
 │ Channel 類型  [Slack ▾]   Channel 名稱  [團隊 Slack________]         │ ← 2 欄 grid（mobile 堆疊）
 │ Webhook URL  [https://hooks.slack.com/services/..._________]        │ ← 類型專屬欄位（動態）
 │ 觸發事件      ☑ failed  ☑ started  ☐ stopped  ☐ restarted          │ ← chips checkbox（≥1）
 │ 服務範圍      ○ 全部服務   ○ 指定服務                               │ ← radio
-│ （指定服務時）  [搜尋服務...]  已選：nginx.service ✕ postgresql.service ✕ │ ← 多選搜尋 + 已選 chips
+│ （指定服務時）  [搜尋服務...]                                        │ ← 搜尋過濾（打字自動展開系統服務）
+│              我的服務 (2)                                           │ ← 預設展開、排上方
+│              ┌─────────────────────────────────────────┐           │
+│              │ ✓ my-bot.service   ☐ gameplatform.service│           │ ← 多選清單 max-height 240px 內部捲動
+│              └─────────────────────────────────────────┘           │
+│              ▸ 系統服務 (47)                         已選 1 個服務   │ ← 收合，點擊展開
 │ 驗證錯誤      ⚠ 請填寫必要欄位（紅色邊框標示）                       │ ← 前端攔截（role="alert"）
+│ ──────────────────────────────────────────────────────────────────  │
+│                                                    [取消] [儲存]    │ ← Modal footer（sticky，mobile 全寬）
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -290,13 +307,15 @@ Tech Decision 前端結構已定 `ChannelForm.vue`；BDD 允許「頁面內展�
 
 | 狀態 | 視覺 | 互動 |
 |------|------|------|
+| **Modal 開啟** | backdrop 淡入 + dialog 滑入（150ms） | 焦點移至類型下拉；focus trap；背景捲動鎖定 |
+| **Modal 關閉** | backdrop 淡出 + dialog 淡出 | Esc / 點擊 backdrop / 取消；有輸入時先 ConfirmModal 確認 |
 | **Idle** | 類型 placeholder「請選擇 Channel 類型」；專屬欄位區隱藏 | 可填寫 |
 | **類型已選** | 專屬欄位 150ms 淡入 | 依類型動態切換 |
 | **必填錯誤** | 必填欄位 `--lms-danger` 邊框 + 紅框；頂部 `role="alert"`「請填寫必要欄位」 | 前端攔截不發 API |
 | **事件未勾選** | 事件區紅框 + 提示「至少需勾選一個觸發事件」 | 前端攔截 |
 | **Headers 超限** | 「＋ 新增 Header」disabled + 提示「最多 10 組」 | 前端攔截（11 組時） |
 | **Saving** | 儲存按鈕 spinner + disabled | 不可重複送出 |
-| **儲存成功** | Toast「Channel「XXX」已建立」/「Channel 已更新」 | 表單收起、列表重整 |
+| **儲存成功** | Toast「Channel「XXX」已建立」/「Channel 已更新」 | 關閉 Modal、列表重整 |
 | **儲存失敗** | Toast 錯誤原因 | **表單內容保留**供修正 |
 | **上限 20** | Toast「Channel 數量已達上限」 | 新增按鈕 disabled（或保留可點但攔截） |
 
@@ -335,7 +354,7 @@ Tech Decision 前端結構已定 `ChannelForm.vue`；BDD 允許「頁面內展�
 |------|------|------|
 | **Loading** | 中央 spinner +「載入中...」（`GET /api/v1/notify/channels`） | — |
 | **Error** | 錯誤訊息 +「重試」按鈕 | 重試重新 GET |
-| **空 Channel** | EmptyState「尚未設定任何通知 Channel」+「新增 Channel」按鈕 | 點擊展開表單 |
+| **空 Channel** | EmptyState「尚未設定任何通知 Channel」+「新增 Channel」按鈕 | 點擊開啟 Modal |
 | **WS 停用事件** | 全域 Toast「Channel「XXX」因連續失敗已自動停用」（`role="alert"`） | 卡片同步黃色徽章 |
 
 ---
@@ -344,11 +363,11 @@ Tech Decision 前端結構已定 `ChannelForm.vue`；BDD 允許「頁面內展�
 
 | 斷點 | Channel 卡片 | 表單 | 發送紀錄 | 觸控目標 |
 |------|-------------|------|---------|:---:|
-| **≥1024px** | grid 3 欄 | 2 欄 grid（類型+名稱並排；專屬欄位全寬） | 完整表格 6 欄 | 36px |
-| **768–1023px** | grid 2 欄 | 同左，容器收窄 | 表格 `overflow-x:auto`；篩選列 wrap | 36px |
-| **≤767px** | grid 1 欄（卡片全寬） | 全部欄位堆疊單欄；headers 編輯器單列 | 表格橫向捲動（或改卡片式簡表）；篩選列堆疊全寬 | 44px |
+| **≥1024px** | grid 3 欄 | Modal 居中 `max-width:720px`；2 欄 grid（類型+名稱並排） | 完整表格 6 欄 | 36px |
+| **768–1023px** | grid 2 欄 | Modal 居中；2 欄 grid | 表格 `overflow-x:auto`；篩選列 wrap | 36px |
+| **≤767px** | grid 1 欄（卡片全寬） | 全螢幕 bottom sheet；欄位單欄堆疊 | 表格橫向捲動（或改卡片式簡表）；篩選列堆疊全寬 | 44px |
 
-Mobile 分頁 pills：兩顆各 `flex:1` 全寬 44px；「新增 Channel」按鈕 `flex:1` 44px；卡片動作列 icon 按鈕 44px。
+Mobile 分頁 pills：兩顆各 `flex:1` 全寬 44px；「新增 Channel」按鈕 `flex:1` 44px；卡片動作列 icon 按鈕 44px；Modal 轉全螢幕 bottom sheet，footer「取消/儲存」並排全寬 44px。
 
 ---
 
@@ -357,11 +376,11 @@ Mobile 分頁 pills：兩顆各 `flex:1` 全寬 44px；「新增 Channel」按�
 | 準則 | 要求 | 實作方式 |
 |------|------|---------|
 | **1.4.1 色彩** | 不以顏色單獨傳達 | 成功/失敗 badge 有文字（「成功」「失敗」）+ 色彩；停用卡片有「已停用」文字標籤；狀態事件以 chips 文字呈現 |
-| **2.4.7 焦點** | 所有互動元件可見 focus ring | `box-shadow: 0 0 0 3px var(--lms-accent-light)`；表單展開後焦點移至類型下拉 |
+| **2.4.7 焦點** | 所有互動元件可見 focus ring | `box-shadow: 0 0 0 3px var(--lms-accent-light)`；Modal 開啟後焦點移至類型下拉，focus trap 於 dialog 內 |
 | **2.5.5 觸控** | 觸控目標 ≥44×44px | Mobile 全部控制元件 44px；卡片動作 icon 44px |
-| **4.1.2 名稱/角色** | 自訂元件正確 ARIA | Toggle `role="switch" aria-checked` + `aria-label`「啟用 {name}」；分頁 `role="tablist/tab" aria-selected`；Modal `role="alertdialog" aria-modal="true"`（既有 ConfirmModal）；Toast `role="status"/"alert"`；icon-only 按鈕 `aria-label`（「測試 {name}」「編輯 {name}」「刪除 {name}」） |
+| **4.1.2 名稱/角色** | 自訂元件正確 ARIA | Toggle `role="switch" aria-checked` + `aria-label`「啟用 {name}」；分頁 `role="tablist/tab" aria-selected`；ConfirmModal `role="alertdialog" aria-modal="true"`；ChannelForm Modal `role="dialog" aria-modal="true" aria-labelledby`（指向標題 id）；Toast `role="status"/"alert"`；icon-only 按鈕 `aria-label`（「測試 {name}」「編輯 {name}」「刪除 {name}」） |
 | **1.4.3 對比** | 文字對比 ≥4.5:1 | 停用卡片文字維持對比（不低於 4.5:1，僅降飽和不降亮度過頭）；warning 文字深色主題使用淺黃 |
-| **2.1.1 鍵盤** | 所有功能鍵盤可達 | 分頁方向鍵切換；表單 Enter 提交；ConfirmModal focus trap（既有）；Esc 關閉表單/Modal |
+| **2.1.1 鍵盤** | 所有功能鍵盤可達 | 分頁方向鍵切換；表單 Enter 提交；ConfirmModal focus trap（既有）；Esc 關閉 Modal |
 
 ---
 
@@ -393,13 +412,18 @@ Mobile 分頁 pills：兩顆各 `flex:1` 全寬 44px；「新增 Channel」按�
 | `.channel-chip` | 事件 chips（accent-light 底 6px 圓角） |
 | `.channel-type-icon` | 40×40 類型圖示容器 |
 | `.channel-actions .btn-act` | icon-only 36/44px 動作按鈕 |
-| `.channel-form` / `.form-grid` | 表單卡片 + 2 欄 grid（mobile 單欄） |
+| `.channel-form`（overlay） | 全螢幕 backdrop `rgba(0,0,0,.45)` + 居中容器；mobile 貼底（bottom sheet） |
+| `.cf-dialog` | 居中 dialog：`max-width:720px; max-height:85vh; display:flex; flex-direction:column`；mobile `max-height:100dvh`、頂部圓角 |
+| `.cf-head` / `.cf-foot` | sticky 標題/動作列（`flex-shrink:0`、`--lms-surface` 底 + 分隔線） |
+| `.cf-body` | `overflow-y:auto`（body 內部捲動）；2 欄 grid（mobile 單欄） |
 | `.field-error` | `--lms-danger` 邊框 + 紅字提示 |
 | `.header-editor-row` | headers key-value 編輯列 |
 | `.history-table` | 發送紀錄表格（含 `overflow-x` 包裝） |
 | `.result-badge.success/.failure` | 成功/失敗文字 badge |
 | `.history-pager` | 分頁控件 |
-| `.svc-multiselect` | 指定服務多選搜尋 + 已選 chips |
+| `.service-multiselect` / `.service-group` | 指定服務多選清單（單欄列表 + 我的/系統服務分組收合）；`.svc-list` `max-height:240px` 內部捲動 |
+| `.service-option` | 服務選取列：整列反白 + ✓ 勾選方塊（`:has(input:checked)`） |
+| `.selected-count` | 「已選 N 個服務」計數 |
 
 ---
 
@@ -411,9 +435,13 @@ Mobile 分頁 pills：兩顆各 `flex:1` 全寬 44px；「新增 Channel」按�
 - [ ] 兩分頁「Channel 設定」（預設）/「發送紀錄」以 pill segmented 呈現，`role="tablist"` 語意正確
 - [ ] Channel 卡片含：類型圖示、名稱、事件 chips、服務範圍、toggle、測試/編輯/刪除
 - [ ] 空狀態「尚未設定任何通知 Channel」+「新增 Channel」按鈕
+- [ ] 新增/編輯以 Modal 呈現：backdrop 淡入、`role="dialog" aria-modal="true" aria-labelledby`、focus trap、背景捲動鎖定
+- [ ] Modal 桌面 `max-width:720px / max-height:85vh`、body 內部捲動；mobile 全螢幕 bottom sheet
+- [ ] Esc / 點擊 backdrop / 取消 關閉；表單有輸入時先 ConfirmModal 確認
+- [ ] 「指定服務」多選清單 `max-height:240px` 內部捲動（無雙層捲動陷阱）
 - [ ] 表單類型下拉動態切換 4 型專屬欄位（Slack/Discord URL、Telegram Bot Token + Chat ID、自訂 method+headers）
 - [ ] 觸發事件 ≥1 前端攔截；headers ≤10 組前端攔截；必填欄位紅框 + `role="alert"` 提示
-- [ ] 指定服務範圍：搜尋多選 + 已選 chips + 移除
+- [ ] 指定服務範圍：我的/系統服務分組（我的展開、系統收合）+ 搜尋過濾（打字自動展開）+ 整列反白框選 + 「已選 N 個服務」計數
 - [ ] Toggle 樂觀更新，失敗回復 + Toast；停用卡片灰化 + 「已停用」標籤
 - [ ] 自動停用：黃色徽章 + 原因 + 重新啟用（WS 全域 Toast + sessionStorage 去重）
 - [ ] 刪除 ConfirmModal「確定刪除 Channel「XXX」？此操作無法復原。」+ 淡出動畫

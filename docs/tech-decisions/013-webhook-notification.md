@@ -405,6 +405,7 @@ r.Get("/api/v1/notify/history", h.HandleNotifyHistory)
 - WebSocket hub 的連線管理 / heartbeat / session TTL
 - 反向代理 (nginx) — 無新協定、純 REST + 既有 WS
 - 建置 / 部署腳本 — 僅需確保 `/var/lib/linux-service-manager/` 目錄可寫（既有 audit/token 已依賴）
+- 服務範圍「我的服務 / 系統服務」分組 — 前端純 UI 分組，沿用既有 `Service.locked`（`/etc/systemd/system/` 判定）與 Dashboard TabsBar 的分類；**零後端 / 資料模型改動**（`services` 欄位仍是 unit name 精確匹配清單）
 
 ---
 

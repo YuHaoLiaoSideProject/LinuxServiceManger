@@ -83,10 +83,12 @@ Feature: Webhook 通知設定
     And channel 未建立
 
   @channel @happy-path @p1
-  Scenario: 指定服務範圍時可透過搜尋多選服務
+  Scenario: 指定服務範圍時可透過搜尋多選服務（我的/系統服務分組）
     Given 管理員在新增 channel 表單中選擇「指定服務」範圍
+    And 服務清單分為「我的服務」（預設展開）與「系統服務」（預設收合）兩組
     When 管理員在搜尋框輸入關鍵字過濾服務列表並勾選多個服務
-    Then 表單顯示已選取的服務清單
+    Then 勾選的服務整列反白顯示選取態
+    And 表單下方顯示「已選 N 個服務」計數
     And 儲存後僅這些服務的狀態變更會觸發該 channel 的通知
 
   @channel @error-handling @p0 @channel-save

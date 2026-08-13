@@ -136,9 +136,11 @@ func (h *Handler) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, messageJSON{Error: "invalid request body"})
 		return
 	}
-	// telegram token 留空 = 保留原值（編輯不回傳 token）
-	if p.Type == notify.ChannelTypeTelegram && p.Token == "" && existing.Type == notify.ChannelTypeTelegram {
-		p.Token = existing.Token
+	// telegram token 留空或為 masked（'****' 前綴）= 保留原值（編輯不回傳 token）
+	if p.Type == notify.ChannelTypeTelegram && existing.Type == notify.ChannelTypeTelegram {
+		if p.Token == "" || strings.HasPrefix(p.Token, "****") {
+			p.Token = existing.Token
+		}
 	}
 	if msg := validateChannelPayload(&p); msg != "" {
 		writeJSON(w, http.StatusBadRequest, messageJSON{Error: msg})

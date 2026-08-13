@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, getCurrentInstance } from 'vue'
 import type { Service, ServiceAction } from '../types/service'
 import { useI18n } from '../composables/useI18n'
+import { useConfigEditorModal, isDesktopViewport } from '../composables/useConfigEditorModal'
 
 const { t } = useI18n()
+const { openModal } = useConfigEditorModal()
+const instance = getCurrentInstance()
 const props = defineProps<{
   service: Service
   togglingService?: string
@@ -77,6 +80,22 @@ function doToggle() {
     emit('toggle', 'enable', props.service.name)
   }
 }
+
+// ── Config Editor 進入點（012 UIUX v2：桌面 Modal／手機全頁）──
+function openConfigEditor(readonly: boolean) {
+  if (isDesktopViewport()) {
+    // 桌面 ≥768px：開啟 overlay，不換 route
+    openModal(props.service.name, { readOnly: readonly })
+  } else {
+    // 手機 ≤767px：維持全頁路由
+    const router = (instance?.proxy as any)?.$router
+    router?.push({
+      name: 'config-editor',
+      params: { name: props.service.name },
+      ...(readonly ? { query: { readonly: '1' } } : {}),
+    })
+  }
+}
 </script>
 
 <template>
@@ -147,7 +166,7 @@ function doToggle() {
             class="outline secondary btn-act-config btn-edit-config"
             :aria-label="t('action.config.edit.aria', { name: service.name })"
             :title="t('action.config.edit.aria', { name: service.name })"
-            @click.stop="$router.push({ name: 'config-editor', params: { name: service.name } })"
+            @click.stop="openConfigEditor(false)"
           >
             <svg class="btn-icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
@@ -158,7 +177,7 @@ function doToggle() {
             class="outline secondary btn-act-config btn-view-config"
             :aria-label="t('action.config.view.aria', { name: service.name })"
             :title="t('action.config.view.aria', { name: service.name })"
-            @click.stop="$router.push({ name: 'config-editor', params: { name: service.name }, query: { readonly: '1' } })"
+            @click.stop="openConfigEditor(true)"
           >
             <svg class="btn-icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/>

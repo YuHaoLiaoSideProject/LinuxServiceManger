@@ -4,6 +4,9 @@ import { ref } from 'vue'
 import AuditTable from '../components/AuditTable.vue'
 import type { AuditEntry } from '../composables/useAuditLog'
 
+// 固定時區為 UTC+8，使「UTC → 本地時區」轉換測試具確定性（不依賴 CI 機器時區）
+process.env.TZ = 'Asia/Taipei'
+
 // ---------------------------------------------------------------------------
 // Mock i18n — return Chinese translations (match existing test expectations)
 // ---------------------------------------------------------------------------
@@ -154,22 +157,23 @@ describe('AuditTable — 稽核紀錄表格', () => {
 
   // -- Time Formatting ----------------------------------------------------
 
-  it('F-AT-08: timestamp 格式化為 YYYY-MM-DD HH:mm:ss', () => {
+  it('F-AT-08: timestamp 依本地時區格式化為 YYYY-MM-DD HH:mm:ss', () => {
     const wrapper = mount(AuditTable, {
       props: { entries: [makeEntry({ timestamp: '2025-08-09T14:30:00Z' })] },
     })
 
     const td = wrapper.find('tbody tr td')
-    expect(td.text()).toBe('2025-08-09 14:30:00')
+    // 14:30 UTC → 22:30 Asia/Taipei（UTC+8）
+    expect(td.text()).toBe('2025-08-09 22:30:00')
   })
 
-  it('F-AT-09: timestamp 含毫秒 → 去除毫秒部分', () => {
+  it('F-AT-09: timestamp 含毫秒 → 去除毫秒並轉換時區', () => {
     const wrapper = mount(AuditTable, {
       props: { entries: [makeEntry({ timestamp: '2025-08-09T14:30:00.123Z' })] },
     })
 
     const td = wrapper.find('tbody tr td')
-    expect(td.text()).toBe('2025-08-09 14:30:00')
+    expect(td.text()).toBe('2025-08-09 22:30:00')
   })
 
   it('F-AT-10: timestamp 為空 → 顯示 "-"', () => {
@@ -278,7 +282,7 @@ describe('AuditTable — 稽核紀錄表格', () => {
     })
 
     const tds = wrapper.findAll('tbody tr td')
-    expect(tds[0].text()).toBe('2025-08-09 14:30:00')
+    expect(tds[0].text()).toBe('2025-08-09 22:30:00')
     expect(tds[1].text()).toBe('operator')
     expect(tds[2].text()).toBe('10.0.0.1')
     expect(tds[3].text()).toBe('重啟')

@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UI/UX 設計規格 — 014 node-aware Dashboard（多機管理）</title>
+<style>
+/* ════════════════════════════════════════════════════════════
+   設計 Token（對應前端 --lms-* 變數；與 014 另兩頁共用）
+   ════════════════════════════════════════════════════════════ */
+:root {
+  --accent: #1a73e8; --accent-hover: #1557b0; --accent-light: rgba(26,115,232,0.12);
+  --success: #188038; --success-light: #e6f4ea; --success-border: #a8dab5;
+  --danger: #c5221f; --danger-light: #fce8e6; --danger-border: #f5c6c2;
+  --warning: #e37400; --warning-light: #fff4e5;
+  --radius: 10px; --radius-sm: 6px; --transition: 0.2s ease;
+  --h: 36px; --h-mobile: 44px; --fs: 0.875rem;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+[data-theme="light"] {
+  --bg: #ffffff; --surface: #ffffff; --surface-2: #f6f7f9; --surface-3: #eef0f3;
+  --border: #e3e6ea; --text: #374151; --muted: #9ca3af;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08); --shadow-lg: 0 12px 32px rgba(0,0,0,0.16);
+  --frame: #eef0f3;
+}
+[data-theme="dark"] {
+  --bg: #11191f; --surface: #181e25; --surface-2: #1e2530; --surface-3: #232c38;
+  --border: #262e38; --text: #c7c9ce; --muted: #7d8590;
+  --shadow: 0 2px 16px rgba(0,0,0,0.45); --shadow-lg: 0 12px 36px rgba(0,0,0,0.6);
+  --frame: #0d1318;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  background: var(--bg); color: var(--text); transition: background var(--transition), color var(--transition);
+  padding: 2rem 1.25rem 4rem;
+}
+.wrap { max-width: 1120px; margin: 0 auto; }
+.topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; }
+h1 { font-size: 1.35rem; margin: 0; }
+.sub { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+.controls { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.segmented { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 2px; }
+.segmented button { border: none; background: none; color: var(--muted); font-size: 0.85rem; padding: 0.45rem 0.9rem; border-radius: 7px; cursor: pointer; transition: all var(--transition); font-weight: 500; }
+.segmented button:hover { color: var(--text); }
+.segmented button.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+
+.frame { background: var(--frame); border: 1px solid var(--border); border-radius: 14px; padding: 1.6rem 1.5rem 1.8rem; margin-bottom: 1.5rem; }
+.frame h2 { margin: 0 0 0.25rem; font-size: 1.1rem; }
+.frame .fsub { color: var(--muted); font-size: 0.82rem; margin: 0 0 1rem; line-height: 1.6; }
+.browser-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 1rem; }
+.bdot { width: 11px; height: 11px; border-radius: 50%; }
+.bdot:nth-child(1){ background:#f87171 } .bdot:nth-child(2){ background:#fbbf24 } .bdot:nth-child(3){ background:#34d399 }
+.browser-url { flex: 1; max-width: 460px; margin-left: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.75rem; color: var(--muted); font-family: var(--mono); }
+.elem-count { font-size: 0.72rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 0.2rem 0.7rem; white-space: nowrap; }
+.elem-count b { color: var(--accent); }
+
+.app-page { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); transition: background var(--transition); overflow: hidden; }
+.app-page.is-mobile { max-width: 390px; margin: 0 auto; }
+
+.btn { height: var(--h); display: inline-flex; align-items: center; gap: 0.4rem; padding: 0 0.9rem; border-radius: var(--radius-sm); font-size: var(--fs); border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; transition: all var(--transition); white-space: nowrap; font-weight: 500; }
+.btn:hover { background: var(--surface-2); border-color: var(--muted); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.secondary { background: var(--surface-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.sm { height: 30px; padding: 0 0.6rem; font-size: 0.78rem; }
+.btn .spin { display: none; width: 14px; height: 14px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: rot 0.8s linear infinite; }
+.btn.loading .spin { display: inline-block; }
+@keyframes rot { to { transform: rotate(360deg); } }
+
+.sdot { display: inline-flex; align-items: center; gap: 0.32rem; font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
+.sdot svg { flex-shrink: 0; }
+.sdot .st-txt { color: var(--text); }
+.sdot.s-on .st-txt { color: var(--success); }
+.sdot.s-off .st-txt { color: var(--danger); }
+.sdot.s-loff .st-txt { color: var(--muted); }
+.sdot.s-deg .st-txt, .sdot.s-warn .st-txt { color: var(--warning); }
+
+/* ── Mock AppHeader + NodeSwitcher ── */
+.app-head { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); }
+.app-head .brand { display: flex; align-items: center; gap: 0.4rem; font-size: 0.92rem; font-weight: 700; white-space: nowrap; }
+.app-head .brand svg { color: var(--accent); }
+.nav-items { display: flex; gap: 0.35rem; }
+.nav-item { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; font-weight: 500; padding: 0.35rem 0.7rem; border-radius: 7px; color: var(--muted); text-decoration: none; transition: all var(--transition); }
+.nav-item:hover { color: var(--text); }
+.nav-item.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+.head-right { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.ws-ind { font-size: 0.7rem; color: var(--success); display: inline-flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
+.ws-ind::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--success); }
+.node-switcher { position: relative; }
+.node-switcher .ns-btn { height: var(--h); display: inline-flex; align-items: center; gap: 0.4rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); padding: 0 0.7rem; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all var(--transition); }
+.node-switcher .ns-btn:hover { border-color: var(--accent); color: var(--accent); }
+.node-dropdown { position: absolute; top: calc(100% + 4px); right: 0; min-width: 250px; z-index: 200; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-lg); padding: 0.3rem 0; }
+.node-dropdown .nd-head { font-size: 0.68rem; color: var(--muted); padding: 0.35rem 0.8rem 0.3rem; text-transform: uppercase; letter-spacing: 0.4px; }
+.node-option { display: flex; align-items: center; gap: 0.5rem; width: 100%; text-align: left; padding: 0.5rem 0.8rem; background: none; border: none; cursor: pointer; font-size: 0.82rem; color: var(--text); transition: background var(--transition); }
+.node-option:hover { background: var(--surface-2); }
+.node-option.active { background: var(--accent-light); font-weight: 700; color: var(--accent); }
+.node-option .opt-name { flex: 1; }
+.node-option .opt-st { font-size: 0.7rem; color: var(--muted); }
+.node-option.all { border-bottom: 1px solid var(--border); }
+.back-link { display: inline-flex; align-items: center; gap: 0.3rem; height: var(--h); padding: 0 0.6rem; font-size: 0.8rem; color: var(--muted); text-decoration: none; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); transition: all var(--transition); }
+.back-link:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ── 離線 Banner ── */
+.offline-banner { display: flex; align-items: center; gap: 0.5rem; background: var(--warning-light); color: var(--warning); border: 1px solid var(--warning); border-radius: var(--radius-sm); padding: 0.55rem 0.9rem; margin: 0.8rem 1rem 0; font-size: 0.82rem; font-weight: 600; }
+.offline-banner svg { flex-shrink: 0; }
+
+/* ── Dashboard 佈局（既有元件 mock）── */
+.dash-body { padding: 0.9rem 1rem 1.3rem; }
+.tabs-bar { display: flex; gap: 0; margin-bottom: 0.6rem; border-bottom: 1px solid var(--border); }
+.tab-btn { height: 38px; padding: 0 1.1rem; background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); font-size: 0.84rem; font-weight: 600; cursor: pointer; transition: all var(--transition); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.mini-stats { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; padding: 0.55rem 0.8rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.7rem; font-size: 0.78rem; font-weight: 600; }
+.mini-stats b { color: var(--accent); font-family: var(--mono); }
+.mini-toolbar { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.7rem; }
+.mini-toolbar .msearch { position: relative; flex: 1; min-width: 180px; max-width: 320px; }
+.mini-toolbar .msearch input { width: 100%; height: var(--h); padding: 0 0.7rem 0 2.1rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: var(--fs); }
+.mini-toolbar .msearch input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); outline: none; }
+.mini-toolbar .msearch .s-ico { position: absolute; left: 0.6rem; top: 50%; transform: translateY(-50%); color: var(--muted); display: flex; }
+.pill { height: var(--h); display: inline-flex; align-items: center; gap: 0.35rem; padding: 0 0.8rem; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); font-size: 0.76rem; cursor: pointer; transition: all var(--transition); white-space: nowrap; }
+.pill .cnt { font-size: 0.66rem; background: var(--surface-3); border-radius: 20px; padding: 1px 6px; font-weight: 700; }
+.pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pill.active .cnt { background: rgba(255,255,255,0.22); color: #fff; }
+.pill .dotp { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dotp.run { background: var(--success); } .dotp.fail { background: var(--danger); } .dotp.inact { background: var(--muted); }
+.svc-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.svc-table th, .svc-table td { padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--border); text-align: left; }
+.svc-table th { font-size: 0.7rem; color: var(--muted); font-weight: 600; background: var(--surface-2); white-space: nowrap; }
+.svc-table .svc-name { font-family: var(--mono); font-weight: 600; }
+.svc-table .st-active { color: var(--success); font-weight: 600; }
+.svc-table .st-failed { color: var(--danger); font-weight: 600; }
+.svc-table .st-inactive { color: var(--muted); }
+.svc-table .svc-act { display: flex; gap: 0.3rem; }
+.act { height: 30px; display: inline-flex; align-items: center; gap: 0.3rem; padding: 0 0.7rem; border-radius: var(--radius-sm); font-size: 0.74rem; font-weight: 600; border: 1px solid; cursor: pointer; transition: all var(--transition); white-space: nowrap; }
+.act:disabled { opacity: 0.4; cursor: not-allowed; }
+.act-start { background: var(--success-light); color: var(--success); border-color: var(--success-border); }
+.act-stop { background: var(--danger-light); color: var(--danger); border-color: var(--danger-border); }
+.act-restart { background: var(--accent-light); color: var(--accent); border-color: rgba(26,115,232,0.3); }
+.act .spin { display: none; width: 12px; height: 12px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: rot 0.8s linear infinite; }
+.act.loading .spin { display: inline-block; }
+.act.loading { opacity: 0.75; }
+.link-btn { height: 30px; padding: 0 0.3rem; background: none; border: none; color: var(--muted); font-size: 0.74rem; cursor: pointer; text-decoration: underline; }
+.link-btn:hover { color: var(--accent); }
+.row-nowrap { white-space: nowrap; }
+
+/* ── Toast ── */
+.toast-wrap { position: fixed; bottom: 1.2rem; right: 1.2rem; z-index: 1200; display: flex; flex-direction: column; gap: 0.5rem; }
+.toast { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); padding: 0.55rem 0.9rem; font-size: 0.8rem; box-shadow: var(--shadow-lg); transition: opacity 0.3s ease; max-width: 340px; }
+.toast.success { border-left-color: var(--success); }
+.toast.warning { border-left-color: var(--warning); }
+.toast.error { border-left-color: var(--danger); }
+
+/* ── 元件解剖 ── */
+.anatomy { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-top: 1.1rem; }
+@media (max-width: 760px) { .anatomy { grid-template-columns: 1fr; } }
+.anat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem 1.1rem; }
+.anat-card h4 { margin: 0 0 0.8rem; font-size: 0.92rem; display: flex; align-items: center; gap: 0.4rem; }
+.anat-card h4 .tag { font-size: 0.62rem; font-weight: 700; background: var(--accent-light); color: var(--accent); border-radius: 20px; padding: 0.12rem 0.5rem; }
+.anat-stage { background: var(--frame); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1rem; margin-bottom: 0.85rem; }
+.anat-dims { font-size: 0.74rem; color: var(--muted); line-height: 1.8; }
+.anat-dims b { color: var(--accent); font-family: var(--mono); }
+
+.states { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 1rem; }
+.states th, .states td { border: 1px solid var(--border); padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+.states th { background: var(--surface-2); font-size: 0.74rem; color: var(--muted); font-weight: 700; }
+.states td:first-child { white-space: nowrap; font-weight: 600; }
+.states code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0.05rem 0.35rem; font-size: 0.72rem; font-family: var(--mono); }
+
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.5rem 1.5rem; margin-top: 1rem; }
+.anno { display: flex; gap: 0.55rem; font-size: 0.8rem; color: var(--muted); align-items: flex-start; line-height: 1.55; }
+.anno .num { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-light); color: var(--accent); font-size: 0.7rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
+.anno b { color: var(--text); }
+
+.note { font-size: 0.78rem; color: var(--muted); margin-top: 1rem; line-height: 1.7; background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; padding: 0.6rem 0.9rem; }
+.note b { color: var(--accent); }
+.demo-hint { font-size: 0.78rem; color: var(--muted); margin-top: 0.7rem; line-height: 1.6; }
+.demo-hint b { color: var(--accent); }
+
+.tokens { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; margin-top: 1rem; }
+.tcard { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.8rem 0.95rem; }
+.tcard .tk { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.4px; }
+.tcard .tv { font-size: 1.05rem; font-weight: 700; color: var(--text); margin-top: 0.2rem; }
+.tcard .td { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; line-height: 1.5; }
+.tcard .tv.accent { color: var(--accent); }
+
+.footnote { margin-top: 2rem; font-size: 0.72rem; color: var(--muted); border-top: 1px dashed var(--border); padding-top: 0.75rem; line-height: 1.7; }
+
+.frame.mobile-frame { display: none; }
+body.view-mobile .frame.mobile-frame { display: block; }
+body.view-mobile .frame.desktop-frame { display: none; }
+.mobile-frame .app-page { max-width: 390px; margin: 0 auto; }
+.mobile-frame .nav-items { display: none; }
+.mobile-frame .dash-body { padding: 0.8rem 0.7rem 1.1rem; }
+.mobile-frame .ns-btn { height: var(--h-mobile); }
+.mobile-frame .act { height: 44px; }
+.mobile-frame .svc-table { min-width: 620px; }
+.mobile-frame .table-scroll { overflow-x: auto; }
+.mobile-frame .mini-toolbar .msearch { max-width: none; }
+.mobile-frame .offline-banner { margin: 0.7rem 0.7rem 0; }
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div>
+      <h1>🖥 014 · node-aware Dashboard（多機管理）</h1>
+      <div class="sub">完整規格 — NodeSwitcher 節點切換 · 離線 Banner · 操作禁用 · in-flight 並行限制 · ?service= 展開</div>
+    </div>
+    <div class="controls">
+      <div class="segmented" id="devSwitch">
+        <button data-dev="desktop" class="active">🖥 Desktop</button>
+        <button data-dev="mobile">📱 Mobile</button>
+      </div>
+      <button class="segmented" id="themeToggle" style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:3px;">🌙 切換深色</button>
+    </div>
+  </div>
+
+  <!-- ══════════ 1. 設計 Token ══════════ -->
+  <div class="frame">
+    <h2>1️⃣ 設計 Token</h2>
+    <p class="fsub">與 014-aggregate / 014-node-management 共用同一套 token；單節點視圖「佈局零變動」重用既有 Dashboard 元件。</p>
+    <div class="tokens">
+      <div class="tcard"><div class="tk">控制高度</div><div class="tv accent">36 / 44px</div><div class="td">desktop 36px · mobile 44px（--lms-h / --lms-h-mobile）</div></div>
+      <div class="tcard"><div class="tk">NodeSwitcher</div><div class="tv">Header 下拉</div><div class="td">min-width 250px · 狀態燈清單 · active 反白</div></div>
+      <div class="tcard"><div class="tk">離線 Banner</div><div class="tv">黃底深字</div><div class="td">--lms-warning-light · role="alert" · 圓角 6px</div></div>
+      <div class="tcard"><div class="tk">操作按鈕</div><div class="tv">30px</div><div class="td">列內操作（desktop）；離線時全部 disabled</div></div>
+      <div class="tcard"><div class="tk">並行限制</div><div class="tv">in-flight</div><div class="td">同節點同服務 disabled；不同節點可並行</div></div>
+      <div class="tcard"><div class="tk">逾時</div><div class="tv">15s</div><div class="td">操作逾時 Toast（warning）+ 按鈕恢復</div></div>
+    </div>
+  </div>
+
+  <!-- ══════════ 2. 完整畫面（Desktop，節點在線） ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>2️⃣ 完整畫面與互動 — /dashboard?node=web-server-01（節點在線）</h2>
+    <p class="fsub">佈局與單機 Dashboard 一致（TabsBar / StatsBar / Toolbar / ServiceTable 全部重用）；Header 增加 NodeSwitcher 與「← 所有節點」返回。</p>
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url" id="urlBar">https://linux-service-manager/dashboard?node=web-server-01</span>
+      <span class="elem-count">互動：<b>切換節點 · 操作按鈕</b></span>
+    </div>
+    <div class="app-page">
+      <!-- Header（node-aware） -->
+      <div class="app-head">
+        <div class="brand">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+          Linux Service Manager
+        </div>
+        <nav class="nav-items" aria-label="主導航">
+          <a class="nav-item" href="javascript:void(0)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Dashboard</a>
+          <a class="nav-item" href="javascript:void(0)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8m8 4H8m3-8H8"/></svg>Audit Log</a>
+          <a class="nav-item" href="javascript:void(0)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Node Management</a>
+        </nav>
+        <div class="head-right">
+          <span class="ws-ind">已連線</span>
+          <!-- ① NodeSwitcher：目前節點名稱 -->
+          <div class="node-switcher">
+            <button class="ns-btn" id="nsToggle" aria-haspopup="menu" aria-expanded="false">
+              <span id="nsDot"><span class="sdot s-on"><svg width="11" height="11" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg></span></span>
+              <span id="nsLabel">web-server-01</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div class="node-dropdown" id="nsMenu" style="display:none" role="menu">
+              <button class="node-option all" role="menuitemradio" aria-checked="false" data-node="all">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                <span class="opt-name">所有節點</span>
+              </button>
+              <div class="nd-head">節點</div>
+              <button class="node-option active" role="menuitemradio" aria-checked="true" data-node="web-server-01">
+                <span class="sdot s-on"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg></span>
+                <span class="opt-name">web-server-01</span><span class="opt-st">線上</span>
+              </button>
+              <button class="node-option" role="menuitemradio" aria-checked="false" data-node="web-server-02">
+                <span class="sdot s-on"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg></span>
+                <span class="opt-name">web-server-02</span><span class="opt-st">線上</span>
+              </button>
+              <button class="node-option" role="menuitemradio" aria-checked="false" data-node="db-01">
+                <span class="sdot s-deg"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--warning)"/></svg></span>
+                <span class="opt-name">db-01</span><span class="opt-st">延遲</span>
+              </button>
+              <button class="node-option" role="menuitemradio" aria-checked="false" data-node="web-server-04">
+                <span class="sdot s-off"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--danger)"/></svg></span>
+                <span class="opt-name">web-server-04</span><span class="opt-st">離線</span>
+              </button>
+            </div>
+          </div>
+          <!-- ② 「← 所有節點」返回 -->
+          <a class="back-link" href="javascript:void(0)" id="backAll">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            所有節點
+          </a>
+          <button class="account-btn" style="height:var(--h);display:inline-flex;align-items:center;gap:0.4rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);padding:0 0.6rem;font-size:0.8rem"><span style="width:22px;height:22px;border-radius:50%;background:var(--accent-light);color:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:0.72rem">A</span> admin ▾</button>
+        </div>
+      </div>
+
+      <!-- 離線 Banner（僅離線時顯示，此為在線情境隱藏） -->
+      <div class="offline-banner" id="offlineBanner" style="display:none" role="alert">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4m0 4h.01"/></svg>
+        <span id="bannerText">節點已離線，操作不可用</span>
+      </div>
+
+      <div class="dash-body">
+        <!-- TabsBar（沿用） -->
+        <div class="tabs-bar">
+          <button class="tab-btn active">我的服務</button>
+          <button class="tab-btn">系統服務</button>
+        </div>
+        <!-- StatsBar（沿用語意，來自節點心跳） -->
+        <div class="mini-stats">
+          <span>總服務 <b id="mTotal">42</b></span>
+          <span>執行中 <b class="st-active" style="color:var(--success)">38</b></span>
+          <span>失敗 <b style="color:var(--danger)">1</b></span>
+          <span>已停用 <b>3</b></span>
+        </div>
+        <!-- Toolbar（沿用） -->
+        <div class="mini-toolbar">
+          <div class="msearch">
+            <span class="s-ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></span>
+            <input type="text" placeholder="搜尋服務…" aria-label="搜尋服務">
+          </div>
+          <button class="pill active"><span class="dotp all" style="background:var(--muted)"></span>全部 <span class="cnt">42</span></button>
+          <button class="pill"><span class="dotp run"></span>執行中 <span class="cnt">38</span></button>
+          <button class="pill"><span class="dotp fail"></span>失敗 <span class="cnt">1</span></button>
+          <button class="btn sm secondary">⟳ 重新整理</button>
+        </div>
+        <!-- ServiceTable（沿用；操作按鈕經節點代理） -->
+        <div class="table-scroll">
+          <table class="svc-table" id="svcTable">
+            <thead><tr><th style="width:24px"></th><th>服務</th><th>狀態</th><th>開機啟動</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><input type="checkbox" style="accent-color:var(--accent)"></td>
+                <td class="svc-name">nginx.service</td>
+                <td class="st-active">active (running)</td>
+                <td>enabled</td>
+                <td class="row-nowrap">
+                  <div class="svc-act">
+                    <button class="act act-start" data-action="start" data-svc="nginx.service">▶ 啟動</button>
+                    <button class="act act-stop" data-action="stop" data-svc="nginx.service">⏹ 停止</button>
+                    <button class="act act-restart" data-action="restart" data-svc="nginx.service">⟳ 重啟</button>
+                    <button class="link-btn">📋 日誌</button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" style="accent-color:var(--accent)"></td>
+                <td class="svc-name">myapp.service</td>
+                <td class="st-inactive">inactive (dead)</td>
+                <td>disabled</td>
+                <td class="row-nowrap">
+                  <div class="svc-act">
+                    <button class="act act-start" data-action="start" data-svc="myapp.service">▶ 啟動</button>
+                    <button class="act act-stop" data-action="stop" data-svc="myapp.service">⏹ 停止</button>
+                    <button class="act act-restart" data-action="restart" data-svc="myapp.service">⟳ 重啟</button>
+                    <button class="link-btn">📋 日誌</button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" style="accent-color:var(--accent)"></td>
+                <td class="svc-name">crash.service</td>
+                <td class="st-failed">failed (failed)</td>
+                <td>disabled</td>
+                <td class="row-nowrap">
+                  <div class="svc-act">
+                    <button class="act act-start" data-action="start" data-svc="crash.service">▶ 啟動</button>
+                    <button class="act act-stop" data-action="stop" data-svc="crash.service">⏹ 停止</button>
+                    <button class="act act-restart" data-action="restart" data-svc="crash.service">⟳ 重啟</button>
+                    <button class="link-btn">📋 日誌</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Legend 註記 -->
+    <div class="legend">
+      <div class="anno"><span class="num">1</span><div><b>NodeSwitcher</b> — Header 下拉顯示目前節點（含狀態燈）；選取節點 → <code>?node={id}</code>；「所有節點」→ <code>/</code>。ARIA：<code>menuitemradio</code> + <code>aria-checked</code>。</div></div>
+      <div class="anno"><span class="num">2</span><div><b>「← 所有節點」</b> — 返回 Aggregate Dashboard（BDD @switch）。</div></div>
+      <div class="anno"><span class="num">3</span><div><b>操作按鈕</b> — 經 <code>POST /api/v1/nodes/{id}/services/{name}/{action}</code> 代理；成功/失敗 Toast 含節點名前綴（「web-server-01 nginx.service 已重啟」）。</div></div>
+      <div class="anno"><span class="num">4</span><div><b>in-flight 標記</b> — 同節點同服務操作中按鈕 disabled + spinner；不同節點天然並行（key 含 nodeId）。</div></div>
+      <div class="anno"><span class="num">5</span><div><b>逾時</b> — 15s 無回應 → Toast「web-server-01 操作逾時：nginx.service restart」（warning）+ 按鈕恢復。</div></div>
+      <div class="anno"><span class="num">6</span><div><b>試試看</b> — NodeSwitcher 選「web-server-04（離線）」→ Banner 出現 + 操作全部禁用。</div></div>
+    </div>
+
+    <!-- 元件解剖 -->
+    <div class="anatomy">
+      <div class="anat-card">
+        <h4>NodeSwitcher <span class="tag">Header 下拉</span></h4>
+        <div class="anat-stage">
+          <div style="display:flex;gap:1rem;align-items:flex-start">
+            <button class="ns-btn"><span class="sdot s-on"><svg width="11" height="11" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg></span>web-server-01 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+            <div class="node-dropdown" style="position:static;box-shadow:none;border:1px solid var(--border)">
+              <button class="node-option all"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="opt-name">所有節點</span></button>
+              <button class="node-option active"><span class="sdot s-on"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg></span><span class="opt-name">web-server-01</span><span class="opt-st">線上</span></button>
+              <button class="node-option"><span class="sdot s-deg"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--warning)"/></svg></span><span class="opt-name">db-01</span><span class="opt-st">延遲</span></button>
+              <button class="node-option"><span class="sdot s-off"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--danger)"/></svg></span><span class="opt-name">web-server-04</span><span class="opt-st">離線</span></button>
+            </div>
+          </div>
+        </div>
+        <div class="anat-dims">
+          <b>按鈕</b>：36px（mobile 44px）· 顯示「狀態燈 + 節點名 + ▾」<br>
+          <b>下拉</b>：min-width <b>250px</b> · 8px 圓角 · <code>--lms-shadow-lg</code> · active 反白（accent-light + 粗體）<br>
+          <b>ARIA</b>：<code>aria-haspopup="menu"</code> + <code>aria-expanded</code>；選項 <code>menuitemradio</code> + <code>aria-checked</code>；Esc / 外部點擊關閉
+        </div>
+      </div>
+      <div class="anat-card">
+        <h4>離線 Banner <span class="tag">role=alert</span></h4>
+        <div class="anat-stage">
+          <div class="offline-banner" style="margin:0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4m0 4h.01"/></svg>
+            <span>節點已離線，操作不可用</span>
+          </div>
+          <div style="margin-top:0.8rem;display:flex;gap:0.5rem">
+            <button class="act act-start" disabled>▶ 啟動</button>
+            <button class="act act-stop" disabled>⏹ 停止</button>
+            <button class="act act-restart" disabled>⟳ 重啟</button>
+            <button class="link-btn" style="color:var(--muted)">📋 日誌</button>
+          </div>
+        </div>
+        <div class="anat-dims">
+          <b>Banner</b>：<code>--lms-warning-light</code> 底 + warning 字 + 1px warning 邊框 · radius <b>6px</b> · <code>role="alert"</code>（節點離線時顯示）<br>
+          <b>禁用操作</b>：opacity .4 + <code>cursor:not-allowed</code>；離線時 <code>canOperate=false</code> 全部 disabled<br>
+          <b>僅影響操作</b>：LogDrawer 仍可看快取；狀態以 WS 推送更新
+        </div>
+      </div>
+    </div>
+
+    <!-- 狀態矩陣 -->
+    <table class="states">
+      <tr><th style="width:150px;">狀態</th><th>視覺</th><th>互動</th></tr>
+      <tr><td>節點在線</td><td>正常佈局（與單機一致）</td><td>全部操作可用；Header 顯示節點名 + 綠點</td></tr>
+      <tr><td>節點離線</td><td>頂部黃色 Banner「⚠ 節點已離線，操作不可用」+ 操作按鈕全部 disabled</td><td>不可操作；LogDrawer 可看快取；返回/切換節點可用</td></tr>
+      <tr><td>操作進行中</td><td>按鈕 spinner + disabled（in-flight）</td><td>同節點同服務不可並行；<b>不同節點可並行</b>（key 含 nodeId）</td></tr>
+      <tr><td>操作成功</td><td>Toast「web-server-01 nginx.service 已重啟」（success）</td><td>狀態列更新（WS 同步，無需重整）</td></tr>
+      <tr><td>操作失敗</td><td>Toast「web-server-01 nginx.service 重啟失敗：權限不足」（error）</td><td>按鈕恢復可重試</td></tr>
+      <tr><td>操作逾時（15s）</td><td>Toast「web-server-01 操作逾時：nginx.service restart」（warning）</td><td>按鈕恢復可重試</td></tr>
+      <tr><td>切換節點</td><td>NodeSwitcher 下拉（狀態燈清單 + active 反白）</td><td>選取 → <code>?node={id}</code>；URL 同步</td></tr>
+      <tr><td>返回 Aggregate</td><td>「← 所有節點」連結</td><td>→ <code>/</code>（NodeSwitcher 亦提供「所有節點」選項）</td></tr>
+      <tr><td><code>?service=</code> 初始展開</td><td>目標服務列自動展開 LogDrawer</td><td>搜尋結果跳轉情境（BDD @search）</td></tr>
+    </table>
+    <div class="note"><b>無障礙：</b>離線 Banner <code>role="alert"</code>（即時朗讀）；禁用按鈕 <code>disabled</code> 語意完整（非僅顏色）；NodeSwitcher <code>radiogroup</code> 語意 + 方向鍵操作。</div>
+  </div>
+
+  <!-- ══════════ 3. 離線情境 Demo ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>3️⃣ 離線情境 Demo — 切換至離線節點</h2>
+    <p class="fsub">同一畫面於畫面 2 切換 NodeSwitcher 至「web-server-04（離線）」即呈現此狀態；或點下方按鈕直接示範。</p>
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url">https://linux-service-manager/dashboard?node=web-server-04</span>
+      <span class="elem-count">互動：<b>切換情境按鈕</b></span>
+    </div>
+    <div style="display:flex;gap:0.6rem;margin-bottom:0.9rem">
+      <button class="btn sm secondary" id="demoOnline">情境 A：節點在線（web-server-01）</button>
+      <button class="btn sm secondary" id="demoOffline">情境 B：節點離線（web-server-04）</button>
+      <button class="btn sm secondary" id="demoTimeout">情境 C：操作逾時 Toast</button>
+    </div>
+    <div class="app-page" id="demoPage">
+      <div class="app-head">
+        <div class="brand">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+          Linux Service Manager
+        </div>
+        <div class="head-right">
+          <div class="node-switcher">
+            <button class="ns-btn" style="pointer-events:none"><span class="sdot s-on" id="demoNsDot"><svg width="11" height="11" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg></span><span id="demoNsLabel">web-server-01</span> <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>
+          </div>
+          <a class="back-link" href="javascript:void(0)">← 所有節點</a>
+        </div>
+      </div>
+      <div class="offline-banner" id="demoBanner" style="display:none" role="alert">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4m0 4h.01"/></svg>
+        <span>節點已離線，操作不可用</span>
+      </div>
+      <div class="dash-body">
+        <div class="mini-toolbar">
+          <button class="pill active"><span class="dotp all" style="background:var(--muted)"></span>全部 <span class="cnt">42</span></button>
+          <button class="btn sm secondary">⟳ 重新整理</button>
+        </div>
+        <div class="table-scroll">
+          <table class="svc-table">
+            <tbody>
+              <tr>
+                <td class="svc-name">nginx.service</td>
+                <td class="st-active">active (running)</td>
+                <td class="row-nowrap">
+                  <div class="svc-act">
+                    <button class="act act-start" id="demoActStart">▶ 啟動</button>
+                    <button class="act act-stop" id="demoActStop">⏹ 停止</button>
+                    <button class="act act-restart" id="demoActRestart">⟳ 重啟</button>
+                    <button class="link-btn">📋 日誌</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <p class="demo-hint"><b>互動：</b>情境 A/B 切換離線 Banner 與按鈕禁用態；情境 C 示範 15s 逾時 Toast（按鈕恢復可點擊）。</p>
+  </div>
+
+  <!-- ══════════ 4. Mobile ══════════ -->
+  <div class="frame mobile-frame">
+    <h2>4️⃣ Mobile（≤767px）</h2>
+    <p class="fsub">NodeSwitcher 全寬 44px；操作按鈕 44px；表格橫向捲動（min-width 620px）；離線 Banner 全寬。</p>
+    <div class="app-page is-mobile">
+      <div class="app-head" style="flex-wrap:wrap">
+        <div class="brand">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+          Linux Service Manager
+        </div>
+        <div class="node-switcher" style="width:100%">
+          <button class="ns-btn" style="width:100%;justify-content:space-between;height:var(--h-mobile)">
+            <span class="sdot s-on"><svg width="11" height="11" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg><span class="st-txt">web-server-01</span></span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+        </div>
+        <a class="back-link" style="width:100%;justify-content:center;height:var(--h-mobile)">← 所有節點</a>
+      </div>
+      <div class="offline-banner" style="margin:0.7rem 0.7rem 0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4m0 4h.01"/></svg>
+        <span>節點已離線，操作不可用</span>
+      </div>
+      <div class="dash-body">
+        <div class="table-scroll">
+          <table class="svc-table">
+            <tbody>
+              <tr>
+                <td class="svc-name">nginx.service</td>
+                <td class="st-active">active</td>
+                <td class="row-nowrap">
+                  <div class="svc-act">
+                    <button class="act act-start" disabled style="height:44px">▶ 啟動</button>
+                    <button class="act act-stop" disabled style="height:44px">⏹ 停止</button>
+                    <button class="act act-restart" disabled style="height:44px">⟳ 重啟</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <p class="note"><b>Mobile 規範：</b>NodeSwitcher / 返回連結 / 操作按鈕一律 44px（WCAG 2.5.5）；離線 Banner 全寬置頂；表格橫向捲動保留操作列。</p>
+  </div>
+
+  <!-- ══════════ 5. 規格摘要 ══════════ -->
+  <div class="frame">
+    <h2>5️⃣ 規格摘要 — CSS 變數對應</h2>
+    <p class="fsub">實作時直接套用下列變數與結構；佈局元件（TabsBar/StatsBar/Toolbar/ServiceTable）零變動重用。</p>
+    <table class="states">
+      <tr><th style="width:220px;">項目</th><th>值</th><th>對應</th></tr>
+      <tr><td>node-aware Header</td><td>NodeSwitcher + 返回連結</td><td><code>.node-switcher / .back-link</code>（AppHeader.vue 內嵌）</td></tr>
+      <tr><td>NodeSwitcher 下拉</td><td>min-width 250px · 8px 圓角 · shadow-lg</td><td><code>.node-dropdown / .node-option</code>（--lms-shadow-lg）</td></tr>
+      <tr><td>離線 Banner</td><td>黃底深字 · 6px 圓角 · role=alert</td><td><code>.offline-banner</code>（--lms-warning-light / --lms-warning）</td></tr>
+      <tr><td>禁用操作</td><td>opacity .4 + cursor:not-allowed</td><td><code>.act:disabled</code>（既有 ServiceRow 按鈕）</td></tr>
+      <tr><td>in-flight 標記</td><td>key = nodeId:svc:action</td><td><code>stores/nodes.ts inFlight</code>（D-9）</td></tr>
+      <tr><td>操作逾時</td><td>15s → 504 → Toast warning</td><td><code>useToast</code>（既有）</td></tr>
+      <tr><td>服務 API 前綴</td><td>/api/v1/nodes/{id}/services/*</td><td><code>api/client.ts</code> nodeId 前綴</td></tr>
+      <tr><td>?service= 展開</td><td>初始展開該服務 LogDrawer</td><td><code>route.query.service</code> watch</td></tr>
+    </table>
+  </div>
+
+  <div class="footnote">
+    📄 設計文件：<b>docs/uiux/014-multi-node-design.md</b> ・ 本文件：<b>docs/uiux/014-node-dashboard-design.html</b><br>
+    實作範圍：<b>DashboardView.vue node-aware 小改（?node 前綴 / 離線禁用 + Banner / ?service 展開）+ NodeSwitcher.vue + useWebSocket 4 事件</b>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+// ── 通用切換（模板內建，勿刪）──
+const themeBtn = document.getElementById('themeToggle');
+themeBtn.addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+  themeBtn.textContent = dark ? '🌙 切換深色' : '☀️ 切換淺色';
+});
+const devSwitch = document.getElementById('devSwitch');
+devSwitch.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+  devSwitch.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  document.body.classList.toggle('view-mobile', b.dataset.dev === 'mobile');
+}));
+
+// ── Toast helper ──
+const toastWrap = document.getElementById('toastWrap');
+function toast(msg, type) {
+  if (!toastWrap) return;
+  const el = document.createElement('div');
+  el.className = 'toast ' + (type || 'success');
+  el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+  el.textContent = msg;
+  toastWrap.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; }, 3000);
+  setTimeout(() => el.remove(), 3350);
+}
+
+const NODE_STATE = {
+  'web-server-01': { status: 'online', dot: 's-on', color: 'var(--success)', text: '線上' },
+  'web-server-02': { status: 'online', dot: 's-on', color: 'var(--success)', text: '線上' },
+  'db-01': { status: 'degraded', dot: 's-deg', color: 'var(--warning)', text: '延遲' },
+  'web-server-04': { status: 'offline', dot: 's-off', color: 'var(--danger)', text: '離線' },
+};
+
+// ── NodeSwitcher（主畫面）──
+const nsToggle = document.getElementById('nsToggle');
+const nsMenu = document.getElementById('nsMenu');
+if (nsToggle) {
+  nsToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = nsMenu.style.display !== 'none';
+    nsMenu.style.display = open ? 'none' : 'block';
+    nsToggle.setAttribute('aria-expanded', String(!open));
+  });
+  document.addEventListener('click', (e) => {
+    if (nsMenu && nsMenu.style.display !== 'none' && !nsMenu.contains(e.target) && !nsToggle.contains(e.target)) {
+      nsMenu.style.display = 'none';
+      nsToggle.setAttribute('aria-expanded', 'false');
+    }
+  });
+  nsMenu.querySelectorAll('.node-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      const node = opt.dataset.node;
+      nsMenu.style.display = 'none';
+      nsToggle.setAttribute('aria-expanded', 'false');
+      if (node === 'all') {
+        toast('返回 Aggregate Dashboard /（demo）', 'success');
+        document.getElementById('nsLabel').textContent = '所有節點';
+        document.getElementById('nsDot').innerHTML = '';
+        document.getElementById('urlBar').textContent = 'https://linux-service-manager/';
+        return;
+      }
+      const st = NODE_STATE[node];
+      if (!st) return;
+      document.getElementById('nsLabel').textContent = node;
+      document.getElementById('nsDot').innerHTML = '<span class="sdot ' + st.dot + '"><svg width="11" height="11" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="' + st.color + '"/></svg></span>';
+      document.getElementById('urlBar').textContent = 'https://linux-service-manager/dashboard?node=' + node;
+      // 離線 → Banner + 禁用
+      const offline = st.status === 'offline';
+      document.getElementById('offlineBanner').style.display = offline ? 'flex' : 'none';
+      document.querySelectorAll('#svcTable .act, #svcTable .link-btn').forEach(b => {
+        b.disabled = offline;
+        b.classList.toggle('loading', false);
+      });
+      // 反白 active 選項
+      nsMenu.querySelectorAll('.node-option').forEach(o => {
+        o.classList.toggle('active', o.dataset.node === node);
+        o.setAttribute('aria-checked', String(o.dataset.node === node));
+      });
+      toast(offline ? '節點 web-server-04 已離線：操作不可用（demo）' : `切換至 ${node}（demo）`, offline ? 'warning' : 'success');
+    });
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { nsMenu.style.display = 'none'; nsToggle.setAttribute('aria-expanded', 'false'); } });
+}
+
+// ── 操作按鈕（in-flight + 成功/逾時 Toast）──
+document.querySelectorAll('#svcTable .act').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.disabled || btn.classList.contains('loading')) return;
+    const svc = btn.dataset.svc;
+    const action = btn.dataset.action;
+    const node = document.getElementById('nsLabel').textContent;
+    btn.classList.add('loading');
+    btn.disabled = true;
+    const actMap = { start: '啟動', stop: '停止', restart: '重啟' };
+    setTimeout(() => {
+      btn.classList.remove('loading');
+      btn.disabled = false;
+      if (action === 'restart' && svc === 'nginx.service') {
+        toast(`${node} ${svc} 操作逾時：restart（15s）`, 'warning');
+      } else {
+        toast(`${node} ${svc} 已${actMap[action]}`, 'success');
+      }
+    }, 700);
+  });
+});
+
+// ── 情境 demo（畫面 3）──
+const demoBanner = document.getElementById('demoBanner');
+const demoNsDot = document.getElementById('demoNsDot');
+const demoNsLabel = document.getElementById('demoNsLabel');
+const demoActs = ['demoActStart', 'demoActStop', 'demoActRestart'].map(id => document.getElementById(id));
+document.getElementById('demoOnline').addEventListener('click', () => {
+  demoBanner.style.display = 'none';
+  demoNsDot.innerHTML = '<svg width="11" height="11" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg>';
+  demoNsLabel.textContent = 'web-server-01';
+  demoActs.forEach(b => { b.disabled = false; b.classList.remove('loading'); });
+  toast('情境 A：節點在線，操作可用', 'success');
+});
+document.getElementById('demoOffline').addEventListener('click', () => {
+  demoBanner.style.display = 'flex';
+  demoNsDot.innerHTML = '<svg width="11" height="11" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--danger)"/></svg>';
+  demoNsLabel.textContent = 'web-server-04';
+  demoActs.forEach(b => { b.disabled = true; b.classList.remove('loading'); });
+  toast('情境 B：節點離線，操作全部禁用', 'warning');
+});
+document.getElementById('demoTimeout').addEventListener('click', () => {
+  demoBanner.style.display = 'none';
+  demoNsDot.innerHTML = '<svg width="11" height="11" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg>';
+  demoNsLabel.textContent = 'web-server-01';
+  demoActs.forEach(b => { b.disabled = false; b.classList.remove('loading'); });
+  toast('web-server-01 nginx.service 操作逾時：restart（15s，504）', 'warning');
+});
+</script>
+</body>
+</html>

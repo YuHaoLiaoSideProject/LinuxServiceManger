@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UI/UX 設計規格 — 014 Node Management（多機管理）</title>
+<style>
+/* ════════════════════════════════════════════════════════════
+   設計 Token（對應前端 --lms-* 變數；與 014-aggregate 共用）
+   ════════════════════════════════════════════════════════════ */
+:root {
+  --accent: #1a73e8; --accent-hover: #1557b0; --accent-light: rgba(26,115,232,0.12);
+  --success: #188038; --success-light: #e6f4ea; --success-border: #a8dab5;
+  --danger: #c5221f; --danger-light: #fce8e6; --danger-border: #f5c6c2;
+  --warning: #e37400; --warning-light: #fff4e5;
+  --radius: 10px; --radius-sm: 6px; --transition: 0.2s ease;
+  --h: 36px; --h-mobile: 44px; --fs: 0.875rem;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+[data-theme="light"] {
+  --bg: #ffffff; --surface: #ffffff; --surface-2: #f6f7f9; --surface-3: #eef0f3;
+  --border: #e3e6ea; --text: #374151; --muted: #9ca3af;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08); --shadow-lg: 0 12px 32px rgba(0,0,0,0.16);
+  --frame: #eef0f3;
+}
+[data-theme="dark"] {
+  --bg: #11191f; --surface: #181e25; --surface-2: #1e2530; --surface-3: #232c38;
+  --border: #262e38; --text: #c7c9ce; --muted: #7d8590;
+  --shadow: 0 2px 16px rgba(0,0,0,0.45); --shadow-lg: 0 12px 36px rgba(0,0,0,0.6);
+  --frame: #0d1318;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  background: var(--bg); color: var(--text); transition: background var(--transition), color var(--transition);
+  padding: 2rem 1.25rem 4rem;
+}
+.wrap { max-width: 1120px; margin: 0 auto; }
+.topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; }
+h1 { font-size: 1.35rem; margin: 0; }
+.sub { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+.controls { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.segmented { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 2px; }
+.segmented button { border: none; background: none; color: var(--muted); font-size: 0.85rem; padding: 0.45rem 0.9rem; border-radius: 7px; cursor: pointer; transition: all var(--transition); font-weight: 500; }
+.segmented button:hover { color: var(--text); }
+.segmented button.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+
+.frame { background: var(--frame); border: 1px solid var(--border); border-radius: 14px; padding: 1.6rem 1.5rem 1.8rem; margin-bottom: 1.5rem; }
+.frame h2 { margin: 0 0 0.25rem; font-size: 1.1rem; }
+.frame .fsub { color: var(--muted); font-size: 0.82rem; margin: 0 0 1rem; line-height: 1.6; }
+.browser-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 1rem; }
+.bdot { width: 11px; height: 11px; border-radius: 50%; }
+.bdot:nth-child(1){ background:#f87171 } .bdot:nth-child(2){ background:#fbbf24 } .bdot:nth-child(3){ background:#34d399 }
+.browser-url { flex: 1; max-width: 420px; margin-left: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.75rem; color: var(--muted); }
+.elem-count { font-size: 0.72rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 0.2rem 0.7rem; white-space: nowrap; }
+.elem-count b { color: var(--accent); }
+
+.app-page { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); transition: background var(--transition); overflow: hidden; }
+.app-page.is-mobile { max-width: 390px; margin: 0 auto; }
+
+.btn { height: var(--h); display: inline-flex; align-items: center; gap: 0.4rem; padding: 0 0.9rem; border-radius: var(--radius-sm); font-size: var(--fs); border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; transition: all var(--transition); white-space: nowrap; font-weight: 500; }
+.btn:hover { background: var(--surface-2); border-color: var(--muted); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.secondary { background: var(--surface-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { background: var(--accent-hover); }
+.btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn.sm { height: 30px; padding: 0 0.6rem; font-size: 0.78rem; }
+.btn .spin { display: none; width: 14px; height: 14px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: rot 0.8s linear infinite; }
+.btn.loading .spin { display: inline-block; }
+@keyframes rot { to { transform: rotate(360deg); } }
+.icon-btn { height: var(--h); min-width: var(--h); padding: 0 0.4rem; border-radius: var(--radius-sm); border: 1px solid transparent; background: none; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: all var(--transition); }
+.icon-btn:hover { color: var(--accent); border-color: var(--border); background: var(--surface-2); }
+.icon-btn.danger:hover { color: var(--danger); }
+
+.sdot { display: inline-flex; align-items: center; gap: 0.32rem; font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
+.sdot svg { flex-shrink: 0; }
+.sdot .st-txt { color: var(--text); }
+.sdot.s-on .st-txt { color: var(--success); }
+.sdot.s-off .st-txt { color: var(--danger); }
+.sdot.s-loff .st-txt { color: var(--muted); }
+.sdot.s-deg .st-txt, .sdot.s-warn .st-txt { color: var(--warning); }
+
+/* ── Mock AppHeader ── */
+.app-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+.app-head .brand { display: flex; align-items: center; gap: 0.4rem; font-size: 0.95rem; font-weight: 700; white-space: nowrap; }
+.app-head .brand svg { color: var(--accent); }
+.nav-items { display: flex; gap: 0.35rem; }
+.nav-item { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; font-weight: 500; padding: 0.4rem 0.8rem; border-radius: 7px; color: var(--muted); text-decoration: none; transition: all var(--transition); }
+.nav-item:hover { color: var(--text); }
+.nav-item.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+.nav-item svg { color: currentColor; }
+.head-right { display: flex; align-items: center; gap: 0.6rem; }
+.account-btn { height: var(--h); display: inline-flex; align-items: center; gap: 0.4rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); padding: 0 0.6rem; font-size: 0.8rem; cursor: pointer; }
+.account-btn .avatar { width: 22px; height: 22px; border-radius: 50%; background: var(--accent-light); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.72rem; }
+
+/* ── Node Management 頁 ── */
+.nm-body { padding: 1.1rem 1rem 1.4rem; }
+.page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 0.9rem; }
+.page-header h2 { margin: 0; font-size: 1.02rem; display: flex; align-items: center; gap: 0.45rem; }
+.page-header h2 svg { color: var(--accent); }
+.header-actions { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.arch-menu { position: relative; }
+.arch-dropdown { position: absolute; top: calc(100% + 4px); right: 0; min-width: 200px; z-index: 200; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-lg); padding: 0.3rem 0; }
+.arch-dropdown .ad-head { font-size: 0.68rem; color: var(--muted); padding: 0.35rem 0.8rem 0.3rem; text-transform: uppercase; letter-spacing: 0.4px; }
+.arch-option { display: flex; align-items: center; gap: 0.5rem; width: 100%; text-align: left; padding: 0.5rem 0.8rem; background: none; border: none; cursor: pointer; font-size: 0.82rem; color: var(--text); transition: background var(--transition); font-family: var(--mono); }
+.arch-option:hover { background: var(--surface-2); }
+.arch-option svg { color: var(--accent); flex-shrink: 0; }
+
+.node-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.node-table th, .node-table td { padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border); text-align: left; }
+.node-table th { font-size: 0.72rem; color: var(--muted); font-weight: 600; background: var(--surface-2); white-space: nowrap; }
+.node-table tbody tr { transition: background var(--transition); }
+.node-table tbody tr:hover { background: var(--surface-2); }
+.node-table .cell-name { font-weight: 700; }
+.node-table .cell-addr { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
+.node-table .cell-hb { font-family: var(--mono); font-size: 0.76rem; color: var(--muted); }
+.node-table .cell-ver { font-family: var(--mono); font-size: 0.78rem; }
+.badge { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.14rem 0.55rem; border-radius: 20px; font-size: 0.72rem; font-weight: 600; }
+.badge.b-on { background: var(--success-light); color: var(--success); }
+.badge.b-off { background: var(--danger-light); color: var(--danger); }
+.badge.b-loff { background: var(--surface-3); color: var(--muted); }
+.badge.b-deg, .badge.b-warn { background: var(--warning-light); color: var(--warning); }
+.row-actions { display: flex; gap: 0.3rem; }
+.row-actions .icon-btn { height: 30px; min-width: 30px; }
+
+.empty-state { text-align: center; padding: 2.6rem 1rem; color: var(--muted); }
+.empty-state .es-ico { margin-bottom: 0.5rem; display: flex; justify-content: center; }
+.empty-state .es-ico svg { color: var(--muted); }
+.empty-state p { margin: 0 0 1rem; font-size: 0.9rem; }
+
+/* ── NodeFormModal（520px）── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1000; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 150ms ease; padding: 1rem; }
+.modal-overlay.open { opacity: 1; pointer-events: auto; }
+.node-form-modal { background: var(--surface); border-radius: 14px; width: 100%; max-width: 520px; box-shadow: var(--shadow-lg); animation: modalIn 0.25s ease-out; max-height: 88vh; display: flex; flex-direction: column; }
+@keyframes modalIn { from { opacity: 0; transform: scale(0.96) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+.nfm-head { display: flex; align-items: center; justify-content: space-between; padding: 1.1rem 1.3rem 0.8rem; border-bottom: 1px solid var(--border); }
+.nfm-head h3 { margin: 0; font-size: 1.02rem; }
+.nfm-body { padding: 1rem 1.3rem; overflow-y: auto; }
+.nfm-field { margin-bottom: 0.85rem; }
+.nfm-field label { display: block; font-size: 0.78rem; font-weight: 600; margin-bottom: 0.3rem; color: var(--text); }
+.nfm-field label .req { color: var(--danger); }
+.nfm-field input { width: 100%; height: var(--h); padding: 0 0.7rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-size: var(--fs); transition: border-color var(--transition), box-shadow var(--transition); }
+.nfm-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); outline: none; }
+.nfm-field input.field-error { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(197,34,31,0.12); }
+.nfm-field .field-error-text { margin: 0.25rem 0 0; font-size: 0.72rem; color: var(--danger); }
+.nfm-field .hint { margin: 0.25rem 0 0; font-size: 0.7rem; color: var(--muted); }
+.test-result { display: flex; align-items: flex-start; gap: 0.45rem; padding: 0.55rem 0.75rem; border-radius: var(--radius-sm); font-size: 0.8rem; margin-bottom: 0.9rem; line-height: 1.5; }
+.test-result svg { flex-shrink: 0; margin-top: 2px; }
+.test-ok { background: var(--success-light); color: var(--success); border: 1px solid var(--success-border); }
+.test-fail { background: var(--danger-light); color: var(--danger); border: 1px solid var(--danger-border); }
+.nfm-foot { display: flex; justify-content: flex-end; gap: 0.6rem; padding: 0.85rem 1.3rem 1.1rem; border-top: 1px solid var(--border); }
+
+/* ── ConfirmModal（沿用既有 pattern）── */
+.confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1100; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 150ms ease; }
+.confirm-overlay.open { opacity: 1; pointer-events: auto; }
+.confirm-modal { background: var(--surface); border-radius: 14px; max-width: 420px; width: 100%; padding: 1.6rem 1.6rem 1.3rem; box-shadow: var(--shadow-lg); animation: modalIn 0.25s ease-out; }
+.confirm-modal h3 { margin: 0 0 0.5rem; font-size: 1.05rem; }
+.confirm-modal .cm-msg { margin: 0 0 1.2rem; color: var(--muted); font-size: 0.88rem; line-height: 1.6; }
+.confirm-modal .cm-msg b { color: var(--text); font-family: var(--mono); }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
+
+/* ── Toast ── */
+.toast-wrap { position: fixed; bottom: 1.2rem; right: 1.2rem; z-index: 1200; display: flex; flex-direction: column; gap: 0.5rem; }
+.toast { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); padding: 0.55rem 0.9rem; font-size: 0.8rem; box-shadow: var(--shadow-lg); transition: opacity 0.3s ease; max-width: 340px; }
+.toast.success { border-left-color: var(--success); }
+.toast.warning { border-left-color: var(--warning); }
+.toast.error { border-left-color: var(--danger); }
+
+/* ── 元件解剖 ── */
+.anatomy { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-top: 1.1rem; }
+@media (max-width: 760px) { .anatomy { grid-template-columns: 1fr; } }
+.anat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem 1.1rem; }
+.anat-card h4 { margin: 0 0 0.8rem; font-size: 0.92rem; display: flex; align-items: center; gap: 0.4rem; }
+.anat-card h4 .tag { font-size: 0.62rem; font-weight: 700; background: var(--accent-light); color: var(--accent); border-radius: 20px; padding: 0.12rem 0.5rem; }
+.anat-stage { background: var(--frame); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1rem; margin-bottom: 0.85rem; }
+.anat-dims { font-size: 0.74rem; color: var(--muted); line-height: 1.8; }
+.anat-dims b { color: var(--accent); font-family: var(--mono); }
+
+.states { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 1rem; }
+.states th, .states td { border: 1px solid var(--border); padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+.states th { background: var(--surface-2); font-size: 0.74rem; color: var(--muted); font-weight: 700; }
+.states td:first-child { white-space: nowrap; font-weight: 600; }
+.states code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0.05rem 0.35rem; font-size: 0.72rem; font-family: var(--mono); }
+
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.5rem 1.5rem; margin-top: 1rem; }
+.anno { display: flex; gap: 0.55rem; font-size: 0.8rem; color: var(--muted); align-items: flex-start; line-height: 1.55; }
+.anno .num { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-light); color: var(--accent); font-size: 0.7rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
+.anno b { color: var(--text); }
+
+.note { font-size: 0.78rem; color: var(--muted); margin-top: 1rem; line-height: 1.7; background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; padding: 0.6rem 0.9rem; }
+.note b { color: var(--accent); }
+.demo-hint { font-size: 0.78rem; color: var(--muted); margin-top: 0.7rem; line-height: 1.6; }
+.demo-hint b { color: var(--accent); }
+
+.tokens { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; margin-top: 1rem; }
+.tcard { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.8rem 0.95rem; }
+.tcard .tk { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.4px; }
+.tcard .tv { font-size: 1.05rem; font-weight: 700; color: var(--text); margin-top: 0.2rem; }
+.tcard .td { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; line-height: 1.5; }
+.tcard .tv.accent { color: var(--accent); }
+
+.footnote { margin-top: 2rem; font-size: 0.72rem; color: var(--muted); border-top: 1px dashed var(--border); padding-top: 0.75rem; line-height: 1.7; }
+
+.frame.mobile-frame { display: none; }
+body.view-mobile .frame.mobile-frame { display: block; }
+body.view-mobile .frame.desktop-frame { display: none; }
+.mobile-frame .app-page { max-width: 390px; margin: 0 auto; }
+.mobile-frame .nm-body { padding: 0.8rem 0.7rem 1.1rem; }
+.mobile-frame .nav-items { display: none; }
+.mobile-frame .node-table { min-width: 560px; }
+.mobile-frame .table-scroll { overflow-x: auto; }
+.mobile-frame .btn { height: var(--h-mobile); }
+.mobile-frame .node-form-modal { max-height: 100dvh; border-radius: 14px 14px 0 0; }
+.mobile-frame .nfm-foot .btn { flex: 1; justify-content: center; }
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div>
+      <h1>🖥 014 · Node Management（多機管理）</h1>
+      <div class="sub">完整規格 — 節點列表表格 · 新增/編輯 Modal · 測試連線三態 · 移除確認 · 下載 Agent</div>
+    </div>
+    <div class="controls">
+      <div class="segmented" id="devSwitch">
+        <button data-dev="desktop" class="active">🖥 Desktop</button>
+        <button data-dev="mobile">📱 Mobile</button>
+      </div>
+      <button class="segmented" id="themeToggle" style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:3px;">🌙 切換深色</button>
+    </div>
+  </div>
+
+  <!-- ══════════ 1. 設計 Token ══════════ -->
+  <div class="frame">
+    <h2>1️⃣ 設計 Token</h2>
+    <p class="fsub">與 014-aggregate / 014-node-dashboard 共用同一套 token（對應 --lms-* 變數）。</p>
+    <div class="tokens">
+      <div class="tcard"><div class="tk">控制高度</div><div class="tv accent">36 / 44px</div><div class="td">desktop 36px · mobile 44px（--lms-h / --lms-h-mobile）</div></div>
+      <div class="tcard"><div class="tk">Modal 寬度</div><div class="tv">520px</div><div class="td">NodeFormModal（5 欄位 + 測試結果）；ConfirmModal 沿用 420px</div></div>
+      <div class="tcard"><div class="tk">表格</div><div class="tv">6 欄</div><div class="td">名稱 / 位址 / 狀態 / 最後心跳 / 版本 / 操作</div></div>
+      <div class="tcard"><div class="tk">狀態 badge</div><div class="tv">pill</div><div class="td">20px 圓角 · 色彩 + 文字（WCAG 1.4.1）</div></div>
+      <div class="tcard"><div class="tk">測試連線</div><div class="tv">5s</div><div class="td">GET /health 代理；成功綠 / 失敗紅（Modal 保持開啟）</div></div>
+      <div class="tcard"><div class="tk">動畫</div><div class="tv">150ms</div><div class="td">Modal/backdrop 淡入 · 尊重 reduced-motion</div></div>
+    </div>
+  </div>
+
+  <!-- ══════════ 2. 完整畫面（Desktop） ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>2️⃣ 完整畫面與互動 — /nodes 節點管理</h2>
+    <p class="fsub">Header 第 3 項導覽進入；列表表格 + 「新增節點」「下載 Agent」；編輯/移除逐列操作。</p>
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url">https://linux-service-manager/nodes · Node Management</span>
+      <span class="elem-count">互動：<b>新增 · 編輯 · 移除 · 下載</b></span>
+    </div>
+    <div class="app-page">
+      <div class="app-head">
+        <div class="brand">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+          Linux Service Manager
+        </div>
+        <nav class="nav-items" aria-label="主導航">
+          <a class="nav-item" href="javascript:void(0)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Dashboard</a>
+          <a class="nav-item" href="javascript:void(0)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8m8 4H8m3-8H8"/></svg>Audit Log</a>
+          <a class="nav-item active" href="javascript:void(0)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Node Management</a>
+        </nav>
+        <div class="head-right">
+          <button class="account-btn"><span class="avatar">A</span> admin <span>▾</span></button>
+        </div>
+      </div>
+
+      <div class="nm-body">
+        <!-- page-header -->
+        <div class="page-header">
+          <h2><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Node Management</h2>
+          <div class="header-actions">
+            <div class="arch-menu">
+              <button class="btn secondary" id="archToggle">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                下載 Agent
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+              <div class="arch-dropdown" id="archMenu" style="display:none" role="menu">
+                <div class="ad-head">選擇架構</div>
+                <button class="arch-option" role="menuitem" data-arch="amd64"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>agent-linux-amd64</button>
+                <button class="arch-option" role="menuitem" data-arch="arm64"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>agent-linux-arm64</button>
+              </div>
+            </div>
+            <button class="btn primary" id="btnAddNode">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              新增節點
+            </button>
+          </div>
+        </div>
+
+        <!-- 列表表格 -->
+        <div class="table-scroll">
+          <table class="node-table">
+            <thead><tr>
+              <th>名稱</th><th>位址</th><th>狀態</th><th>最後心跳</th><th>版本</th><th>操作</th>
+            </tr></thead>
+            <tbody id="nmTbody">
+              <tr data-name="web-server-01">
+                <td class="cell-name">web-server-01</td>
+                <td class="cell-addr">10.0.0.5:8443</td>
+                <td><span class="badge b-on"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg>線上</span></td>
+                <td class="cell-hb">08-18 10:03:12</td>
+                <td class="cell-ver">1.2.0</td>
+                <td><div class="row-actions">
+                  <button class="icon-btn" data-edit="web-server-01" aria-label="編輯 web-server-01"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+                  <button class="icon-btn danger" data-remove="web-server-01" aria-label="移除 web-server-01"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+                </div></td>
+              </tr>
+              <tr data-name="web-server-02">
+                <td class="cell-name">web-server-02</td>
+                <td class="cell-addr">10.0.0.6:8443</td>
+                <td><span class="badge b-on"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg>線上</span></td>
+                <td class="cell-hb">08-18 10:03:09</td>
+                <td class="cell-ver">1.2.0</td>
+                <td><div class="row-actions">
+                  <button class="icon-btn" data-edit="web-server-02" aria-label="編輯 web-server-02"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+                  <button class="icon-btn danger" data-remove="web-server-02" aria-label="移除 web-server-02"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+                </div></td>
+              </tr>
+              <tr data-name="db-01">
+                <td class="cell-name">db-01</td>
+                <td class="cell-addr">10.0.0.9:8443</td>
+                <td><span class="badge b-deg"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--warning)"/></svg>延遲</span></td>
+                <td class="cell-hb">08-18 10:02:50</td>
+                <td class="cell-ver">1.2.0</td>
+                <td><div class="row-actions">
+                  <button class="icon-btn" data-edit="db-01" aria-label="編輯 db-01"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+                  <button class="icon-btn danger" data-remove="db-01" aria-label="移除 db-01"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+                </div></td>
+              </tr>
+              <tr data-name="web-server-04">
+                <td class="cell-name">web-server-04</td>
+                <td class="cell-addr">10.0.0.7:8443</td>
+                <td><span class="badge b-off"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--danger)"/></svg>離線</span></td>
+                <td class="cell-hb">08-18 09:12:40</td>
+                <td class="cell-ver">1.1.0</td>
+                <td><div class="row-actions">
+                  <button class="icon-btn" data-edit="web-server-04" aria-label="編輯 web-server-04"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+                  <button class="icon-btn danger" data-remove="web-server-04" aria-label="移除 web-server-04"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+                </div></td>
+              </tr>
+              <tr data-name="legacy-01">
+                <td class="cell-name">legacy-01</td>
+                <td class="cell-addr">10.0.0.11:8443</td>
+                <td><span class="badge b-loff"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--muted)"/></svg>長期離線</span></td>
+                <td class="cell-hb">08-17 22:40:11</td>
+                <td class="cell-ver">1.0.0</td>
+                <td><div class="row-actions">
+                  <button class="icon-btn" data-edit="legacy-01" aria-label="編輯 legacy-01"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+                  <button class="icon-btn danger" data-remove="legacy-01" aria-label="移除 legacy-01"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>
+                </div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Legend 註記 -->
+    <div class="legend">
+      <div class="anno"><span class="num">1</span><div><b>page-header</b> — 標題 + 右上動作（沿用 TokenManageView pattern）；「新增節點」primary、「下載 Agent」secondary dropdown。</div></div>
+      <div class="anno"><span class="num">2</span><div><b>狀態 badge</b> — pill（20px 圓角）+ 圓點 + 文字（「線上/延遲/離線/長期離線」），色彩 + 文字雙重傳達。</div></div>
+      <div class="anno"><span class="num">3</span><div><b>最後心跳 / 版本</b> — mono 字型；無資料顯示「—」（從未收到心跳、版本未知）。</div></div>
+      <div class="anno"><span class="num">4</span><div><b>操作</b> — 編輯（鉛筆）/ 移除（垃圾桶）icon-only 30px；移除 → ConfirmModal「確定要移除此節點？所有歷史資料將保留。」</div></div>
+      <div class="anno"><span class="num">5</span><div><b>下載 Agent</b> — 架構選單（amd64/arm64）→ <code>GET /agents/download?arch=</code> 存檔。</div></div>
+      <div class="anno"><span class="num">6</span><div><b>移除後</b> — 該節點自列表與 Aggregate Dashboard 消失（WS <code>node_removed</code>，無需重整）；Audit Log 保留。</div></div>
+    </div>
+
+    <!-- 元件解剖 -->
+    <div class="anatomy">
+      <div class="anat-card">
+        <h4>NodeFormModal <span class="tag">520px · role=dialog</span></h4>
+        <div class="anat-stage">
+          <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface)">
+            <div class="nfm-head"><h3 style="font-size:0.95rem">新增節點</h3><span class="icon-btn" style="height:28px;min-width:28px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></span></div>
+            <div style="padding:0.7rem 1rem">
+              <div class="nfm-field"><label>節點名稱 <span class="req">*</span></label><input type="text" placeholder="web-server-05" style="height:32px"></div>
+              <div class="nfm-field"><label>Agent 位址（host:port）<span class="req">*</span></label><input type="text" placeholder="10.0.0.12:8443" style="height:32px"></div>
+              <div class="test-result test-ok"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg><span>連線成功 — Agent v1.2.3 @ web-server-05 (Ubuntu 22.04)</span></div>
+            </div>
+            <div class="nfm-foot" style="padding:0.6rem 1rem"><span class="btn sm secondary">取消</span><span class="btn sm secondary">⟳ 測試連線</span><span class="btn sm primary">✓ 註冊</span></div>
+          </div>
+        </div>
+        <div class="anat-dims">
+          <b>Modal</b>：max-width <b>520px</b> · radius 14px · <code>role="dialog" aria-modal="true" aria-labelledby</code> · focus trap<br>
+          <b>欄位</b>：36px（mobile 44px）· 必填紅框 <code>.field-error</code> · 前端攔截不發請求<br>
+          <b>測試結果</b>：綠底 <code>.test-ok</code> / 紅底 <code>.test-fail</code>（內含 SVG + 文字，非純色）<br>
+          <b>Token 欄位</b>：編輯模式 placeholder「<b>留空表示不變更</b>」
+        </div>
+      </div>
+      <div class="anat-card">
+        <h4>表格列 <span class="tag">6 欄</span></h4>
+        <div class="anat-stage">
+          <table class="node-table" style="font-size:0.76rem">
+            <thead><tr><th>名稱</th><th>位址</th><th>狀態</th><th>最後心跳</th><th>版本</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td class="cell-name">web-server-01</td><td class="cell-addr">10.0.0.5:8443</td><td><span class="badge b-on"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg>線上</span></td><td class="cell-hb">08-18 10:03:12</td><td class="cell-ver">1.2.0</td><td><div class="row-actions"><span class="icon-btn" style="height:26px;min-width:26px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></span><span class="icon-btn danger" style="height:26px;min-width:26px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></span></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="anat-dims">
+          <b>表頭</b>：0.72rem muted 600 · <code>--lms-surface-2</code> 底<br>
+          <b>列</b>：padding 0.6rem 0.75rem · hover 底色 <code>--lms-surface-2</code><br>
+          <b>位址/心跳/版本</b>：mono 0.76–0.78rem muted<br>
+          <b>操作按鈕</b>：icon-only <b>30px</b>（mobile 44px）· <code>aria-label</code> 完整文字
+        </div>
+      </div>
+    </div>
+
+    <!-- 狀態矩陣 -->
+    <table class="states">
+      <tr><th style="width:150px;">狀態</th><th>視覺</th><th>互動</th></tr>
+      <tr><td>Modal 開啟</td><td>backdrop 淡入 + dialog 滑入（150ms）</td><td>focus trap；背景捲動鎖定；Esc 關閉</td></tr>
+      <tr><td>必填錯誤</td><td>欄位 <code>--lms-danger</code> 邊框 + 紅字提示</td><td>前端攔截，不發送 POST</td></tr>
+      <tr><td>測試連線中</td><td>測試按鈕 spinner + disabled</td><td>—</td></tr>
+      <tr><td>測試成功</td><td>綠底「✅ 連線成功 — Agent v1.2.3 @ …」</td><td>Modal 保持開啟，可直接註冊</td></tr>
+      <tr><td>測試失敗</td><td>紅底「❌ 無法連線：connection refused / TLS 憑證驗證失敗…」</td><td>修正位址/指紋後可重試</td></tr>
+      <tr><td>註冊中</td><td>註冊按鈕 spinner</td><td>不可重複送出</td></tr>
+      <tr><td>註冊成功（可達）</td><td>Toast「節點 X 已註冊並上線」（success）</td><td>關閉 + 列表更新（線上）</td></tr>
+      <tr><td>註冊成功（不可達）</td><td>Toast「節點 X 已註冊但無法連線」（warning）</td><td>關閉 + 列表更新（離線）</td></tr>
+      <tr><td>名稱重複 409</td><td>Toast「節點名稱重複，請使用不同名稱」（error）</td><td><b>Modal 保持開啟</b>供修改</td></tr>
+      <tr><td>編輯模式</td><td>欄位預填；Token placeholder「留空表示不變更」</td><td>PUT；token 留空 = 保留原值</td></tr>
+      <tr><td>移除確認</td><td>ConfirmModal「確定要移除此節點？所有歷史資料將保留。」</td><td>確認 → DELETE + Toast「節點已移除」+ 列消失（WS 同步）</td></tr>
+      <tr><td>下載 Agent</td><td>架構選單（amd64/arm64）</td><td>點選 → blob 存檔 <code>agent-linux-&lt;arch&gt;</code></td></tr>
+      <tr><td>空列表</td><td>EmptyState「尚無已註冊節點」+ 新增按鈕</td><td>點擊開啟 Modal</td></tr>
+    </table>
+    <div class="note"><b>無障礙：</b>Modal <code>role="dialog" aria-modal="true" aria-labelledby</code> + focus trap；icon-only 按鈕 <code>aria-label</code>（「編輯 {name}」「移除 {name}」）；badge 色彩 + 文字雙重傳達；必填錯誤 <code>role="alert"</code>。</div>
+  </div>
+
+  <!-- ══════════ 3. 表單狀態 Demo ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>3️⃣ 表單狀態 Demo — 驗證錯誤 / 測試成功 / 測試失敗 / 儲存 spinner</h2>
+    <p class="fsub">同一 NodeFormModal 的四種狀態呈現（互動 demo 於畫面 2 可實際操作）。</p>
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url">https://linux-service-manager/nodes · 表單 demo</span>
+      <span class="elem-count">互動：<b>無（靜態對照）</b></span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+      <div style="border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden">
+        <div class="nfm-head"><h3 style="font-size:0.95rem">驗證錯誤（必填空白）</h3></div>
+        <div style="padding:0.7rem 1rem">
+          <div class="nfm-field"><label>節點名稱 <span class="req">*</span></label><input type="text" value="" class="field-error" placeholder="必填"><p class="field-error-text" role="alert">節點名稱為必填</p></div>
+          <div class="nfm-field"><label>Agent 位址（host:port）<span class="req">*</span></label><input type="text" value="" class="field-error" placeholder="必填"><p class="field-error-text" role="alert">Agent 位址為必填</p></div>
+        </div>
+        <div class="nfm-foot" style="padding:0.6rem 1rem"><span class="btn sm secondary">取消</span><span class="btn sm secondary">⟳ 測試連線</span><span class="btn sm primary">✓ 註冊</span></div>
+      </div>
+      <div style="border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden">
+        <div class="nfm-head"><h3 style="font-size:0.95rem">測試失敗（可修正重試）</h3></div>
+        <div style="padding:0.7rem 1rem">
+          <div class="nfm-field"><label>節點名稱 <span class="req">*</span></label><input type="text" value="web-server-05" style="height:32px"></div>
+          <div class="nfm-field"><label>Agent 位址（host:port）<span class="req">*</span></label><input type="text" value="10.0.0.99:8443" class="field-error" style="height:32px"></div>
+          <div class="test-result test-fail"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg><span>無法連線：connection refused</span></div>
+        </div>
+        <div class="nfm-foot" style="padding:0.6rem 1rem"><span class="btn sm secondary">取消</span><span class="btn sm secondary loading"><span class="spin"></span>測試連線</span><span class="btn sm primary">✓ 註冊</span></div>
+      </div>
+    </div>
+    <p class="demo-hint"><b>對照：</b>畫面 2 的「＋ 新增節點」可實際體驗測試連線成功/失敗與註冊 Toast。</p>
+  </div>
+
+  <!-- ══════════ 4. Mobile ══════════ -->
+  <div class="frame mobile-frame">
+    <h2>4️⃣ Mobile（≤767px）</h2>
+    <p class="fsub">表格橫向捲動（min-width 560px）；NodeFormModal 轉全螢幕 bottom sheet（footer 三鍵並排全寬 44px）；控制元件 44px。</p>
+    <div class="app-page is-mobile">
+      <div class="app-head">
+        <div class="brand">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+          Linux Service Manager
+        </div>
+      </div>
+      <div class="nm-body">
+        <div class="page-header">
+          <h2 style="font-size:0.95rem"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Node Management</h2>
+          <div class="header-actions" style="width:100%">
+            <button class="btn secondary" style="flex:1">⬇ 下載 Agent</button>
+            <button class="btn primary" style="flex:1">＋ 新增節點</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="node-table">
+            <thead><tr><th>名稱</th><th>位址</th><th>狀態</th><th>最後心跳</th><th>版本</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td class="cell-name">web-server-01</td><td class="cell-addr">10.0.0.5:8443</td><td><span class="badge b-on"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg>線上</span></td><td class="cell-hb">08-18 10:03</td><td class="cell-ver">1.2.0</td><td><div class="row-actions"><span class="icon-btn" style="height:44px;width:44px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></span><span class="icon-btn danger" style="height:44px;width:44px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></span></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <!-- 示意：bottom sheet modal -->
+        <div style="border:1px solid var(--border);border-radius:14px 14px 0 0;background:var(--surface);margin-top:1rem">
+          <div class="nfm-head"><h3 style="font-size:0.95rem">新增節點</h3><span class="icon-btn" style="height:44px;width:44px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></span></div>
+          <div style="padding:0.7rem 1rem">
+            <div class="nfm-field"><label>節點名稱 <span class="req">*</span></label><input type="text" placeholder="web-server-05" style="height:44px"></div>
+            <div class="nfm-field"><label>Agent 位址（host:port）<span class="req">*</span></label><input type="text" placeholder="10.0.0.12:8443" style="height:44px"></div>
+          </div>
+          <div class="nfm-foot" style="padding:0.7rem 1rem;gap:0.5rem">
+            <span class="btn sm secondary" style="height:44px;flex:1">取消</span>
+            <span class="btn sm secondary" style="height:44px;flex:1">⟳ 測試連線</span>
+            <span class="btn sm primary" style="height:44px;flex:1">✓ 註冊</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="note"><b>Mobile 規範：</b>bottom sheet <code>max-height:100dvh</code>、頂部圓角、footer 三鍵並排全寬 44px（WCAG 2.5.5）；表格橫向捲動保留完整 6 欄。</p>
+  </div>
+
+  <!-- ══════════ 5. 規格摘要 ══════════ -->
+  <div class="frame">
+    <h2>5️⃣ 規格摘要 — CSS 變數對應</h2>
+    <p class="fsub">實作時直接套用下列變數與結構（對應開發規格 §7 骨架）。</p>
+    <table class="states">
+      <tr><th style="width:220px;">項目</th><th>值</th><th>對應</th></tr>
+      <tr><td>頁面容器</td><td>page-header（標題 + 右側動作）</td><td><code>.page-header</code>（TokenManageView pattern）</td></tr>
+      <tr><td>NodeFormModal</td><td>max-width 520px · radius 14px · focus trap</td><td><code>.node-form-modal</code>（--lms-surface / --lms-shadow-lg）</td></tr>
+      <tr><td>表單欄位</td><td>36px（mobile 44px）· focus ring 3px</td><td><code>--lms-h / --lms-h-mobile</code></td></tr>
+      <tr><td>必填錯誤</td><td>--lms-danger 邊框 + 紅字</td><td><code>.field-error / .field-error-text</code></td></tr>
+      <tr><td>測試結果</td><td>綠/紅底 + SVG + 文字</td><td><code>.test-ok / .test-fail</code>（--lms-success-light / --lms-danger-light）</td></tr>
+      <tr><td>狀態 badge</td><td>pill 20px 圓角 · 色彩+文字</td><td><code>.badge.b-on/.b-off/.b-deg/.b-loff</code></td></tr>
+      <tr><td>表格</td><td>6 欄 · hover 底色 · mobile overflow-x</td><td><code>.node-table / .table-scroll</code></td></tr>
+      <tr><td>下載選單</td><td>200px 下拉 · mono 檔名</td><td><code>.arch-dropdown / .arch-option</code></td></tr>
+      <tr><td>移除確認</td><td>420px ConfirmModal（既有 pattern）</td><td><code>.lms-modal</code> / ConfirmModal.vue</td></tr>
+      <tr><td>空列表</td><td>SVG 圖示 + 新增按鈕</td><td><code>.empty-state</code>（View 層自渲染）</td></tr>
+    </table>
+  </div>
+
+  <div class="footnote">
+    📄 設計文件：<b>docs/uiux/014-multi-node-design.md</b> ・ 本文件：<b>docs/uiux/014-node-management-design.html</b><br>
+    實作範圍：<b>NodeManagementView.vue + NodeFormModal.vue + ConfirmModal 移除 + 下載 Agent + api/client.ts（節點 CRUD/test-connection/download）</b>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<!-- NodeFormModal（520px） -->
+<div class="modal-overlay" id="formOverlay">
+  <div class="node-form-modal" role="dialog" aria-modal="true" aria-labelledby="nfmTitle">
+    <div class="nfm-head">
+      <h3 id="nfmTitle">新增節點</h3>
+      <button class="icon-btn" id="nfmClose" aria-label="關閉"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="nfm-body">
+      <div class="nfm-field">
+        <label for="nfmName">節點名稱 <span class="req">*</span></label>
+        <input id="nfmName" type="text" placeholder="web-server-05" data-testid="node-name">
+        <p class="field-error-text" id="nfmNameErr" style="display:none" role="alert">節點名稱為必填</p>
+      </div>
+      <div class="nfm-field">
+        <label for="nfmAddr">Agent 位址（host:port）<span class="req">*</span></label>
+        <input id="nfmAddr" type="text" placeholder="10.0.0.12:8443" data-testid="node-address">
+        <p class="field-error-text" id="nfmAddrErr" style="display:none" role="alert">Agent 位址為必填</p>
+      </div>
+      <div class="nfm-field">
+        <label for="nfmFp">TLS 憑證指紋（選填）</label>
+        <input id="nfmFp" type="text" placeholder="SHA-256 指紋">
+      </div>
+      <div class="nfm-field">
+        <label for="nfmToken">API Token（選填）</label>
+        <input id="nfmToken" type="password" placeholder="lsm_node_…">
+        <p class="hint">編輯模式：留空表示不變更</p>
+      </div>
+      <div class="nfm-field">
+        <label for="nfmNotes">備註（選填）</label>
+        <input id="nfmNotes" type="text" placeholder="生產環境 Web 前端">
+      </div>
+      <div class="test-result" id="nfmTestResult" style="display:none"></div>
+    </div>
+    <div class="nfm-foot">
+      <button class="btn secondary" id="nfmCancel">取消</button>
+      <button class="btn secondary" id="nfmTest" data-testid="test-connection">⟳ 測試連線</button>
+      <button class="btn primary" id="nfmSave" data-testid="node-save">✓ 註冊</button>
+    </div>
+  </div>
+</div>
+
+<!-- ConfirmModal（移除） -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="cmTitle">
+    <h3 id="cmTitle">移除節點</h3>
+    <p class="cm-msg">確定要移除此節點？<b id="cmName"></b><br>所有歷史資料將保留。</p>
+    <div class="confirm-actions">
+      <button class="btn secondary" id="cmCancel">取消</button>
+      <button class="btn danger" id="cmConfirm">確認移除</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── 通用切換（模板內建，勿刪）──
+const themeBtn = document.getElementById('themeToggle');
+themeBtn.addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+  themeBtn.textContent = dark ? '🌙 切換深色' : '☀️ 切換淺色';
+});
+const devSwitch = document.getElementById('devSwitch');
+devSwitch.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+  devSwitch.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  document.body.classList.toggle('view-mobile', b.dataset.dev === 'mobile');
+}));
+
+// ── Toast helper ──
+const toastWrap = document.getElementById('toastWrap');
+function toast(msg, type) {
+  if (!toastWrap) return;
+  const el = document.createElement('div');
+  el.className = 'toast ' + (type || 'success');
+  el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+  el.textContent = msg;
+  toastWrap.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; }, 3000);
+  setTimeout(() => el.remove(), 3350);
+}
+
+// ── 下載 Agent 選單 ──
+const archToggle = document.getElementById('archToggle');
+const archMenu = document.getElementById('archMenu');
+if (archToggle) {
+  archToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    archMenu.style.display = archMenu.style.display === 'none' ? 'block' : 'none';
+  });
+  document.addEventListener('click', (e) => {
+    if (archMenu.style.display !== 'none' && !archMenu.contains(e.target) && !archToggle.contains(e.target)) archMenu.style.display = 'none';
+  });
+  archMenu.querySelectorAll('.arch-option').forEach(opt => {
+    opt.addEventListener('click', () => {
+      toast(`下載 agent-linux-${opt.dataset.arch}（demo）`, 'success');
+      archMenu.style.display = 'none';
+    });
+  });
+}
+
+// ── NodeFormModal ──
+const formOverlay = document.getElementById('formOverlay');
+const nfmTitle = document.getElementById('nfmTitle');
+const nfmName = document.getElementById('nfmName');
+const nfmAddr = document.getElementById('nfmAddr');
+const nfmFp = document.getElementById('nfmFp');
+const nfmToken = document.getElementById('nfmToken');
+const nfmNotes = document.getElementById('nfmNotes');
+const nfmNameErr = document.getElementById('nfmNameErr');
+const nfmAddrErr = document.getElementById('nfmAddrErr');
+const nfmTestResult = document.getElementById('nfmTestResult');
+const nfmTest = document.getElementById('nfmTest');
+const nfmSave = document.getElementById('nfmSave');
+const nfmCancel = document.getElementById('nfmCancel');
+const nfmClose = document.getElementById('nfmClose');
+let editingNode = null;
+
+function openForm(nodeName) {
+  editingNode = nodeName || null;
+  nfmTitle.textContent = nodeName ? '編輯節點' : '新增節點';
+  nfmName.value = nodeName || '';
+  nfmAddr.value = nodeName ? '10.0.0.5:8443' : '';
+  nfmFp.value = ''; nfmToken.value = ''; nfmNotes.value = '';
+  nfmToken.placeholder = nodeName ? '留空表示不變更' : 'lsm_node_…';
+  nfmNameErr.style.display = 'none'; nfmAddrErr.style.display = 'none';
+  nfmTestResult.style.display = 'none';
+  nfmName.classList.remove('field-error'); nfmAddr.classList.remove('field-error');
+  formOverlay.classList.add('open');
+}
+function closeForm() { formOverlay.classList.remove('open'); }
+
+document.getElementById('btnAddNode').addEventListener('click', () => openForm(null));
+document.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => openForm(btn.dataset.edit)));
+nfmCancel.addEventListener('click', closeForm);
+nfmClose.addEventListener('click', closeForm);
+formOverlay.addEventListener('click', (e) => { if (e.target === formOverlay) closeForm(); });
+
+nfmTest.addEventListener('click', () => {
+  // 驗證（前端攔截，不發請求）
+  let valid = true;
+  if (!nfmName.value.trim()) { nfmName.classList.add('field-error'); nfmNameErr.style.display = 'block'; valid = false; }
+  else { nfmName.classList.remove('field-error'); nfmNameErr.style.display = 'none'; }
+  if (!nfmAddr.value.trim()) { nfmAddr.classList.add('field-error'); nfmAddrErr.style.display = 'block'; valid = false; }
+  else { nfmAddr.classList.remove('field-error'); nfmAddrErr.style.display = 'none'; }
+  if (!valid) { toast('請先填寫必要欄位（前端驗證，不發送請求）', 'warning'); return; }
+  // 測試連線 demo：spinner → 依位址成功/失敗
+  nfmTest.classList.add('loading');
+  nfmTest.disabled = true;
+  nfmTestResult.style.display = 'none';
+  setTimeout(() => {
+    nfmTest.classList.remove('loading');
+    nfmTest.disabled = false;
+    const addr = nfmAddr.value.trim();
+    if (addr.includes('.99') || addr.includes(':') && addr.endsWith('99')) {
+      nfmTestResult.className = 'test-result test-fail';
+      nfmTestResult.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg><span>無法連線：connection refused</span>';
+    } else {
+      nfmTestResult.className = 'test-result test-ok';
+      nfmTestResult.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg><span>連線成功 — Agent v1.2.3 @ ' + (nfmName.value.trim() || 'web-server-05') + ' (Ubuntu 22.04)</span>';
+    }
+    nfmTestResult.style.display = 'flex';
+  }, 800);
+});
+
+nfmSave.addEventListener('click', () => {
+  if (!nfmName.value.trim() || !nfmAddr.value.trim()) {
+    nfmTest.click();
+    return;
+  }
+  nfmSave.classList.add('loading');
+  nfmSave.disabled = true;
+  setTimeout(() => {
+    nfmSave.classList.remove('loading');
+    nfmSave.disabled = false;
+    const name = nfmName.value.trim();
+    if (name === 'web-server-01') {
+      toast('節點名稱重複，請使用不同名稱（409，Modal 保持開啟）', 'error');
+      return;
+    }
+    closeForm();
+    if (editingNode) {
+      toast(`節點 ${name} 已更新`, 'success');
+    } else {
+      toast(`節點 ${name} 已註冊並上線`, 'success');
+      // 列表新增一列（demo）
+      const tbody = document.getElementById('nmTbody');
+      if (tbody) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td class="cell-name">' + name + '</td><td class="cell-addr">' + nfmAddr.value.trim() + '</td>' +
+          '<td><span class="badge b-on"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg>線上</span></td>' +
+          '<td class="cell-hb">08-18 10:05:01</td><td class="cell-ver">1.2.0</td>' +
+          '<td><div class="row-actions"><span class="icon-btn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></span><span class="icon-btn danger"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></span></div></td>';
+        tbody.prepend(tr);
+      }
+    }
+  }, 800);
+});
+
+// ── 移除確認（ConfirmModal）──
+const confirmOverlay = document.getElementById('confirmOverlay');
+const cmName = document.getElementById('cmName');
+let pendingRemove = null;
+document.querySelectorAll('[data-remove]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    pendingRemove = btn.dataset.remove;
+    cmName.textContent = pendingRemove;
+    confirmOverlay.classList.add('open');
+  });
+});
+document.getElementById('cmCancel').addEventListener('click', () => confirmOverlay.classList.remove('open'));
+confirmOverlay.addEventListener('click', (e) => { if (e.target === confirmOverlay) confirmOverlay.classList.remove('open'); });
+document.getElementById('cmConfirm').addEventListener('click', () => {
+  confirmOverlay.classList.remove('open');
+  const row = document.querySelector(`tr[data-name="${pendingRemove}"]`);
+  if (row) row.remove();
+  toast(`節點 ${pendingRemove} 已移除（Audit Log 保留；WS node_removed 同步 Dashboard）`, 'success');
+  pendingRemove = null;
+});
+
+// Esc 關閉
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    formOverlay.classList.remove('open');
+    confirmOverlay.classList.remove('open');
+    archMenu.style.display = 'none';
+  }
+});
+</script>
+</body>
+</html>

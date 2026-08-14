@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UI/UX 設計規格 — 014 Aggregate Dashboard（多機管理）</title>
+<style>
+/* ════════════════════════════════════════════════════════════
+   設計 Token（對應前端 --lms-* 變數）
+   ════════════════════════════════════════════════════════════ */
+:root {
+  --accent: #1a73e8; --accent-hover: #1557b0; --accent-light: rgba(26,115,232,0.12);
+  --success: #188038; --success-light: #e6f4ea; --success-border: #a8dab5;
+  --danger: #c5221f; --danger-light: #fce8e6; --danger-border: #f5c6c2;
+  --warning: #e37400; --warning-light: #fff4e5;
+  --radius: 10px; --radius-sm: 6px; --transition: 0.2s ease;
+  --h: 36px; --h-mobile: 44px; --fs: 0.875rem;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+[data-theme="light"] {
+  --bg: #ffffff; --surface: #ffffff; --surface-2: #f6f7f9; --surface-3: #eef0f3;
+  --border: #e3e6ea; --text: #374151; --muted: #9ca3af;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08); --shadow-lg: 0 12px 32px rgba(0,0,0,0.16);
+  --frame: #eef0f3;
+}
+[data-theme="dark"] {
+  --bg: #11191f; --surface: #181e25; --surface-2: #1e2530; --surface-3: #232c38;
+  --border: #262e38; --text: #c7c9ce; --muted: #7d8590;
+  --shadow: 0 2px 16px rgba(0,0,0,0.45); --shadow-lg: 0 12px 36px rgba(0,0,0,0.6);
+  --frame: #0d1318;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  background: var(--bg); color: var(--text); transition: background var(--transition), color var(--transition);
+  padding: 2rem 1.25rem 4rem;
+}
+.wrap { max-width: 1120px; margin: 0 auto; }
+.topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; }
+h1 { font-size: 1.35rem; margin: 0; }
+.sub { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+.controls { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.segmented { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 2px; }
+.segmented button { border: none; background: none; color: var(--muted); font-size: 0.85rem; padding: 0.45rem 0.9rem; border-radius: 7px; cursor: pointer; transition: all var(--transition); font-weight: 500; }
+.segmented button:hover { color: var(--text); }
+.segmented button.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+
+.frame { background: var(--frame); border: 1px solid var(--border); border-radius: 14px; padding: 1.6rem 1.5rem 1.8rem; margin-bottom: 1.5rem; }
+.frame h2 { margin: 0 0 0.25rem; font-size: 1.1rem; }
+.frame .fsub { color: var(--muted); font-size: 0.82rem; margin: 0 0 1rem; line-height: 1.6; }
+.browser-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 1rem; }
+.bdot { width: 11px; height: 11px; border-radius: 50%; }
+.bdot:nth-child(1){ background:#f87171 } .bdot:nth-child(2){ background:#fbbf24 } .bdot:nth-child(3){ background:#34d399 }
+.browser-url { flex: 1; max-width: 420px; margin-left: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.75rem; color: var(--muted); }
+.elem-count { font-size: 0.72rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 0.2rem 0.7rem; white-space: nowrap; }
+.elem-count b { color: var(--accent); }
+
+.app-page { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); transition: background var(--transition); overflow: hidden; }
+.app-page.is-mobile { max-width: 390px; margin: 0 auto; }
+.table-skel { padding: 0.9rem 1rem; }
+.row { height: 34px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px; }
+.row:last-child { margin-bottom: 0; }
+
+/* ── 共用控制元件 ── */
+.btn { height: var(--h); display: inline-flex; align-items: center; gap: 0.4rem; padding: 0 0.9rem; border-radius: var(--radius-sm); font-size: var(--fs); border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; transition: all var(--transition); white-space: nowrap; font-weight: 500; }
+.btn:hover { background: var(--surface-2); border-color: var(--muted); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.secondary { background: var(--surface-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { background: var(--accent-hover); }
+.btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn.sm { height: 30px; padding: 0 0.6rem; font-size: 0.78rem; }
+.btn .spin { display: none; width: 14px; height: 14px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: rot 0.8s linear infinite; }
+.btn.loading .spin { display: inline-block; }
+@keyframes rot { to { transform: rotate(360deg); } }
+.icon-btn { height: var(--h); min-width: var(--h); padding: 0 0.4rem; border-radius: var(--radius-sm); border: 1px solid transparent; background: none; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: all var(--transition); }
+.icon-btn:hover { color: var(--accent); border-color: var(--border); background: var(--surface-2); }
+
+/* ── 狀態燈（SVG 圓點 + 文字，WCAG 1.4.1）── */
+.sdot { display: inline-flex; align-items: center; gap: 0.32rem; font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
+.sdot svg { flex-shrink: 0; }
+.sdot .st-txt { color: var(--text); }
+.sdot.s-on .st-txt { color: var(--success); }
+.sdot.s-off .st-txt { color: var(--danger); }
+.sdot.s-loff .st-txt { color: var(--muted); }
+.sdot.s-deg .st-txt, .sdot.s-warn .st-txt { color: var(--warning); }
+
+/* ── Mock AppHeader（014：第 3 項導覽 + NodeSwitcher）── */
+.app-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+.app-head .brand { display: flex; align-items: center; gap: 0.4rem; font-size: 0.95rem; font-weight: 700; white-space: nowrap; }
+.app-head .brand svg { color: var(--accent); }
+.nav-items { display: flex; gap: 0.35rem; }
+.nav-item { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; font-weight: 500; padding: 0.4rem 0.8rem; border-radius: 7px; color: var(--muted); text-decoration: none; transition: all var(--transition); }
+.nav-item:hover { color: var(--text); }
+.nav-item.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+.nav-item svg { color: currentColor; }
+.head-right { display: flex; align-items: center; gap: 0.6rem; }
+.ws-ind { font-size: 0.7rem; color: var(--success); display: inline-flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
+.ws-ind::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--success); }
+.account-btn { height: var(--h); display: inline-flex; align-items: center; gap: 0.4rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); padding: 0 0.6rem; font-size: 0.8rem; cursor: pointer; }
+.account-btn .avatar { width: 22px; height: 22px; border-radius: 50%; background: var(--accent-light); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.72rem; }
+
+/* ── NodeSwitcher（Header 下拉）── */
+.node-switcher { position: relative; }
+.node-switcher .ns-btn { height: var(--h); display: inline-flex; align-items: center; gap: 0.4rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); padding: 0 0.7rem; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all var(--transition); }
+.node-switcher .ns-btn:hover { border-color: var(--accent); color: var(--accent); }
+.node-dropdown { position: absolute; top: calc(100% + 4px); right: 0; min-width: 250px; z-index: 200; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-lg); padding: 0.3rem 0; }
+.node-dropdown .nd-head { font-size: 0.68rem; color: var(--muted); padding: 0.35rem 0.8rem 0.3rem; text-transform: uppercase; letter-spacing: 0.4px; }
+.node-option { display: flex; align-items: center; gap: 0.5rem; width: 100%; text-align: left; padding: 0.5rem 0.8rem; background: none; border: none; cursor: pointer; font-size: 0.82rem; color: var(--text); transition: background var(--transition); }
+.node-option:hover { background: var(--surface-2); }
+.node-option.active { background: var(--accent-light); font-weight: 700; color: var(--accent); }
+.node-option .opt-name { flex: 1; }
+.node-option .opt-st { font-size: 0.7rem; color: var(--muted); }
+.node-option.all { border-bottom: 1px solid var(--border); }
+.node-option.all svg { color: var(--muted); }
+
+/* ── Aggregate 內容 ── */
+.agg-body { padding: 1.1rem 1rem 1.4rem; }
+.stats-bar { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; padding: 0.65rem 0.85rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.9rem; font-size: 0.8rem; font-weight: 600; }
+.stats-bar .stat { display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
+.stats-bar .stat b { font-family: var(--mono); font-size: 0.92rem; color: var(--text); }
+.stats-bar .stat .s-ico { color: var(--muted); display: inline-flex; }
+.stats-bar .stat.online b { color: var(--success); }
+.stats-bar .stat.offline b { color: var(--danger); }
+.stats-bar .divider { width: 1px; height: 16px; background: var(--border); margin: 0 0.15rem; }
+
+.search-bar { position: relative; margin-bottom: 1rem; }
+.search-bar input { width: 100%; max-width: 420px; height: var(--h); padding: 0 2.6rem 0 2.3rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: var(--fs); transition: border-color var(--transition), box-shadow var(--transition); }
+.search-bar input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); outline: none; }
+.search-bar .s-ico { position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; display: flex; }
+.search-bar .s-clear { position: absolute; left: calc(min(420px, 100%) - 2.2rem); top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; border: none; background: none; color: var(--muted); cursor: pointer; font-size: 0.8rem; display: none; align-items: center; justify-content: center; }
+.search-bar.has-value .s-clear { display: flex; }
+.search-bar .s-clear:hover { background: var(--border); color: var(--text); }
+.search-results { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 1rem; overflow: hidden; }
+.search-results .sr-item { display: flex; align-items: center; gap: 0.6rem; width: 100%; text-align: left; padding: 0.55rem 0.85rem; background: none; border: none; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 0.82rem; color: var(--text); transition: background var(--transition); }
+.search-results .sr-item:last-child { border-bottom: none; }
+.search-results .sr-item:hover { background: var(--surface-2); }
+.search-results .sr-node { font-weight: 700; color: var(--accent); font-family: var(--mono); font-size: 0.78rem; }
+.search-results .sr-svc { font-family: var(--mono); }
+.search-results .sr-state { margin-left: auto; font-size: 0.74rem; color: var(--success); font-weight: 600; }
+.search-results .sr-state.st-inact { color: var(--muted); }
+.search-results .sr-arrow { color: var(--muted); display: inline-flex; }
+.search-results .sr-empty { padding: 1.2rem 0.9rem; color: var(--muted); font-size: 0.82rem; text-align: center; }
+.search-results .failed-note { display: flex; align-items: center; gap: 0.45rem; padding: 0.5rem 0.85rem; background: var(--warning-light); color: var(--warning); font-size: 0.76rem; border-top: 1px solid var(--border); }
+.search-results .failed-note svg { flex-shrink: 0; }
+
+.node-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+.node-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 0.9rem 1rem; background: var(--surface); cursor: pointer; transition: box-shadow var(--transition), border-color var(--transition), opacity var(--transition); position: relative; }
+.node-card:hover { box-shadow: var(--shadow); border-color: var(--accent); }
+.node-card .nc-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem; }
+.node-card .nc-name { font-size: 0.92rem; font-weight: 700; flex: 1; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.node-card .nc-host { font-size: 0.76rem; color: var(--muted); font-family: var(--mono); margin: 0 0 0.5rem; }
+.node-card .nc-stats { font-size: 0.82rem; margin: 0 0 0.4rem; }
+.node-card .nc-stats b { color: var(--accent); font-family: var(--mono); }
+.node-card .nc-heartbeat { font-size: 0.74rem; color: var(--muted); margin: 0; }
+.node-card .nc-version { font-size: 0.74rem; color: var(--warning); margin: 0.15rem 0 0; display: flex; align-items: center; gap: 0.3rem; }
+.node-card .nc-version svg { flex-shrink: 0; }
+.node-card.node-offline { opacity: 0.62; cursor: pointer; }
+.node-card.node-long-offline { opacity: 0.45; }
+.node-card .nc-stats.dimmed { opacity: 0.5; }
+.node-card .nc-detail { position: absolute; top: 0.75rem; right: 0.7rem; }
+
+/* 空狀態 */
+.empty-state { text-align: center; padding: 2.6rem 1rem; color: var(--muted); }
+.empty-state .es-ico { font-size: 1.6rem; margin-bottom: 0.5rem; display: flex; justify-content: center; }
+.empty-state .es-ico svg { color: var(--muted); }
+.empty-state p { margin: 0 0 1rem; font-size: 0.9rem; }
+.loading-hint { display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 2rem; color: var(--muted); font-size: 0.82rem; }
+.spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: rot 0.8s linear infinite; }
+
+/* ── NodeDetailPanel（右側滑出）── */
+.detail-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 900; display: flex; justify-content: flex-end; opacity: 0; pointer-events: none; transition: opacity 150ms ease; }
+.detail-overlay.open { opacity: 1; pointer-events: auto; }
+.detail-panel { width: 360px; max-width: 90vw; height: 100%; background: var(--surface); border-left: 1px solid var(--border); box-shadow: var(--shadow-lg); padding: 1.2rem 1.3rem; overflow-y: auto; transform: translateX(100%); transition: transform 150ms ease; }
+.detail-overlay.open .detail-panel { transform: translateX(0); }
+.detail-panel h3 { margin: 0 0 0.9rem; font-size: 1.02rem; display: flex; align-items: center; gap: 0.5rem; }
+.detail-panel .dp-close { margin-left: auto; }
+.detail-panel dl { display: grid; grid-template-columns: 92px 1fr; gap: 0.45rem 0.6rem; margin: 0 0 1rem; font-size: 0.8rem; }
+.detail-panel dt { color: var(--muted); }
+.detail-panel dd { margin: 0; font-family: var(--mono); font-size: 0.78rem; word-break: break-all; }
+.detail-panel .dp-warn { display: flex; gap: 0.4rem; align-items: flex-start; background: var(--warning-light); color: var(--warning); border: 1px solid var(--warning); border-radius: var(--radius-sm); padding: 0.5rem 0.7rem; font-size: 0.76rem; margin-bottom: 1rem; }
+.detail-panel .dp-warn svg { flex-shrink: 0; margin-top: 1px; }
+.detail-panel .dp-suggest { background: var(--surface-2); border: 1px dashed var(--border); border-radius: var(--radius-sm); padding: 0.55rem 0.75rem; font-size: 0.76rem; color: var(--muted); margin-bottom: 1rem; line-height: 1.6; }
+.detail-panel .panel-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+/* ── Toast ── */
+.toast-wrap { position: fixed; bottom: 1.2rem; right: 1.2rem; z-index: 1200; display: flex; flex-direction: column; gap: 0.5rem; }
+.toast { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); padding: 0.55rem 0.9rem; font-size: 0.8rem; box-shadow: var(--shadow-lg); transition: opacity 0.3s ease; max-width: 340px; }
+.toast.success { border-left-color: var(--success); }
+.toast.warning { border-left-color: var(--warning); }
+.toast.error { border-left-color: var(--danger); }
+
+/* ── 元件解剖 ── */
+.anatomy { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-top: 1.1rem; }
+@media (max-width: 760px) { .anatomy { grid-template-columns: 1fr; } }
+.anat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem 1.1rem; }
+.anat-card h4 { margin: 0 0 0.8rem; font-size: 0.92rem; display: flex; align-items: center; gap: 0.4rem; }
+.anat-card h4 .tag { font-size: 0.62rem; font-weight: 700; background: var(--accent-light); color: var(--accent); border-radius: 20px; padding: 0.12rem 0.5rem; }
+.anat-stage { background: var(--frame); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1rem; margin-bottom: 0.85rem; }
+.anat-dims { font-size: 0.74rem; color: var(--muted); line-height: 1.8; }
+.anat-dims b { color: var(--accent); font-family: var(--mono); }
+.dim-line { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
+.dim-line .d { flex: 1; height: 0; border-top: 1px dashed var(--accent); position: relative; }
+.dim-line span { font-size: 0.7rem; color: var(--accent); font-family: var(--mono); white-space: nowrap; }
+
+.states { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 1rem; }
+.states th, .states td { border: 1px solid var(--border); padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+.states th { background: var(--surface-2); font-size: 0.74rem; color: var(--muted); font-weight: 700; }
+.states td:first-child { white-space: nowrap; font-weight: 600; }
+.states .demo-cell { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.states code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0.05rem 0.35rem; font-size: 0.72rem; font-family: var(--mono); }
+
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.5rem 1.5rem; margin-top: 1rem; }
+.anno { display: flex; gap: 0.55rem; font-size: 0.8rem; color: var(--muted); align-items: flex-start; line-height: 1.55; }
+.anno .num { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-light); color: var(--accent); font-size: 0.7rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
+.anno b { color: var(--text); }
+
+.note { font-size: 0.78rem; color: var(--muted); margin-top: 1rem; line-height: 1.7; background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; padding: 0.6rem 0.9rem; }
+.note b { color: var(--accent); }
+.demo-hint { font-size: 0.78rem; color: var(--muted); margin-top: 0.7rem; line-height: 1.6; }
+.demo-hint b { color: var(--accent); }
+
+.tokens { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; margin-top: 1rem; }
+.tcard { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.8rem 0.95rem; }
+.tcard .tk { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.4px; }
+.tcard .tv { font-size: 1.05rem; font-weight: 700; color: var(--text); margin-top: 0.2rem; }
+.tcard .td { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; line-height: 1.5; }
+.tcard .tv.accent { color: var(--accent); }
+
+.footnote { margin-top: 2rem; font-size: 0.72rem; color: var(--muted); border-top: 1px dashed var(--border); padding-top: 0.75rem; line-height: 1.7; }
+
+.frame.mobile-frame { display: none; }
+body.view-mobile .frame.mobile-frame { display: block; }
+body.view-mobile .frame.desktop-frame { display: none; }
+.mobile-frame .app-page { max-width: 390px; margin: 0 auto; }
+.mobile-frame .agg-body { padding: 0.8rem 0.7rem 1.1rem; }
+.mobile-frame .search-bar input { max-width: none; }
+.mobile-frame .search-bar .s-clear { left: auto; right: 0.6rem; }
+.mobile-frame .stats-bar { flex-direction: column; align-items: stretch; gap: 0.35rem; }
+.mobile-frame .stats-bar .divider { display: none; }
+.mobile-frame .stats-bar .stat { justify-content: space-between; }
+.mobile-frame .nav-items { display: none; }
+.mobile-frame .app-head { flex-wrap: wrap; }
+.mobile-frame .ns-btn { height: var(--h-mobile); }
+.mobile-frame .node-card .nc-detail { width: 44px; height: 44px; }
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div>
+      <h1>🖥 014 · Aggregate Dashboard（多機管理）</h1>
+      <div class="sub">完整規格 — 統計列 · NodeCard 網格 · 跨節點搜尋 · 離線診斷 · 共用設計 token</div>
+    </div>
+    <div class="controls">
+      <div class="segmented" id="devSwitch">
+        <button data-dev="desktop" class="active">🖥 Desktop</button>
+        <button data-dev="mobile">📱 Mobile</button>
+      </div>
+      <button class="segmented" id="themeToggle" style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:3px;">🌙 切換深色</button>
+    </div>
+  </div>
+
+  <!-- ══════════ 1. 設計 Token ══════════ -->
+  <div class="frame">
+    <h2>1️⃣ 設計 Token</h2>
+    <p class="fsub">全部數值對應前端 CSS 變數（--lms-*），三頁面（Aggregate / Node Management / node-aware Dashboard）共用。</p>
+    <div class="tokens">
+      <div class="tcard"><div class="tk">控制高度</div><div class="tv accent">36 / 44px</div><div class="td">desktop 36px · mobile ≤767px 44px（--lms-h / --lms-h-mobile）</div></div>
+      <div class="tcard"><div class="tk">卡片網格</div><div class="tv">280px</div><div class="td">minmax(280px,1fr) auto-fill：3 / 2 / 1 欄</div></div>
+      <div class="tcard"><div class="tk">狀態燈</div><div class="tv">SVG 圓點</div><div class="td">8px 圓 + 文字標籤（WCAG 1.4.1 雙重傳達）</div></div>
+      <div class="tcard"><div class="tk">圓角</div><div class="tv">6 / 10px</div><div class="td">按鈕輸入 6px · 卡片 10px</div></div>
+      <div class="tcard"><div class="tk">間距</div><div class="tv">8 / 16px</div><div class="td">卡片內 8px · 卡片間 16px（gap 1rem）</div></div>
+      <div class="tcard"><div class="tk">動畫</div><div class="tv">150ms</div><div class="td">面板滑入 · 尊重 reduced-motion</div></div>
+    </div>
+  </div>
+
+  <!-- ══════════ 2. 完整畫面（Desktop） ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>2️⃣ 完整畫面與互動 — Aggregate Dashboard（登入預設 /）</h2>
+    <p class="fsub">登入後預設進入本頁：統計列（心跳聚合，零代理查詢）→ 跨節點搜尋（debounce 300ms）→ NodeCard 網格（離線灰顯、長期離線置底）。</p>
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url">https://linux-service-manager/ · Aggregate Dashboard</span>
+      <span class="elem-count">互動：<b>點卡片 · 搜尋 · 詳情</b></span>
+    </div>
+    <div class="app-page" id="aggPage">
+      <!-- Mock AppHeader -->
+      <div class="app-head">
+        <div class="brand">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+          Linux Service Manager
+        </div>
+        <nav class="nav-items" aria-label="主導航">
+          <a class="nav-item active" href="javascript:void(0)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Dashboard</a>
+          <a class="nav-item" href="javascript:void(0)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8m8 4H8m3-8H8"/></svg>Audit Log</a>
+          <a class="nav-item" href="javascript:void(0)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Node Management</a>
+        </nav>
+        <div class="head-right">
+          <span class="ws-ind">已連線</span>
+          <!-- NodeSwitcher（Aggregate 模式：顯示「所有節點」） -->
+          <div class="node-switcher">
+            <button class="ns-btn" id="nsToggle" aria-haspopup="menu" aria-expanded="false">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              <span id="nsLabel">所有節點</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div class="node-dropdown" id="nsMenu" style="display:none" role="menu">
+              <button class="node-option all active" role="menuitemradio" aria-checked="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                <span class="opt-name">所有節點</span>
+              </button>
+              <button class="node-option" role="menuitemradio" aria-checked="false" data-node="web-server-01">
+                <span class="sdot s-on"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg></span>
+                <span class="opt-name">web-server-01</span><span class="opt-st">線上</span>
+              </button>
+              <button class="node-option" role="menuitemradio" aria-checked="false" data-node="web-server-02">
+                <span class="sdot s-on"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg></span>
+                <span class="opt-name">web-server-02</span><span class="opt-st">線上</span>
+              </button>
+              <button class="node-option" role="menuitemradio" aria-checked="false" data-node="db-01">
+                <span class="sdot s-deg"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--warning)"/></svg></span>
+                <span class="opt-name">db-01</span><span class="opt-st">延遲</span>
+              </button>
+              <button class="node-option" role="menuitemradio" aria-checked="false" data-node="web-server-03">
+                <span class="sdot s-off"><svg width="9" height="9" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--danger)"/></svg></span>
+                <span class="opt-name">web-server-03</span><span class="opt-st">離線</span>
+              </button>
+            </div>
+          </div>
+          <button class="account-btn"><span class="avatar">A</span> admin <span>▾</span></button>
+        </div>
+      </div>
+
+      <div class="agg-body">
+        <!-- 統計列（6 項，心跳聚合） -->
+        <div class="stats-bar" data-testid="aggregate-stats">
+          <span class="stat"><span class="s-ico"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>總節點數 <b>7</b></span>
+          <span class="stat online"><span class="s-ico"><svg width="13" height="13" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg></span>線上台數 <b>4</b></span>
+          <span class="stat offline"><span class="s-ico"><svg width="13" height="13" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--danger)"/></svg></span>離線台數 <b>2</b></span>
+          <span class="divider"></span>
+          <span class="stat"><span class="s-ico"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></span>總服務數 <b>312</b></span>
+          <span class="stat"><span class="s-ico"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>執行中 <b>287</b></span>
+          <span class="stat offline"><span class="s-ico"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></span>失敗 <b>5</b></span>
+        </div>
+
+        <!-- 跨節點搜尋 -->
+        <div class="search-bar" id="aggSearch">
+          <span class="s-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></span>
+          <input id="aggSearchInput" type="text" placeholder="搜尋所有節點的服務…（debounce 300ms）" aria-label="跨節點搜尋服務" autocomplete="off">
+          <button class="s-clear" id="aggSearchClear" aria-label="清除搜尋">✕</button>
+        </div>
+        <div class="search-results" id="aggSearchResults" style="display:none"></div>
+
+        <!-- NodeCard 網格 -->
+        <div class="node-card-grid" id="aggGrid">
+          <!-- ① 線上：可點擊切換 -->
+          <div class="node-card" data-status="online" data-node="web-server-01" data-testid="node-card">
+            <div class="nc-head">
+              <span class="sdot s-on"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg><span class="st-txt">線上</span></span>
+              <h3 class="nc-name">web-server-01</h3>
+              <button class="icon-btn nc-detail" data-detail="web-server-01" aria-label="詳情 web-server-01"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg></button>
+            </div>
+            <p class="nc-host">web-server-01</p>
+            <p class="nc-stats"><b>38</b>/42 執行中</p>
+            <p class="nc-heartbeat">最後心跳：5 秒前</p>
+          </div>
+          <!-- 線上 -->
+          <div class="node-card" data-status="online" data-node="web-server-02">
+            <div class="nc-head">
+              <span class="sdot s-on"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg><span class="st-txt">線上</span></span>
+              <h3 class="nc-name">web-server-02</h3>
+              <button class="icon-btn nc-detail" data-detail="web-server-02" aria-label="詳情 web-server-02"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg></button>
+            </div>
+            <p class="nc-host">web-server-02</p>
+            <p class="nc-stats"><b>22</b>/24 執行中</p>
+            <p class="nc-heartbeat">最後心跳：3 秒前</p>
+          </div>
+          <!-- ③ 延遲：可操作 -->
+          <div class="node-card" data-status="degraded" data-node="db-01">
+            <div class="nc-head">
+              <span class="sdot s-deg"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--warning)"/></svg><span class="st-txt">延遲</span></span>
+              <h3 class="nc-name">db-01</h3>
+              <button class="icon-btn nc-detail" data-detail="db-01" aria-label="詳情 db-01"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg></button>
+            </div>
+            <p class="nc-host">db-01.internal</p>
+            <p class="nc-stats"><b>16</b>/18 執行中</p>
+            <p class="nc-heartbeat">最後心跳：18 秒前</p>
+          </div>
+          <!-- ② 警告：版本過舊（可操作） -->
+          <div class="node-card" data-status="warning" data-node="web-server-03">
+            <div class="nc-head">
+              <span class="sdot s-warn"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--warning)"/></svg><span class="st-txt">警告</span></span>
+              <h3 class="nc-name">web-server-03</h3>
+              <button class="icon-btn nc-detail" data-detail="web-server-03" aria-label="詳情 web-server-03"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg></button>
+            </div>
+            <p class="nc-host">web-server-03</p>
+            <p class="nc-stats"><b>31</b>/33 執行中</p>
+            <p class="nc-version"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4m0 4h.01"/></svg>Agent 版本過舊 (v1.0)，建議升級至 v1.2+</p>
+            <p class="nc-heartbeat">最後心跳：2 秒前</p>
+          </div>
+          <!-- ④ 離線：點擊 → 離線診斷面板 -->
+          <div class="node-card node-offline" data-status="offline" data-node="web-server-04">
+            <div class="nc-head">
+              <span class="sdot s-off"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--danger)"/></svg><span class="st-txt">離線</span></span>
+              <h3 class="nc-name">web-server-04</h3>
+              <button class="icon-btn nc-detail" data-detail="web-server-04" aria-label="詳情 web-server-04"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg></button>
+            </div>
+            <p class="nc-host">web-server-04</p>
+            <p class="nc-stats dimmed"><b>0</b>/21 執行中</p>
+            <p class="nc-heartbeat">最後心跳：2 分鐘前</p>
+          </div>
+          <!-- ⑤ 長期離線：置底 + 摺疊樣式 -->
+          <div class="node-card node-long-offline" data-status="long_offline" data-node="legacy-01">
+            <div class="nc-head">
+              <span class="sdot s-loff"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--muted)"/></svg><span class="st-txt">長期離線</span></span>
+              <h3 class="nc-name">legacy-01</h3>
+              <button class="icon-btn nc-detail" data-detail="legacy-01" aria-label="詳情 legacy-01"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg></button>
+            </div>
+            <p class="nc-host">legacy-01.old</p>
+            <p class="nc-stats dimmed"><b>0</b>/9 執行中</p>
+            <p class="nc-heartbeat">最後心跳：3 小時前</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Legend 註記 -->
+    <div class="legend">
+      <div class="anno"><span class="num">1</span><div><b>狀態燈</b> — SVG 圓點 + 文字標籤（「線上/延遲/離線/長期離線/警告」），色彩與文字雙重傳達（WCAG 1.4.1），非 emoji。</div></div>
+      <div class="anno"><span class="num">2</span><div><b>警告狀態</b> — 版本 < AgentMinVersion 時卡片顯示黃色版本警告行；仍可操作（不阻斷）。</div></div>
+      <div class="anno"><span class="num">3</span><div><b>延遲</b> — 心跳 10–30s 未更新；可操作。點擊線上/延遲/警告卡片 → <code>/dashboard?node={id}</code>。</div></div>
+      <div class="anno"><span class="num">4</span><div><b>離線</b> — 卡片灰顯（opacity .62）、服務統計 <code>.dimmed</code>；點擊 → 離線診斷面板（不切換視圖）。</div></div>
+      <div class="anno"><span class="num">5</span><div><b>長期離線</b> — opacity .45 且移至網格底部；點擊 → 離線診斷面板。</div></div>
+      <div class="anno"><span class="num">6</span><div><b>統計列</b> — 6 項數值來自心跳附帶 ServiceStats 聚合（零代理查詢）；Loading 時顯示「—」。</div></div>
+    </div>
+
+    <!-- 元件解剖 -->
+    <div class="anatomy">
+      <div class="anat-card">
+        <h4>NodeCard <span class="tag">可點擊卡片</span></h4>
+        <div class="anat-stage">
+          <div class="node-card" style="max-width:300px;cursor:default">
+            <div class="nc-head">
+              <span class="sdot s-on"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg><span class="st-txt">線上</span></span>
+              <h3 class="nc-name">web-server-01</h3>
+              <button class="icon-btn nc-detail"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg></button>
+            </div>
+            <p class="nc-host">web-server-01</p>
+            <p class="nc-stats"><b>38</b>/42 執行中</p>
+            <p class="nc-heartbeat">最後心跳：5 秒前</p>
+          </div>
+        </div>
+        <div class="anat-dims">
+          <b>卡片</b>：radius <b>10px</b> · padding <b>0.9rem 1rem</b> · border <b>1px --lms-border</b><br>
+          <b>狀態燈</b>：圓點 <b>8px</b> · 文字 0.78rem 600（綠/黃/紅/灰 + 對應色文字）<br>
+          <b>詳情按鈕</b>：icon-only <b>36px</b>（mobile 44px）· <code>aria-label="詳情 {name}"</code><br>
+          <b>服務統計</b>：mono <b>38</b>/42 · 執行中；離線時 <code>.dimmed</code>（opacity .5）
+          <div class="dim-line"><span>minmax(280px,1fr)</span></div>
+        </div>
+      </div>
+      <div class="anat-card">
+        <h4>狀態燈五態 <span class="tag">SVG + 文字</span></h4>
+        <div class="anat-stage">
+          <div style="display:flex;flex-direction:column;gap:0.55rem">
+            <span class="sdot s-on"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg><span class="st-txt">線上</span> <code>online</code></span>
+            <span class="sdot s-deg"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--warning)"/></svg><span class="st-txt">延遲</span> <code>degraded</code></span>
+            <span class="sdot s-warn"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--warning)"/></svg><span class="st-txt">警告</span> <code>warning</code></span>
+            <span class="sdot s-off"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--danger)"/></svg><span class="st-txt">離線</span> <code>offline</code></span>
+            <span class="sdot s-loff"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--muted)"/></svg><span class="st-txt">長期離線</span> <code>long_offline</code></span>
+          </div>
+        </div>
+        <div class="anat-dims">
+          <b>雙重傳達</b>：色彩（綠/黃/紅/灰）+ 文字標籤 — 不以顏色單獨傳達資訊（WCAG 1.4.1）。<br>
+          狀態判定（<code>deriveStatus</code>）：age &lt;10s 線上 · &lt;30s 延遲 · &lt;300s 離線 · ≥300s 長期離線 · 版本過舊警告優先。
+        </div>
+      </div>
+    </div>
+
+    <!-- 狀態矩陣 -->
+    <table class="states">
+      <tr><th style="width:140px;">狀態</th><th>視覺</th><th>互動</th></tr>
+      <tr><td>線上 online</td><td>綠點 + 「線上」；正常卡片</td><td>點擊 → <code>/dashboard?node={id}</code>；詳情 → 線上資訊面板</td></tr>
+      <tr><td>延遲 degraded</td><td>黃點 + 「延遲」</td><td>同線上（可操作）</td></tr>
+      <tr><td>警告 warning</td><td>黃點 + 「警告」+ 版本警告行</td><td>同線上 + Tooltip 升級建議</td></tr>
+      <tr><td>離線 offline</td><td>紅點 + 「離線」；卡片 opacity .62、統計灰顯</td><td>點擊 → 離線診斷面板（不切換視圖）</td></tr>
+      <tr><td>長期離線 long_offline</td><td>灰點 + 「長期離線」；opacity .45、置底</td><td>點擊 → 離線診斷面板</td></tr>
+      <tr><td>Hover / Focus</td><td>box-shadow 提升 + accent 邊框；focus ring 3px</td><td>可點狀態游標 pointer；鍵盤 Enter 等價</td></tr>
+      <tr><td>Loading / 空結果</td><td>網格區 spinner（aria-busy）/ EmptyState「尚無已註冊節點」</td><td>空狀態引導按鈕 → <code>/nodes</code></td></tr>
+    </table>
+    <div class="note"><b>無障礙：</b>卡片為可點擊元素需鍵盤可達（Enter 等價點擊）；狀態燈 <code>aria-label</code> 補述狀態；離線灰顯維持文字對比（opacity ≥.45）。</div>
+  </div>
+
+  <!-- ══════════ 3. 跨節點搜尋 Demo ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>3️⃣ 跨節點搜尋 — 結果面板 / 空結果 / 部分失敗</h2>
+    <p class="fsub">debounce 300ms；結果面板 inline 展開於搜尋框下方；failed_nodes 以黃字列出不可達節點（不阻塞其他結果）。</p>
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url">https://linux-service-manager/ · 搜尋 demo</span>
+      <span class="elem-count">互動：<b>輸入搜尋 · 點擊結果</b></span>
+    </div>
+    <div class="app-page">
+      <div class="agg-body">
+        <div class="search-bar" id="searchDemo">
+          <span class="s-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></span>
+          <input id="searchDemoInput" type="text" placeholder="試試輸入 nginx、mysql、或空白" aria-label="跨節點搜尋 demo" autocomplete="off">
+          <button class="s-clear" id="searchDemoClear" aria-label="清除搜尋">✕</button>
+        </div>
+        <div class="search-results" id="searchDemoResults" style="display:none"></div>
+        <div class="node-card-grid" id="searchDemoGrid" style="grid-template-columns:repeat(3,1fr)">
+          <div class="node-card" style="cursor:default"><div class="nc-head"><span class="sdot s-on"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg><span class="st-txt">線上</span></span><h3 class="nc-name">web-server-01</h3></div><p class="nc-host">web-server-01</p><p class="nc-stats"><b>38</b>/42 執行中</p><p class="nc-heartbeat">最後心跳：5 秒前</p></div>
+          <div class="node-card" style="cursor:default"><div class="nc-head"><span class="sdot s-on"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg><span class="st-txt">線上</span></span><h3 class="nc-name">web-server-02</h3></div><p class="nc-host">web-server-02</p><p class="nc-stats"><b>22</b>/24 執行中</p><p class="nc-heartbeat">最後心跳：3 秒前</p></div>
+          <div class="node-card" style="cursor:default"><div class="nc-head"><span class="sdot s-deg"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--warning)"/></svg><span class="st-txt">延遲</span></span><h3 class="nc-name">db-01</h3></div><p class="nc-host">db-01.internal</p><p class="nc-stats"><b>16</b>/18 執行中</p><p class="nc-heartbeat">最後心跳：18 秒前</p></div>
+        </div>
+      </div>
+    </div>
+    <p class="demo-hint"><b>試試看：</b>輸入 <code>nginx</code>（3 筆結果 + 1 個 failed node）· 輸入 <code>zzz</code>（空結果）· 清除（回到卡片視圖）。</p>
+  </div>
+
+  <!-- ══════════ 4. 狀態 Demo ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>4️⃣ 頁面狀態 Demo — 離線診斷面板 / 空狀態 / Loading</h2>
+    <p class="fsub">離線診斷面板（右側滑出 360px）；無節點時的空狀態引導；初次載入 spinner。</p>
+    <div class="browser-bar">
+      <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+      <span class="browser-url">https://linux-service-manager/ · 狀態 demo</span>
+      <span class="elem-count">互動：<b>開啟離線診斷</b></span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+      <div class="app-page">
+        <div class="agg-body">
+          <p class="fsub" style="margin:0 0 0.6rem"><b>離線節點卡片</b>（點擊或按「詳情」→ 右側面板）</p>
+          <div class="node-card node-offline" id="demoOfflineCard" data-status="offline">
+            <div class="nc-head">
+              <span class="sdot s-off"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--danger)"/></svg><span class="st-txt">離線</span></span>
+              <h3 class="nc-name">web-server-04</h3>
+              <button class="icon-btn nc-detail" id="demoOfflineDetail" aria-label="詳情 web-server-04"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg></button>
+            </div>
+            <p class="nc-host">web-server-04</p>
+            <p class="nc-stats dimmed"><b>0</b>/21 執行中</p>
+            <p class="nc-heartbeat">最後心跳：2 分鐘前</p>
+          </div>
+          <div class="node-card" style="margin-top:0.8rem" data-status="warning">
+            <div class="nc-head">
+              <span class="sdot s-warn"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--warning)"/></svg><span class="st-txt">警告</span></span>
+              <h3 class="nc-name">web-server-03</h3>
+              <button class="icon-btn nc-detail" id="demoWarnDetail" aria-label="詳情 web-server-03"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg></button>
+            </div>
+            <p class="nc-host">web-server-03</p>
+            <p class="nc-stats"><b>31</b>/33 執行中</p>
+            <p class="nc-version"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4m0 4h.01"/></svg>Agent 版本過舊 (v1.0)，建議升級至 v1.2+</p>
+          </div>
+        </div>
+      </div>
+      <div class="app-page">
+        <div class="agg-body">
+          <p class="fsub" style="margin:0 0 0.6rem"><b>空狀態</b>（尚無已註冊節點）</p>
+          <div class="empty-state">
+            <div class="es-ico"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+            <p>尚無已註冊節點，請先新增節點</p>
+            <button class="btn primary">＋ 前往 Node Management</button>
+          </div>
+          <p class="fsub" style="margin:1rem 0 0.6rem"><b>Loading</b>（aria-busy）</p>
+          <div class="loading-hint"><span class="spinner" role="progressbar" aria-label="載入中"></span> 載入節點中…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ 5. Mobile ══════════ -->
+  <div class="frame mobile-frame">
+    <h2>5️⃣ Mobile（≤767px）</h2>
+    <p class="fsub">統計列單欄堆疊；搜尋框全寬 44px；NodeCard 單欄全寬；詳情 icon 44px。</p>
+    <div class="app-page is-mobile">
+      <div class="app-head">
+        <div class="brand">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+          Linux Service Manager
+        </div>
+        <div class="node-switcher" style="width:100%">
+          <button class="ns-btn" style="width:100%;justify-content:space-between;height:var(--h-mobile)">
+            <span class="sdot s-on"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg><span class="st-txt">所有節點</span></span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="agg-body">
+        <div class="stats-bar" style="flex-direction:column;align-items:stretch;gap:0.35rem">
+          <span class="stat" style="justify-content:space-between">總節點數 <b>7</b></span>
+          <span class="stat online" style="justify-content:space-between">線上台數 <b>4</b></span>
+          <span class="stat offline" style="justify-content:space-between">離線台數 <b>2</b></span>
+          <span class="stat" style="justify-content:space-between">總服務數 <b>312</b></span>
+          <span class="stat" style="justify-content:space-between">執行中 <b>287</b></span>
+          <span class="stat offline" style="justify-content:space-between">失敗 <b>5</b></span>
+        </div>
+        <div class="search-bar">
+          <span class="s-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></span>
+          <input type="text" placeholder="搜尋所有節點的服務…" style="max-width:none;height:var(--h-mobile)" aria-label="搜尋服務">
+        </div>
+        <div class="node-card-grid" style="grid-template-columns:1fr">
+          <div class="node-card">
+            <div class="nc-head">
+              <span class="sdot s-on"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg><span class="st-txt">線上</span></span>
+              <h3 class="nc-name">web-server-01</h3>
+              <button class="icon-btn nc-detail" style="width:44px;height:44px" aria-label="詳情"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg></button>
+            </div>
+            <p class="nc-host">web-server-01</p>
+            <p class="nc-stats"><b>38</b>/42 執行中</p>
+            <p class="nc-heartbeat">最後心跳：5 秒前</p>
+          </div>
+          <div class="node-card node-offline">
+            <div class="nc-head">
+              <span class="sdot s-off"><svg width="10" height="10" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--danger)"/></svg><span class="st-txt">離線</span></span>
+              <h3 class="nc-name">web-server-04</h3>
+              <button class="icon-btn nc-detail" style="width:44px;height:44px" aria-label="詳情"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg></button>
+            </div>
+            <p class="nc-host">web-server-04</p>
+            <p class="nc-stats dimmed"><b>0</b>/21 執行中</p>
+            <p class="nc-heartbeat">最後心跳：2 分鐘前</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="note"><b>Mobile 規範：</b>觸控目標一律 <b>44px</b>（WCAG 2.5.5）— 搜尋框、NodeSwitcher、詳情按鈕、卡片皆符合。</p>
+  </div>
+
+  <!-- ══════════ 6. 規格摘要 ══════════ -->
+  <div class="frame">
+    <h2>6️⃣ 規格摘要 — CSS 變數對應</h2>
+    <p class="fsub">實作時直接套用下列變數與結構（對應開發規格 §7 骨架）。</p>
+    <table class="states">
+      <tr><th style="width:220px;">項目</th><th>值</th><th>對應</th></tr>
+      <tr><td>Aggregate 容器</td><td>padding 1.5rem · max-width 1200px</td><td><code>.aggregate-dashboard</code></td></tr>
+      <tr><td>統計列</td><td>6 chips · wrap · 0.8rem 600</td><td><code>.stats-bar</code>（--lms-surface-2）</td></tr>
+      <tr><td>卡片網格</td><td>auto-fill minmax(280px,1fr) · gap 1rem</td><td><code>.node-card-grid</code></td></tr>
+      <tr><td>NodeCard</td><td>radius 10px · hover shadow + accent 邊框</td><td><code>.node-card</code>（--lms-surface）</td></tr>
+      <tr><td>離線灰顯</td><td>opacity .62 / .45 + 統計 .dimmed</td><td><code>.node-offline / .node-long-offline</code></td></tr>
+      <tr><td>狀態燈</td><td>SVG 圓點 8px + 文字（四色）</td><td><code>.status-dot</code>（--lms-success/-danger/-warning/-muted）</td></tr>
+      <tr><td>搜尋框</td><td>36px（mobile 44px）· focus ring 3px</td><td><code>.search-bar</code>（--lms-h / --lms-h-mobile）</td></tr>
+      <tr><td>結果面板</td><td>border 1px · failed-note 黃底</td><td><code>.search-results / .failed-note</code>（--lms-warning-light）</td></tr>
+      <tr><td>詳情面板</td><td>360px 右滑 150ms · backdrop .35</td><td><code>.detail-overlay / .detail-panel</code></td></tr>
+      <tr><td>空狀態</td><td>SVG 圖示 + 引導按鈕</td><td><code>.empty-state</code>（View 層自渲染 router-link）</td></tr>
+    </table>
+  </div>
+
+  <div class="footnote">
+    📄 設計文件：<b>docs/uiux/014-multi-node-design.md</b> ・ 本文件：<b>docs/uiux/014-aggregate-dashboard-design.html</b><br>
+    實作範圍：<b>AggregateDashboardView.vue + NodeCard.vue + NodeDetailPanel.vue + stores/nodes.ts（WS 4 事件）</b>
+  </div>
+</div>
+
+<!-- Toast 容器 -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<!-- NodeDetailPanel（右側滑出） -->
+<div class="detail-overlay" id="detailOverlay">
+  <aside class="detail-panel" role="dialog" aria-modal="true" aria-labelledby="dpTitle">
+    <h3 id="dpTitle"><span class="sdot" id="dpDot"><svg width="11" height="11" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg><span class="st-txt">線上</span></span><span id="dpName">web-server-01</span><button class="icon-btn dp-close" id="dpClose" aria-label="關閉"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></h3>
+    <dl id="dpList"></dl>
+    <div class="dp-warn" id="dpWarn" style="display:none"></div>
+    <div class="dp-suggest" id="dpSuggest" style="display:none"></div>
+    <div class="panel-actions" id="dpActions"></div>
+  </aside>
+</div>
+
+<script>
+// ── 通用切換（模板內建，勿刪）──
+const themeBtn = document.getElementById('themeToggle');
+themeBtn.addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+  themeBtn.textContent = dark ? '🌙 切換深色' : '☀️ 切換淺色';
+});
+const devSwitch = document.getElementById('devSwitch');
+devSwitch.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+  devSwitch.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  document.body.classList.toggle('view-mobile', b.dataset.dev === 'mobile');
+}));
+
+// ── Toast helper ──
+const toastWrap = document.getElementById('toastWrap');
+function toast(msg, type) {
+  if (!toastWrap) return;
+  const el = document.createElement('div');
+  el.className = 'toast ' + (type || 'success');
+  el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+  el.textContent = msg;
+  toastWrap.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; }, 3000);
+  setTimeout(() => el.remove(), 3350);
+}
+
+// ── NodeSwitcher（Header 下拉）──
+const nsToggle = document.getElementById('nsToggle');
+const nsMenu = document.getElementById('nsMenu');
+if (nsToggle) {
+  nsToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = nsMenu.style.display !== 'none';
+    nsMenu.style.display = open ? 'none' : 'block';
+    nsToggle.setAttribute('aria-expanded', String(!open));
+  });
+  document.addEventListener('click', (e) => {
+    if (nsMenu && nsMenu.style.display !== 'none' && !nsMenu.contains(e.target) && !nsToggle.contains(e.target)) {
+      nsMenu.style.display = 'none';
+      nsToggle.setAttribute('aria-expanded', 'false');
+    }
+  });
+  nsMenu.querySelectorAll('.node-option[data-node]').forEach(opt => {
+    opt.addEventListener('click', () => {
+      const name = opt.dataset.node;
+      document.getElementById('nsLabel').textContent = name;
+      toast(`切換至單節點視圖 /dashboard?node=${name}（demo）`, 'success');
+      nsMenu.style.display = 'none';
+      nsToggle.setAttribute('aria-expanded', 'false');
+    });
+  });
+  const allOpt = nsMenu.querySelector('.node-option.all');
+  if (allOpt) allOpt.addEventListener('click', () => {
+    document.getElementById('nsLabel').textContent = '所有節點';
+    toast('返回 Aggregate Dashboard（demo）', 'success');
+    nsMenu.style.display = 'none';
+    nsToggle.setAttribute('aria-expanded', 'false');
+  });
+}
+
+// ── NodeCard 互動：線上點擊切換 / 離線開啟診斷 / 詳情面板 ──
+const CARDS = {
+  'web-server-01': { status: 'online', host: 'web-server-01', ver: '1.2.0', os: 'Ubuntu 22.04', uptime: '12d 4h 18m', hb: '5 秒前' },
+  'web-server-02': { status: 'online', host: 'web-server-02', ver: '1.2.0', os: 'Ubuntu 22.04', uptime: '3d 22h', hb: '3 秒前' },
+  'db-01': { status: 'degraded', host: 'db-01.internal', ver: '1.2.0', os: 'Debian 12', uptime: '45d 2h', hb: '18 秒前' },
+  'web-server-03': { status: 'warning', host: 'web-server-03', ver: '1.0.0', os: 'Ubuntu 20.04', uptime: '90d', hb: '2 秒前' },
+  'web-server-04': { status: 'offline', host: 'web-server-04', ver: '1.2.0', os: 'Ubuntu 22.04', hb: '2 分鐘前', lastUp: '08-18 09:12', offlineFor: '12 分鐘' },
+  'legacy-01': { status: 'long_offline', host: 'legacy-01.old', ver: '1.0.0', os: 'CentOS 7', hb: '3 小時前', lastUp: '08-17 22:40', offlineFor: '3 小時' },
+};
+
+document.querySelectorAll('#aggGrid .node-card').forEach(card => {
+  card.addEventListener('click', (e) => {
+    if (e.target.closest('.nc-detail')) return;
+    const node = card.dataset.node;
+    const status = card.dataset.status;
+    if (status === 'offline' || status === 'long_offline') {
+      openDetail(node);
+    } else {
+      toast(`切換至單節點視圖 /dashboard?node=${node}（demo）`, 'success');
+    }
+  });
+});
+
+document.querySelectorAll('#aggGrid .nc-detail').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openDetail(btn.dataset.detail);
+  });
+});
+
+// ── 狀態 Demo 卡片 ──
+const demoOfflineCard = document.getElementById('demoOfflineCard');
+if (demoOfflineCard) demoOfflineCard.addEventListener('click', () => openDetail('web-server-04'));
+const demoOfflineDetail = document.getElementById('demoOfflineDetail');
+if (demoOfflineDetail) demoOfflineDetail.addEventListener('click', (e) => { e.stopPropagation(); openDetail('web-server-04'); });
+const demoWarnDetail = document.getElementById('demoWarnDetail');
+if (demoWarnDetail) demoWarnDetail.addEventListener('click', (e) => { e.stopPropagation(); openDetail('web-server-03'); });
+
+// ── NodeDetailPanel ──
+const detailOverlay = document.getElementById('detailOverlay');
+const dpList = document.getElementById('dpList');
+const dpDot = document.getElementById('dpDot');
+const dpName = document.getElementById('dpName');
+const dpWarn = document.getElementById('dpWarn');
+const dpSuggest = document.getElementById('dpSuggest');
+const dpActions = document.getElementById('dpActions');
+const dpClose = document.getElementById('dpClose');
+
+const DOT_HTML = {
+  online: '<svg width="11" height="11" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--success)"/></svg><span class="st-txt">線上</span>',
+  degraded: '<svg width="11" height="11" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--warning)"/></svg><span class="st-txt">延遲</span>',
+  warning: '<svg width="11" height="11" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--warning)"/></svg><span class="st-txt">警告</span>',
+  offline: '<svg width="11" height="11" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--danger)"/></svg><span class="st-txt">離線</span>',
+  long_offline: '<svg width="11" height="11" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--muted)"/></svg><span class="st-txt">長期離線</span>',
+};
+
+function openDetail(nodeId) {
+  const n = CARDS[nodeId];
+  if (!n) return;
+  dpName.textContent = nodeId;
+  dpDot.innerHTML = DOT_HTML[n.status];
+  dpWarn.style.display = 'none';
+  dpSuggest.style.display = 'none';
+  let rows = '';
+  if (n.status === 'offline' || n.status === 'long_offline') {
+    rows = `<dt>Hostname</dt><dd>${n.host}</dd><dt>Agent 版本</dt><dd>${n.ver}</dd><dt>最後上線</dt><dd>${n.lastUp}</dd><dt>最後心跳</dt><dd>${n.hb}</dd><dt>離線持續</dt><dd>${n.offlineFor}</dd>`;
+    dpSuggest.style.display = 'block';
+    dpSuggest.innerHTML = '操作建議：檢查 Agent 是否執行（<b>systemctl status linux-service-agent</b>）';
+    dpActions.innerHTML = '<button class="btn sm secondary">重新連線</button><button class="btn sm danger" id="dpRemove">移除節點</button>';
+  } else {
+    rows = `<dt>Hostname</dt><dd>${n.host}</dd><dt>Agent 版本</dt><dd>${n.ver}</dd><dt>OS</dt><dd>${n.os}</dd><dt>上線時長</dt><dd>${n.uptime}</dd><dt>最後心跳</dt><dd>${n.hb}</dd>`;
+    dpActions.innerHTML = '<button class="btn sm secondary">重新連線</button><button class="btn sm secondary">編輯設定</button><button class="btn sm danger" id="dpRemove">移除節點</button>';
+  }
+  if (n.status === 'warning') {
+    dpWarn.style.display = 'flex';
+    dpWarn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4m0 4h.01"/></svg><span>Agent 版本過舊 (v1.0)，建議升級至 v1.2+</span>';
+  }
+  dpList.innerHTML = rows;
+  detailOverlay.classList.add('open');
+  const rm = document.getElementById('dpRemove');
+  if (rm) rm.addEventListener('click', () => toast('已開啟移除確認（ConfirmModal「確定要移除此節點？所有歷史資料將保留。」demo）', 'warning'));
+}
+dpClose.addEventListener('click', () => detailOverlay.classList.remove('open'));
+detailOverlay.addEventListener('click', (e) => { if (e.target === detailOverlay) detailOverlay.classList.remove('open'); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') detailOverlay.classList.remove('open'); });
+
+// ── 跨節點搜尋（主畫面）──
+const aggSearchInput = document.getElementById('aggSearchInput');
+const aggSearchClear = document.getElementById('aggSearchClear');
+const aggSearch = document.getElementById('aggSearch');
+const aggSearchResults = document.getElementById('aggSearchResults');
+const aggGrid = document.getElementById('aggGrid');
+let debounceTimer = null;
+
+const MOCK_SEARCH = {
+  nginx: {
+    results: [
+      { node: 'web-server-01', svc: 'nginx.service', state: 'active (running)', cls: '' },
+      { node: 'web-server-02', svc: 'nginx.service', state: 'active (running)', cls: '' },
+      { node: 'db-01', svc: 'nginx@.service', state: 'inactive (dead)', cls: 'st-inact' },
+    ],
+    failed: ['web-server-04', 'legacy-01'],
+  },
+};
+
+function renderSearchResults(q) {
+  const data = MOCK_SEARCH[q];
+  aggSearchResults.style.display = 'block';
+  if (!data) {
+    aggSearchResults.innerHTML = '<div class="sr-empty">沒有找到匹配的服務</div>';
+    return;
+  }
+  let html = data.results.map(r =>
+    `<button class="sr-item" data-svc="${r.svc}">
+      <span class="sr-node">${r.node}</span><span class="sr-svc">${r.svc}</span>
+      <span class="sr-state ${r.cls}">${r.state}</span>
+      <span class="sr-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg></span>
+    </button>`).join('');
+  html += `<div class="failed-note"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4m0 4h.01"/></svg><span><b>${data.failed.length} 個節點無法查詢（離線/逾時）</b>：${data.failed.join(', ')}</span></div>`;
+  aggSearchResults.innerHTML = html;
+  aggSearchResults.querySelectorAll('.sr-item').forEach(item => {
+    item.addEventListener('click', () => toast(`跳轉 /dashboard?node=${item.dataset.svc.startsWith('nginx') ? 'web-server-01' : 'db-01'}&service=${item.dataset.svc}（demo）`, 'success'));
+  });
+}
+
+if (aggSearchInput) {
+  aggSearchInput.addEventListener('input', () => {
+    const q = aggSearchInput.value.trim().toLowerCase();
+    aggSearch.classList.toggle('has-value', q.length > 0);
+    if (debounceTimer) clearTimeout(debounceTimer);
+    if (!q) {
+      aggSearchResults.style.display = 'none';
+      aggSearchResults.innerHTML = '';
+      aggGrid.style.display = '';
+      return;
+    }
+    debounceTimer = setTimeout(() => {
+      aggGrid.style.display = 'none';
+      renderSearchResults(q);
+    }, 300);
+  });
+  aggSearchClear.addEventListener('click', () => {
+    aggSearchInput.value = '';
+    aggSearch.classList.remove('has-value');
+    aggSearchResults.style.display = 'none';
+    aggSearchResults.innerHTML = '';
+    aggGrid.style.display = '';
+    aggSearchInput.focus();
+  });
+  aggSearchInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') aggSearchClear.click(); });
+}
+
+// ── 搜尋 Demo frame ──
+const demoInput = document.getElementById('searchDemoInput');
+const demoClear = document.getElementById('searchDemoClear');
+const demoResults = document.getElementById('searchDemoResults');
+const demoGrid = document.getElementById('searchDemoGrid');
+let demoDebounce = null;
+if (demoInput) {
+  demoInput.addEventListener('input', () => {
+    const q = demoInput.value.trim().toLowerCase();
+    document.getElementById('searchDemo').classList.toggle('has-value', q.length > 0);
+    if (demoDebounce) clearTimeout(demoDebounce);
+    if (!q) {
+      demoResults.style.display = 'none';
+      demoGrid.style.display = '';
+      return;
+    }
+    demoDebounce = setTimeout(() => {
+      demoGrid.style.display = 'none';
+      demoResults.style.display = 'block';
+      if (q === 'nginx' || q.includes('nginx')) {
+        demoResults.innerHTML =
+          '<button class="sr-item"><span class="sr-node">web-server-01</span><span class="sr-svc">nginx.service</span><span class="sr-state">active (running)</span><span class="sr-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg></span></button>' +
+          '<button class="sr-item"><span class="sr-node">web-server-02</span><span class="sr-svc">nginx.service</span><span class="sr-state">active (running)</span><span class="sr-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg></span></button>' +
+          '<button class="sr-item"><span class="sr-node">db-01</span><span class="sr-svc">nginx@.service</span><span class="sr-state st-inact">inactive (dead)</span><span class="sr-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg></span></button>' +
+          '<div class="failed-note"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4m0 4h.01"/></svg></span><span><b>2 個節點無法查詢（離線/逾時）</b>：web-server-04, legacy-01</span></div>';
+      } else if (q === 'mysql' || q.includes('mysql')) {
+        demoResults.innerHTML =
+          '<button class="sr-item"><span class="sr-node">db-01</span><span class="sr-svc">mysql.service</span><span class="sr-state">active (running)</span><span class="sr-arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg></span></button>';
+      } else {
+        demoResults.innerHTML = '<div class="sr-empty">沒有找到匹配的服務</div>';
+      }
+      demoResults.querySelectorAll('.sr-item').forEach(item => item.addEventListener('click', () => toast('跳轉至該節點並展開服務（demo）', 'success')));
+    }, 300);
+  });
+  demoClear.addEventListener('click', () => {
+    demoInput.value = '';
+    document.getElementById('searchDemo').classList.remove('has-value');
+    demoResults.style.display = 'none';
+    demoGrid.style.display = '';
+  });
+  demoInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') demoClear.click(); });
+}
+</script>
+</body>
+</html>

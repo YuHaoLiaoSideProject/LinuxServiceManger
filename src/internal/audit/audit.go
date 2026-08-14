@@ -555,22 +555,114 @@ func NewEntry(username, sourceIP string, action Action, target string, result Re
 	}, nil
 }
 
-// ExtractClientIP extracts the client IP from a request, preferring
-// X-Forwarded-For over RemoteAddr.
+// ============================================================
+//  Trusted proxy handling
+// ============================================================
+
+var (
+	trustedProxyOnce sync.Once
+	trustedProxySet  map[string]struct{}
+)
+
+// trustedProxies returns the set of proxy IPs whose forwarded headers
+// (X-Forwarded-For / X-Real-IP) are trusted. Loopback addresses are trusted
+// by default; extend via the TRUSTED_PROXY_IPS environment variable
+// (comma-separated, e.g. "TRUSTED_PROXY_IPS=10.0.0.1,10.0.0.2").
+func trustedProxies() map[string]struct{} {
+	trustedProxyOnce.Do(func() {
+		// Only build the default set when no test override is installed.
+		if trustedProxySet != nil {
+			return
+		}
+		trustedProxySet = map[string]struct{}{
+			"127.0.0.1": {},
+			"::1":       {},
+		}
+		if raw := os.Getenv("TRUSTED_PROXY_IPS"); raw != "" {
+			for _, part := range strings.Split(raw, ",") {
+				if ip := net.ParseIP(strings.TrimSpace(part)); ip != nil {
+					trustedProxySet[ip.String()] = struct{}{}
+				}
+			}
+		}
+	})
+	return trustedProxySet
+}
+
+// setTrustedProxiesForTest replaces the trusted proxy set (testing only).
+// With no arguments the override is cleared and the next access re-reads the
+// TRUSTED_PROXY_IPS environment variable.
+func setTrustedProxiesForTest(ips ...string) {
+	trustedProxyOnce = sync.Once{}
+	if len(ips) == 0 {
+		trustedProxySet = nil
+		return
+	}
+	set := map[string]struct{}{}
+	for _, ip := range ips {
+		set[ip] = struct{}{}
+	}
+	trustedProxySet = set
+}
+
+// ExtractClientIP extracts the client IP from a request.
+//
+// Forwarded headers (X-Forwarded-For / X-Real-IP) are only trusted when the
+// immediate TCP peer (RemoteAddr) is a trusted proxy — loopback by default,
+// extendable via TRUSTED_PROXY_IPS. Otherwise the peer address itself is
+// returned, so a client that connects directly cannot forge its source IP in
+// the audit log by sending a fake X-Forwarded-For header.
+//
+// When the peer is a trusted proxy, the rightmost X-Forwarded-For entry that
+// is not itself a trusted proxy is used: that is the client as observed by
+// the outermost trusted proxy, so forged entries appended by the client (e.g.
+// via nginx's $proxy_add_x_forwarded_for) are ignored. X-Real-IP is used as a
+// fallback (nginx sets it from $remote_addr), then the peer address.
 func ExtractClientIP(r *http.Request) string {
+	peer := peerIP(r.RemoteAddr)
+
+	trusted := trustedProxies()
+	if _, ok := trusted[peer]; !ok {
+		// Direct connection or untrusted intermediary: never trust
+		// client-supplied forwarded headers.
+		return peer
+	}
+
+	// Peer is a trusted proxy: walk X-Forwarded-For right-to-left and return
+	// the first entry that is not itself a trusted proxy.
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// Take the first IP in the comma-separated list
 		parts := strings.Split(xff, ",")
-		if len(parts) > 0 {
-			ip := strings.TrimSpace(parts[0])
-			if ip != "" {
-				return ip
+		for i := len(parts) - 1; i >= 0; i-- {
+			ip := net.ParseIP(strings.TrimSpace(parts[i]))
+			if ip == nil {
+				continue
+			}
+			if _, isProxy := trusted[ip.String()]; !isProxy {
+				return ip.String()
 			}
 		}
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+
+	// Fall back to X-Real-IP (only read because the peer is already confirmed
+	// to be a trusted proxy).
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		if ip := net.ParseIP(strings.TrimSpace(xri)); ip != nil {
+			return ip.String()
+		}
+	}
+
+	return peer
+}
+
+// peerIP extracts the IP portion of a RemoteAddr ("host:port"), returning
+// the input unchanged when it has no port.
+func peerIP(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		return remoteAddr
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.String()
 	}
 	return host
 }

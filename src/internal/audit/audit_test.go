@@ -376,35 +376,77 @@ func TestCleanupRetention(t *testing.T) {
 // ============================================================
 
 func TestExtractClientIP(t *testing.T) {
+	// Isolate from any TRUSTED_PROXY_IPS on the host machine.
+	setTrustedProxiesForTest("127.0.0.1", "::1")
+
 	tests := []struct {
 		name          string
 		xForwardedFor string
+		xRealIP       string
 		remoteAddr    string
 		expected      string
 	}{
 		{
-			name:       "X-Forwarded-For present",
-			xForwardedFor: "192.168.1.100, 10.0.0.1",
-			remoteAddr: "127.0.0.1:54321",
-			expected:   "192.168.1.100",
-		},
-		{
-			name:       "single X-Forwarded-For",
+			name:          "through trusted proxy, single XFF",
 			xForwardedFor: "192.168.1.100",
+			remoteAddr:    "127.0.0.1:54321",
+			expected:      "192.168.1.100",
+		},
+		{
+			name:          "through trusted proxy, spoofed XFF ignored",
+			xForwardedFor: "8.8.8.8, 192.168.1.100",
+			remoteAddr:    "127.0.0.1:54321",
+			expected:      "192.168.1.100",
+		},
+		{
+			name:          "through trusted proxy, spoofed multi-hop XFF ignored",
+			xForwardedFor: "1.1.1.1, 2.2.2.2, 192.168.1.100",
+			remoteAddr:    "127.0.0.1:54321",
+			expected:      "192.168.1.100",
+		},
+		{
+			name:       "through trusted proxy, X-Real-IP fallback",
+			xRealIP:    "192.168.1.100",
 			remoteAddr: "127.0.0.1:54321",
 			expected:   "192.168.1.100",
 		},
 		{
-			name:       "no X-Forwarded-For, use RemoteAddr",
-			xForwardedFor: "",
+			name:       "through trusted proxy, no headers, use peer",
+			remoteAddr: "127.0.0.1:54321",
+			expected:   "127.0.0.1",
+		},
+		{
+			name:          "direct connection, spoofed XFF ignored",
+			xForwardedFor: "8.8.8.8",
+			remoteAddr:    "10.0.0.5:12345",
+			expected:      "10.0.0.5",
+		},
+		{
+			name:       "direct connection, spoofed X-Real-IP ignored",
+			xRealIP:    "8.8.8.8",
 			remoteAddr: "10.0.0.5:12345",
 			expected:   "10.0.0.5",
 		},
 		{
-			name:       "IPv6 RemoteAddr",
-			xForwardedFor: "",
+			name:       "no X-Forwarded-For, use RemoteAddr",
+			remoteAddr: "10.0.0.5:12345",
+			expected:   "10.0.0.5",
+		},
+		{
+			name:       "IPv6 loopback peer (trusted)",
 			remoteAddr: "[::1]:12345",
 			expected:   "::1",
+		},
+		{
+			name:          "IPv4-mapped IPv6 normalized",
+			xForwardedFor: "192.168.1.100",
+			remoteAddr:    "[::ffff:127.0.0.1]:12345",
+			expected:      "192.168.1.100",
+		},
+		{
+			name:       "RemoteAddr without port",
+			remoteAddr: "10.0.0.5",
+			expected:   "10.0.0.5",
 		},
 	}
 
@@ -414,6 +456,9 @@ func TestExtractClientIP(t *testing.T) {
 			if tt.xForwardedFor != "" {
 				req.Header.Set("X-Forwarded-For", tt.xForwardedFor)
 			}
+			if tt.xRealIP != "" {
+				req.Header.Set("X-Real-IP", tt.xRealIP)
+			}
 			req.RemoteAddr = tt.remoteAddr
 
 			ip := ExtractClientIP(req)
@@ -421,6 +466,43 @@ func TestExtractClientIP(t *testing.T) {
 				t.Errorf("expected %q, got %q", tt.expected, ip)
 			}
 		})
+	}
+}
+
+func TestExtractClientIP_TrustedProxyChain(t *testing.T) {
+	// client(192.168.1.100) → proxyA(10.0.0.1) → proxyB(10.0.0.2) → app
+	setTrustedProxiesForTest("127.0.0.1", "::1", "10.0.0.1", "10.0.0.2")
+	defer setTrustedProxiesForTest("127.0.0.1", "::1")
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.2:12345"
+	req.Header.Set("X-Forwarded-For", "192.168.1.100, 10.0.0.1")
+
+	if ip := ExtractClientIP(req); ip != "192.168.1.100" {
+		t.Errorf("expected %q, got %q", "192.168.1.100", ip)
+	}
+}
+
+func TestExtractClientIP_TrustedProxyEnv(t *testing.T) {
+	// Clear the override so the next trustedProxies() call re-reads the env.
+	setTrustedProxiesForTest()
+	defer setTrustedProxiesForTest("127.0.0.1", "::1")
+	t.Setenv("TRUSTED_PROXY_IPS", "10.0.0.1")
+
+	// Peer listed in TRUSTED_PROXY_IPS: forwarded header is trusted.
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.1:9999"
+	req.Header.Set("X-Forwarded-For", "192.168.1.100")
+	if ip := ExtractClientIP(req); ip != "192.168.1.100" {
+		t.Errorf("expected %q, got %q", "192.168.1.100", ip)
+	}
+
+	// Peer not in the list: spoofed header ignored.
+	req2 := httptest.NewRequest(http.MethodGet, "/", nil)
+	req2.RemoteAddr = "10.0.0.2:9999"
+	req2.Header.Set("X-Forwarded-For", "8.8.8.8")
+	if ip := ExtractClientIP(req2); ip != "10.0.0.2" {
+		t.Errorf("expected %q, got %q", "10.0.0.2", ip)
 	}
 }
 
@@ -629,13 +711,13 @@ func TestNoSensitiveData(t *testing.T) {
 		t.Fatalf("json unmarshal: %v", err)
 	}
 	allowedFields := map[string]bool{
-		"timestamp":  true,
-		"username":   true,
-		"source_ip":  true,
-		"action":     true,
-		"target":     true,
-		"result":     true,
-		"detail":     true,
+		"timestamp": true,
+		"username":  true,
+		"source_ip": true,
+		"action":    true,
+		"target":    true,
+		"result":    true,
+		"detail":    true,
 	}
 	for key := range parsed {
 		if !allowedFields[key] {
@@ -917,7 +999,7 @@ func TestWriteAuditDiskFull(t *testing.T) {
 
 	// Write should not panic even though the file can't be created
 	e := Entry{Timestamp: time.Now().UTC().Format(time.RFC3339), Username: "admin", SourceIP: "10.0.0.1", Action: ActionLogin, Target: "-", Result: ResultSuccess}
-	m.Write(e) // should not panic
+	m.Write(e)   // should not panic
 	m.Shutdown() // should not panic
 
 	// Operation completed without crash — the audit failure is silent

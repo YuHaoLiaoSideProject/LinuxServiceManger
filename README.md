@@ -314,6 +314,32 @@ linux-service-manager/
 | `GET` | `/api/v1/audit` | 查詢審計日誌（支援分頁、搜尋、時間範圍） | ✅ |
 | `GET` | `/api/v1/audit/export` | 匯出審計日誌（CSV） | ✅ |
 
+### 📖 互動式 API 文件
+
+登入後於 SPA 導覽列點「API 文件」（或直接開啟 `/api/v1/docs/`）可查看完整互動式文件（Swagger UI），包含每個端點的 request/response schema、錯誤碼與「Try it out」功能。
+
+文件由 Go handler 註解自動產生（swaggo），更新後端端點後執行 `make swagger` 重新產生。
+
+#### 🔑 使用 API Token 呼叫
+
+於「API Tokens」頁面建立 Token 後，以 Bearer header 呼叫任一受保護端點：
+
+```bash
+# read scope — 僅允許 GET / HEAD / OPTIONS（寫入操作回 403）
+curl -sS -H "Authorization: Bearer lsm_你的Token" https://你的主機/api/v1/services
+
+# full scope — 可執行所有操作（服務啟停、批次、設定檔、通知管理…）
+curl -sS -X POST -H "Authorization: Bearer lsm_你的Token" \
+  -H "Content-Type: application/json" \
+  -d '{"names":["nginx.service"],"action":"restart"}' \
+  https://你的主機/api/v1/services/batch
+```
+
+要點：
+- Token 管理端點（`/api/v1/tokens`）僅限 Session 登入，不可用 Token 呼叫。
+- 非 2xx 回應一律為 `{"error": "說明"}`。
+- WebSocket 端點（`/api/v1/ws`、`/api/v1/services/{name}/logs/ws`）支援自訂 header 的 ws 客戶端帶 Bearer header；瀏覽器原生 WebSocket 需 Session cookie。
+
 ### Legacy HTML 路由（htmx）
 
 以下路由為舊版 htmx 模式，仍可使用但非主要開發目標：

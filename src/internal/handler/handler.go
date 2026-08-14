@@ -137,6 +137,13 @@ func (h *Handler) HandleRestart(w http.ResponseWriter, r *http.Request) {
 
 // HandleStatusWS upgrades an HTTP connection to WebSocket and registers
 // the client with the hub for real-time status push notifications.
+// @Summary 服務狀態即時推送（WebSocket）
+// @Description 升級為 WebSocket 並即時推送服務狀態變更。**連線後不須傳入任何訊息** — 伺服器於狀態變更時主動推送快照（JSON：`{name, active, sub, unitFileState}`），連線建立時亦推送完整快照。\n\n**認證**：支援自訂 header 的 ws 客戶端請帶 `Authorization: Bearer` header；瀏覽器原生 WebSocket 需 session cookie。\n**限制**：每個 user 最多 5 個連線，超過回 close 1008（policy violation）。
+// @Tags WebSocket
+// @Security BearerAuth
+// @Success 101 "Switching Protocols（之後為服務狀態快照 JSON TextMessage）"
+// @Failure 401 {object} messageJSON "未驗證"
+// @Router /ws [get]
 func (h *Handler) HandleStatusWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Upgrader.Upgrade(w, r, nil)
 	if err != nil {

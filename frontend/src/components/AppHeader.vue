@@ -29,6 +29,7 @@ const connectionClass = computed(() => ({
 const isDashboard = computed(() => route.path === '/')
 const isAudit = computed(() => route.path === '/audit')
 const isNotifications = computed(() => route.path === '/notifications')
+const isDocs = computed(() => route.path === '/docs')
 
 const avatarInitial = computed(() => (props.username || '?').charAt(0).toUpperCase())
 
@@ -103,6 +104,12 @@ onBeforeUnmount(() => {
         :class="{ active: isNotifications }"
         data-testid="nav-notifications"
       >🔔 {{ t('nav.notifications') }}</router-link>
+      <router-link
+        to="/docs"
+        class="nav-item"
+        :class="{ active: isDocs }"
+        data-testid="nav-docs"
+      >📖 {{ t('nav.docs') }}</router-link>
     </nav>
 
     <div class="app-header-right">

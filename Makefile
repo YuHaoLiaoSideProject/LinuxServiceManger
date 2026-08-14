@@ -1,4 +1,4 @@
-.PHONY: build run linux-build static linux-static clean test deploy dev frontend
+.PHONY: build run linux-build static linux-static clean test deploy dev frontend swagger
 
 APP_NAME := linux-service-manager
 SRC_DIR  := src
@@ -9,6 +9,11 @@ LDFLAGS  := -s -w
 
 frontend:
 	cd $(FE_DIR) && npm run build
+
+# Regenerate swagger docs (requires swag CLI: go install github.com/swaggo/swag/cmd/swag@latest)
+swagger:
+	cd $(SRC_DIR) && swag init -g main.go -o docs
+	go mod tidy
 
 # ── Backend + Frontend ──
 

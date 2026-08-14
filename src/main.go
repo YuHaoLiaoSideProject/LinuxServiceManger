@@ -21,6 +21,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
+	_ "linux-service-manager/docs"
 )
 
 //go:embed templates
@@ -29,6 +31,29 @@ var templatesFS embed.FS
 //go:embed static
 var staticFS embed.FS
 
+// @title Linux Service Manager API
+// @version 1.0.0
+// @description
+// Linux Service Manager 的 REST API。
+//
+// **認證方式**（除登入/登出/session 外皆需要）：
+// 1. **API Token**：`Authorization: Bearer lsm_...`（於「API Tokens」頁面建立）。
+//   - `read` scope：僅允許 GET/HEAD/OPTIONS，寫入操作回傳 403。
+//   - `full` scope：允許所有操作。
+//
+// 2. **Session Cookie**：瀏覽器登入後自動帶上（`session` cookie）。
+//
+// **錯誤格式**：非 2xx 回應一律為 `{"error": "說明"}`。
+//
+// **WebSocket**：`/api/v1/ws`（服務狀態推送）與 `/api/v1/services/{name}/logs/ws`（即時日誌）
+// 皆需認證 — 支援自訂 header 的 WebSocket 客戶端可帶 `Authorization: Bearer` header；
+// 瀏覽器原生 WebSocket 無法自訂 header，需使用 session cookie。
+//
+// **互動式文件**：登入後於 SPA 導覽列「API 文件」頁（或直接存取 `/api/v1/docs/`）。
+// @BasePath /api/v1
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
 func main() {
 	// Extract the templates directory as a sub-filesystem
 	templates, err := fs.Sub(templatesFS, "templates")
@@ -141,6 +166,8 @@ func main() {
 		r.Get("/api/v1/services/{name}/config", h.HandleGetServiceConfig)
 		r.Put("/api/v1/services/{name}/config", h.HandleSaveServiceConfig)
 		r.Post("/api/v1/services/{name}/config/validate", h.HandleValidateServiceConfig)
+		// Interactive API documentation (swagger-ui)
+		r.Get("/api/v1/docs/*", httpSwagger.Handler(httpSwagger.URL("/api/v1/docs/doc.json")))
 		// Webhook notification (013)
 		r.Get("/api/v1/notify/channels", h.HandleListChannels)
 		r.Post("/api/v1/notify/channels", h.HandleCreateChannel)

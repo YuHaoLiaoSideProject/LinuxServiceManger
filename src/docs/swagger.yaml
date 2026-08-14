@@ -1,0 +1,1387 @@
+basePath: /api/v1
+definitions:
+  audit.Action:
+    enum:
+    - login
+    - logout
+    - start
+    - stop
+    - restart
+    - enable
+    - disable
+    - token_create
+    - token_revoke
+    - config_view
+    - config_save
+    - notify_create
+    - notify_update
+    - notify_delete
+    - notify_toggle
+    - notify_test
+    type: string
+    x-enum-comments:
+      ActionConfigSave: PUT config 成功（含 reload 失敗已寫入之半成功）
+      ActionConfigView: GET config 成功時（含鎖定服務唯讀檢視）
+    x-enum-descriptions:
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    - GET config 成功時（含鎖定服務唯讀檢視）
+    - PUT config 成功（含 reload 失敗已寫入之半成功）
+    - ""
+    - ""
+    - ""
+    - ""
+    - ""
+    x-enum-varnames:
+    - ActionLogin
+    - ActionLogout
+    - ActionStart
+    - ActionStop
+    - ActionRestart
+    - ActionEnable
+    - ActionDisable
+    - ActionTokenCreate
+    - ActionTokenRevoke
+    - ActionConfigView
+    - ActionConfigSave
+    - ActionNotifyCreate
+    - ActionNotifyUpdate
+    - ActionNotifyDelete
+    - ActionNotifyToggle
+    - ActionNotifyTest
+  audit.Entry:
+    properties:
+      action:
+        $ref: '#/definitions/audit.Action'
+      detail:
+        type: string
+      result:
+        $ref: '#/definitions/audit.Result'
+      source_ip:
+        type: string
+      target:
+        type: string
+      timestamp:
+        type: string
+      username:
+        type: string
+    type: object
+  audit.QueryResult:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/audit.Entry'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  audit.Result:
+    enum:
+    - success
+    - failure
+    type: string
+    x-enum-varnames:
+    - ResultSuccess
+    - ResultFailure
+  handler.ChannelPayload:
+    properties:
+      all_services:
+        type: boolean
+      chat_id:
+        type: string
+      events:
+        items:
+          type: string
+        type: array
+      headers:
+        additionalProperties:
+          type: string
+        type: object
+      method:
+        type: string
+      name:
+        type: string
+      services:
+        items:
+          type: string
+        type: array
+      sub_chat_id:
+        type: string
+      token:
+        type: string
+      type:
+        $ref: '#/definitions/notify.ChannelType'
+      url:
+        type: string
+    type: object
+  handler.PatchEnabledPayload:
+    properties:
+      enabled:
+        type: boolean
+    type: object
+  handler.SaveConfigRequest:
+    properties:
+      baseChecksum:
+        description: GET 回傳的 checksum，必填（檔案存在時）
+        type: string
+      config:
+        type: string
+    type: object
+  handler.SaveConfigResponse:
+    properties:
+      backupPath:
+        type: string
+      message:
+        type: string
+    type: object
+  handler.ServiceConfigResponse:
+    properties:
+      checksum:
+        description: SHA-256 hex，供 PUT baseChecksum
+        type: string
+      config:
+        type: string
+      fragmentPath:
+        type: string
+      name:
+        type: string
+      size:
+        type: integer
+    type: object
+  handler.TestResponse:
+    properties:
+      detail:
+        type: string
+      error:
+        type: string
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  handler.batchRequest:
+    properties:
+      action:
+        type: string
+      names:
+        items:
+          type: string
+        type: array
+    type: object
+  handler.batchResponse:
+    properties:
+      results:
+        items:
+          $ref: '#/definitions/handler.batchResult'
+        type: array
+      summary:
+        $ref: '#/definitions/handler.batchSummary'
+    type: object
+  handler.batchResult:
+    properties:
+      action:
+        type: string
+      error:
+        description: populated only on failure
+        type: string
+      name:
+        type: string
+      result:
+        description: '"success" | "failure"'
+        type: string
+    type: object
+  handler.batchSummary:
+    properties:
+      failed:
+        type: integer
+      success:
+        type: integer
+      total:
+        type: integer
+    type: object
+  handler.conflictResponse:
+    properties:
+      currentChecksum:
+        type: string
+      error:
+        type: string
+    type: object
+  handler.messageJSON:
+    properties:
+      error:
+        type: string
+      message:
+        type: string
+    type: object
+  handler.serviceJSON:
+    properties:
+      active:
+        type: string
+      fragmentPath:
+        type: string
+      load:
+        type: string
+      locked:
+        type: boolean
+      name:
+        type: string
+      sub:
+        type: string
+      unitFileState:
+        type: string
+    type: object
+  handler.sessionJSON:
+    properties:
+      authenticated:
+        type: boolean
+      username:
+        type: string
+    type: object
+  handler.tokenListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/token.TokenResponse'
+        type: array
+    type: object
+  notify.ChannelType:
+    enum:
+    - slack
+    - discord
+    - telegram
+    - custom
+    type: string
+    x-enum-varnames:
+    - ChannelTypeSlack
+    - ChannelTypeDiscord
+    - ChannelTypeTelegram
+    - ChannelTypeCustom
+  notify.HistoryEntry:
+    properties:
+      channel_id:
+        type: string
+      channel_name:
+        type: string
+      channel_type:
+        type: string
+      duration_ms:
+        description: 含 retry 的總耗時
+        type: integer
+      error:
+        description: 失敗原因
+        type: string
+      event:
+        description: started/stopped/failed/restarted/test
+        type: string
+      service:
+        description: nginx.service
+        type: string
+      status:
+        description: success/failure
+        type: string
+      timestamp:
+        description: RFC3339 UTC
+        type: string
+    type: object
+  notify.HistoryResult:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/notify.HistoryEntry'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  systemd.ValidateError:
+    properties:
+      line:
+        type: integer
+      message:
+        type: string
+    type: object
+  systemd.ValidateResult:
+    properties:
+      available:
+        type: boolean
+      errors:
+        items:
+          $ref: '#/definitions/systemd.ValidateError'
+        type: array
+      message:
+        type: string
+      valid:
+        type: boolean
+    type: object
+  token.CreateTokenInput:
+    properties:
+      custom_expiry:
+        description: 僅 expires_in_days=0 時使用
+        type: string
+      expires_in_days:
+        description: -1 = 永不過期, 1-365 = N 天, 0 = 自訂日期
+        type: integer
+      name:
+        type: string
+      scope:
+        $ref: '#/definitions/token.Scope'
+    type: object
+  token.CreateTokenResponse:
+    properties:
+      expires_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      scope:
+        $ref: '#/definitions/token.Scope'
+      token:
+        description: RAW value — 僅此一次
+        type: string
+    type: object
+  token.RevokeResponse:
+    properties:
+      message:
+        type: string
+      status:
+        description: '"revoked" | "already_revoked"'
+        type: string
+    type: object
+  token.Scope:
+    enum:
+    - read
+    - full
+    type: string
+    x-enum-comments:
+      ScopeFull: 完整操作：所有 HTTP method
+      ScopeRead: 唯讀：僅 GET / HEAD / OPTIONS
+    x-enum-descriptions:
+    - 唯讀：僅 GET / HEAD / OPTIONS
+    - 完整操作：所有 HTTP method
+    x-enum-varnames:
+    - ScopeRead
+    - ScopeFull
+  token.Status:
+    enum:
+    - active
+    - expiring_soon
+    - expired
+    - revoked
+    type: string
+    x-enum-varnames:
+    - StatusActive
+    - StatusExpiringSoon
+    - StatusExpired
+    - StatusRevoked
+  token.TokenResponse:
+    properties:
+      created_at:
+        type: string
+      expires_at:
+        type: string
+      id:
+        type: string
+      last_used_at:
+        type: string
+      name:
+        type: string
+      prefix:
+        description: 前 4 字元 + "****" + 後 4 字元
+        type: string
+      scope:
+        $ref: '#/definitions/token.Scope'
+      status:
+        $ref: '#/definitions/token.Status'
+    type: object
+info:
+  contact: {}
+  title: Linux Service Manager API
+  version: 1.0.0
+paths:
+  /audit:
+    get:
+      description: 分頁查詢稽核日誌。支援全文搜尋與日期範圍（YYYY-MM-DD）。`read` scope Token 可用。
+      parameters:
+      - default: 1
+        description: 頁碼（預設 1）
+        in: query
+        name: page
+        type: integer
+      - default: 30
+        description: 每頁筆數（預設 30，上限 100）
+        in: query
+        name: limit
+        type: integer
+      - description: 全文搜尋關鍵字
+        in: query
+        name: search
+        type: string
+      - description: 起始日期 YYYY-MM-DD
+        in: query
+        name: from
+        type: string
+      - description: 結束日期 YYYY-MM-DD
+        in: query
+        name: to
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/audit.QueryResult'
+        "400":
+          description: 日期格式錯誤
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: 查詢失敗
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 查詢稽核日誌
+      tags:
+      - Audit
+  /audit/export:
+    get:
+      description: 依條件匯出稽核日誌為 CSV 檔案（Content-Disposition attachment）。`read` scope
+        Token 可用。
+      parameters:
+      - description: 必須為 csv
+        in: query
+        name: format
+        required: true
+        type: string
+      - description: 全文搜尋關鍵字
+        in: query
+        name: search
+        type: string
+      - description: 起始日期 YYYY-MM-DD
+        in: query
+        name: from
+        type: string
+      - description: 結束日期 YYYY-MM-DD
+        in: query
+        name: to
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: CSV 檔案內容
+          schema:
+            type: string
+        "400":
+          description: format 非 csv 或日期格式錯誤
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 匯出稽核日誌（CSV）
+      tags:
+      - Audit
+  /login:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: 以帳號密碼登入（form-urlencoded）。成功後設定 `session` cookie；亦有 rate limit（每
+        IP 每分鐘 5 次嘗試）。
+      parameters:
+      - description: 使用者名稱
+        in: formData
+        name: username
+        required: true
+        type: string
+      - description: 密碼
+        in: formData
+        name: password
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{username, message}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 缺少帳號或密碼
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 帳號或密碼錯誤
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      summary: 登入
+      tags:
+      - Auth
+  /logout:
+    post:
+      description: 登出並清除 session cookie。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      summary: 登出
+      tags:
+      - Auth
+  /notify/channels:
+    get:
+      description: 列出所有通知 Channel（Telegram token 遮罩顯示）。`read` scope Token 可用。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"data\": [Channel...]}'
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: notify 未設定
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 列出通知 Channels
+      tags:
+      - Notifications
+    post:
+      consumes:
+      - application/json
+      description: 建立新的通知 Channel（Slack/Discord/Telegram/Custom webhook）。需 `full`
+        scope Token。
+      parameters:
+      - description: Channel 設定
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ChannelPayload'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: '{\"data\": Channel}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 驗證失敗
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "403":
+          description: 唯讀 Token 權限不足
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "409":
+          description: 已達 Channel 上限（20）
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: 建立失敗
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 建立通知 Channel
+      tags:
+      - Notifications
+  /notify/channels/{id}:
+    delete:
+      description: 刪除 Channel（歷史發送紀錄保留）。需 `full` scope Token。
+      parameters:
+      - description: Channel ID（UUID）
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "403":
+          description: 唯讀 Token 權限不足
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "404":
+          description: Channel 不存在
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: 刪除失敗
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 刪除通知 Channel
+      tags:
+      - Notifications
+    patch:
+      consumes:
+      - application/json
+      description: 切換 Channel 的 enabled 狀態。需 `full` scope Token。
+      parameters:
+      - description: Channel ID（UUID）
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: '{\'
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.PatchEnabledPayload'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"data\": Channel}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 請求無效
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "403":
+          description: 唯讀 Token 權限不足
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "404":
+          description: Channel 不存在
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: 更新失敗
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 啟用/停用通知 Channel
+      tags:
+      - Notifications
+    put:
+      consumes:
+      - application/json
+      description: 覆寫更新 Channel 設定。Telegram token 留空或以 `****` 開頭時保留原值。需 `full` scope
+        Token。
+      parameters:
+      - description: Channel ID（UUID）
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 新的 Channel 設定
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ChannelPayload'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{\"data\": Channel}'
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 驗證失敗
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "403":
+          description: 唯讀 Token 權限不足
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "404":
+          description: Channel 不存在
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: 更新失敗
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 更新通知 Channel
+      tags:
+      - Notifications
+  /notify/channels/{id}/test:
+    post:
+      description: 向指定 Channel 發送測試通知（不寫入 history）。需 `full` scope Token。\n\n**注意**：發送失敗回
+        **502 Bad Gateway**（非 500）。
+      parameters:
+      - description: Channel ID（UUID）
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.TestResponse'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "403":
+          description: 唯讀 Token 權限不足
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "404":
+          description: Channel 不存在
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "502":
+          description: 發送失敗（success=false, error=原因）
+          schema:
+            $ref: '#/definitions/handler.TestResponse'
+      security:
+      - BearerAuth: []
+      summary: 測試通知 Channel
+      tags:
+      - Notifications
+  /notify/history:
+    get:
+      description: 分頁查詢通知發送紀錄，可依 Channel 與結果篩選。`read` scope Token 可用。
+      parameters:
+      - default: 1
+        description: 頁碼（預設 1）
+        in: query
+        name: page
+        type: integer
+      - default: 30
+        description: 每頁筆數（預設 30，上限 100）
+        in: query
+        name: limit
+        type: integer
+      - description: 依 Channel ID 篩選
+        in: query
+        name: channel_id
+        type: string
+      - description: all|success|failure（預設 all）
+        enum:
+        - all
+        - success
+        - failure
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/notify.HistoryResult'
+        "400":
+          description: 參數無效
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: 查詢失敗
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 查詢通知發送紀錄
+      tags:
+      - Notifications
+  /services:
+    get:
+      description: 取得所有 systemd 服務列表（名稱、Active/Sub 狀態、開機狀態、鎖定標記等）。`read` scope Token
+        可用。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handler.serviceJSON'
+            type: array
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: 取得服務列表失敗
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 取得服務列表
+      tags:
+      - Services
+  /services/{name}/config:
+    get:
+      description: 讀取指定服務的 systemd unit 設定檔內容（含 SHA-256 checksum 供後續 PUT baseChecksum）。鎖定服務亦可唯讀檢視。`read`
+        scope Token 可用。
+      parameters:
+      - description: 服務名稱（systemd unit name）
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.ServiceConfigResponse'
+        "400":
+          description: 服務名稱無效
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "404":
+          description: 設定檔路徑或檔案不存在
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "413":
+          description: 設定檔過大
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: 讀取失敗
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 取得服務設定檔
+      tags:
+      - Service Config
+    put:
+      consumes:
+      - application/json
+      description: 覆寫指定服務的設定檔並執行 daemon-reload。需帶 GET 取得的 `baseChecksum` 做並發衝突偵測；衝突時回
+        409 與 `currentChecksum`。需 `full` scope Token。\n\n**半成功**：設定檔已寫入但 daemon-reload
+        失敗時回 500，附 `backupPath` 供手動還原。
+      parameters:
+      - description: 服務名稱（systemd unit name）
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: 新設定檔內容與 baseChecksum
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.SaveConfigRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.SaveConfigResponse'
+        "400":
+          description: 請求無效或缺 base_checksum
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "403":
+          description: 唯讀 Token 或路徑不可寫
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "404":
+          description: 設定檔路徑不存在
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "409":
+          description: 並發衝突（含 currentChecksum）
+          schema:
+            $ref: '#/definitions/handler.conflictResponse'
+        "413":
+          description: 設定檔超過 500KB
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: 寫入/daemon-reload 失敗（含 backupPath）
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 儲存服務設定檔
+      tags:
+      - Service Config
+  /services/{name}/config/validate:
+    post:
+      consumes:
+      - application/json
+      description: 以 `systemd-analyze verify` 驗證設定內容（不寫入）。systemd-analyze 不存在時回 200
+        `{valid:false, available:false}`。`read` scope Token 可用。
+      parameters:
+      - description: 服務名稱（systemd unit name）
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: '{\'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/systemd.ValidateResult'
+        "400":
+          description: 服務名稱無效或請求無效
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: 無法建立暫存檔
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 驗證服務設定檔
+      tags:
+      - Service Config
+  /services/{name}/disable:
+    post:
+      consumes:
+      - application/json
+      description: 停用指定服務（取消開機自動啟動，systemctl disable）。需 `full` scope Token。
+      parameters:
+      - description: 服務名稱（systemd unit name）
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "403":
+          description: 唯讀 Token 權限不足
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: 停用失敗
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 停用服務
+      tags:
+      - Services
+  /services/{name}/enable:
+    post:
+      consumes:
+      - application/json
+      description: 啟用指定服務（開機自動啟動，systemctl enable）。需 `full` scope Token。
+      parameters:
+      - description: 服務名稱（systemd unit name）
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "403":
+          description: 唯讀 Token 權限不足
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: 啟用失敗
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 啟用服務
+      tags:
+      - Services
+  /services/{name}/logs/ws:
+    get:
+      description: '升級為 WebSocket 並串流指定服務的 journalctl 即時日誌（每行一個 TextMessage）。\n\n**認證**：支援自訂
+        header 的 ws 客戶端請帶 `Authorization: Bearer` header；瀏覽器原生 WebSocket 需 session
+        cookie。\n**錯誤**：連線後若啟動 journalctl 失敗，會收到 `{"error":"..."}` TextMessage。\n\nclient
+        斷線即取消 journalctl 程序。'
+      parameters:
+      - description: 服務名稱（systemd unit name）
+        in: path
+        name: name
+        required: true
+        type: string
+      - default: 100
+        description: 起始行數（預設 100，上限 1000）
+        in: query
+        name: lines
+        type: integer
+      responses:
+        "101":
+          description: Switching Protocols（之後每行一個 JSON TextMessage）
+        "400":
+          description: lines 超出範圍或服務名稱無效
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: journalctl 不可用
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 即時日誌串流（WebSocket）
+      tags:
+      - Logs
+  /services/{name}/restart:
+    post:
+      consumes:
+      - application/json
+      description: 重啟指定 systemd 服務。需 `full` scope Token。
+      parameters:
+      - description: 服務名稱（systemd unit name）
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "403":
+          description: 唯讀 Token 權限不足
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: 重啟失敗
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 重啟服務
+      tags:
+      - Services
+  /services/{name}/start:
+    post:
+      consumes:
+      - application/json
+      description: 啟動指定 systemd 服務。需 `full` scope Token。
+      parameters:
+      - description: 服務名稱（systemd unit name）
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{message: \"<name> started\"}'
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "403":
+          description: 唯讀 Token 權限不足
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: 啟動失敗
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 啟動服務
+      tags:
+      - Services
+  /services/{name}/stop:
+    post:
+      consumes:
+      - application/json
+      description: 停止指定 systemd 服務。需 `full` scope Token。
+      parameters:
+      - description: 服務名稱（systemd unit name）
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "403":
+          description: 唯讀 Token 權限不足
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: 停止失敗
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 停止服務
+      tags:
+      - Services
+  /services/batch:
+    post:
+      consumes:
+      - application/json
+      description: 對多個服務執行 start/stop/restart（最多 50 個）。鎖定服務會被拒絕。部分失敗仍回 200，以 per-service
+        result 表示。需 `full` scope Token。
+      parameters:
+      - description: 批次操作請求
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.batchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.batchResponse'
+        "400":
+          description: 請求無效（含鎖定服務）
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "403":
+          description: 唯讀 Token 權限不足
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "500":
+          description: 取得服務列表失敗
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 批次操作服務
+      tags:
+      - Services
+  /session:
+    get:
+      description: 檢查目前 session 是否已登入（不需驗證）。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.sessionJSON'
+      summary: 檢查 session 狀態
+      tags:
+      - Auth
+  /tokens:
+    get:
+      description: 列出所有 API Token（遮罩值、狀態、scope）。**僅限 session 登入**（Token 不可管理 Token）。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.tokenListResponse'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      summary: 列出 API Tokens
+      tags:
+      - Tokens
+    post:
+      consumes:
+      - application/json
+      description: 建立 API Token，原始值**僅在此回應揭露一次**（不儲存）。**僅限 session 登入**。名稱不區分大小寫唯一，最多
+        20 個 active Token。
+      parameters:
+      - description: '建立請求（expires_in_days: -1=永不過期, 1-365=N 天, 0=自訂日期需帶 custom_expiry）'
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/token.CreateTokenInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 含原始 token（一次性）
+          schema:
+            $ref: '#/definitions/token.CreateTokenResponse'
+        "400":
+          description: 驗證失敗或達上限
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "409":
+          description: 名稱重複
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      summary: 建立 API Token
+      tags:
+      - Tokens
+  /tokens/{id}/revoke:
+    post:
+      description: 撤銷指定 API Token（冪等 — 已撤銷回傳 200 `already_revoked`）。撤銷後使用該 Token 的請求立即回
+        401。**僅限 session 登入**。
+      parameters:
+      - description: Token ID（UUID）
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/token.RevokeResponse'
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+        "404":
+          description: Token 不存在
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      summary: 撤銷 API Token
+      tags:
+      - Tokens
+  /ws:
+    get:
+      description: '升級為 WebSocket 並即時推送服務狀態變更。**連線後不須傳入任何訊息** — 伺服器於狀態變更時主動推送快照（JSON：`{name,
+        active, sub, unitFileState}`），連線建立時亦推送完整快照。\n\n**認證**：支援自訂 header 的 ws 客戶端請帶
+        `Authorization: Bearer` header；瀏覽器原生 WebSocket 需 session cookie。\n**限制**：每個
+        user 最多 5 個連線，超過回 close 1008（policy violation）。'
+      responses:
+        "101":
+          description: Switching Protocols（之後為服務狀態快照 JSON TextMessage）
+        "401":
+          description: 未驗證
+          schema:
+            $ref: '#/definitions/handler.messageJSON'
+      security:
+      - BearerAuth: []
+      summary: 服務狀態即時推送（WebSocket）
+      tags:
+      - WebSocket
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

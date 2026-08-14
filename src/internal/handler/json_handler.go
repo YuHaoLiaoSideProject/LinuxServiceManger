@@ -16,10 +16,10 @@ import (
 	"github.com/gorilla/websocket"
 
 	"linux-service-manager/internal/audit"
-	"linux-service-manager/internal/token"
-	wsutil "linux-service-manager/internal/websocket"
 	"linux-service-manager/internal/auth"
 	"linux-service-manager/internal/systemd"
+	"linux-service-manager/internal/token"
+	wsutil "linux-service-manager/internal/websocket"
 )
 
 // ============================================================
@@ -87,6 +87,18 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 //  POST /api/v1/login
 // ============================================================
 
+// HandleLoginJSON 以帳號密碼登入並建立 session cookie。
+// @Summary 登入
+// @Description 以帳號密碼登入（form-urlencoded）。成功後設定 `session` cookie；亦有 rate limit（每 IP 每分鐘 5 次嘗試）。
+// @Tags Auth
+// @Accept x-www-form-urlencoded
+// @Produce json
+// @Param username formData string true "使用者名稱"
+// @Param password formData string true "密碼"
+// @Success 200 {object} map[string]interface{} "{username, message}"
+// @Failure 400 {object} messageJSON "缺少帳號或密碼"
+// @Failure 401 {object} messageJSON "帳號或密碼錯誤"
+// @Router /login [post]
 func (h *Handler) HandleLoginJSON(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	username := r.FormValue("username")
@@ -126,6 +138,13 @@ func (h *Handler) HandleLoginJSON(w http.ResponseWriter, r *http.Request) {
 //  POST /api/v1/logout
 // ============================================================
 
+// HandleLogoutJSON 登出並清除 session cookie。
+// @Summary 登出
+// @Description 登出並清除 session cookie。
+// @Tags Auth
+// @Produce json
+// @Success 200 {object} messageJSON
+// @Router /logout [post]
 func (h *Handler) HandleLogoutJSON(w http.ResponseWriter, r *http.Request) {
 	session := auth.GetSession(r)
 	username, _ := session.Values["username"].(string)
@@ -149,6 +168,13 @@ func (h *Handler) HandleLogoutJSON(w http.ResponseWriter, r *http.Request) {
 //  GET /api/v1/session
 // ============================================================
 
+// HandleSessionCheck 檢查目前 session 是否已登入。
+// @Summary 檢查 session 狀態
+// @Description 檢查目前 session 是否已登入（不需驗證）。
+// @Tags Auth
+// @Produce json
+// @Success 200 {object} sessionJSON
+// @Router /session [get]
 func (h *Handler) HandleSessionCheck(w http.ResponseWriter, r *http.Request) {
 	session := auth.GetSession(r)
 	authenticated, _ := session.Values["authenticated"].(bool)
@@ -164,6 +190,16 @@ func (h *Handler) HandleSessionCheck(w http.ResponseWriter, r *http.Request) {
 //  GET /api/v1/services
 // ============================================================
 
+// HandleServicesJSON 取得所有 systemd 服務列表。
+// @Summary 取得服務列表
+// @Description 取得所有 systemd 服務列表（名稱、Active/Sub 狀態、開機狀態、鎖定標記等）。`read` scope Token 可用。
+// @Tags Services
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} serviceJSON
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 500 {object} messageJSON "取得服務列表失敗"
+// @Router /services [get]
 func (h *Handler) HandleServicesJSON(w http.ResponseWriter, r *http.Request) {
 	services, err := h.systemd.ListServices()
 	if err != nil {
@@ -192,6 +228,19 @@ func (h *Handler) HandleServicesJSON(w http.ResponseWriter, r *http.Request) {
 //  POST /api/v1/services/{name}/start
 // ============================================================
 
+// HandleStartJSON 啟動指定服務。
+// @Summary 啟動服務
+// @Description 啟動指定 systemd 服務。需 `full` scope Token。
+// @Tags Services
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "服務名稱（systemd unit name）"
+// @Success 200 {object} messageJSON "{message: \"<name> started\"}"
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 403 {object} messageJSON "唯讀 Token 權限不足"
+// @Failure 500 {object} messageJSON "啟動失敗"
+// @Router /services/{name}/start [post]
 func (h *Handler) HandleStartJSON(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	err := h.systemd.StartService(name)
@@ -225,6 +274,19 @@ func (h *Handler) HandleStartJSON(w http.ResponseWriter, r *http.Request) {
 //  POST /api/v1/services/{name}/stop
 // ============================================================
 
+// HandleStopJSON 停止指定服務。
+// @Summary 停止服務
+// @Description 停止指定 systemd 服務。需 `full` scope Token。
+// @Tags Services
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "服務名稱（systemd unit name）"
+// @Success 200 {object} messageJSON
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 403 {object} messageJSON "唯讀 Token 權限不足"
+// @Failure 500 {object} messageJSON "停止失敗"
+// @Router /services/{name}/stop [post]
 func (h *Handler) HandleStopJSON(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	err := h.systemd.StopService(name)
@@ -258,6 +320,19 @@ func (h *Handler) HandleStopJSON(w http.ResponseWriter, r *http.Request) {
 //  POST /api/v1/services/{name}/restart
 // ============================================================
 
+// HandleRestartJSON 重啟指定服務。
+// @Summary 重啟服務
+// @Description 重啟指定 systemd 服務。需 `full` scope Token。
+// @Tags Services
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "服務名稱（systemd unit name）"
+// @Success 200 {object} messageJSON
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 403 {object} messageJSON "唯讀 Token 權限不足"
+// @Failure 500 {object} messageJSON "重啟失敗"
+// @Router /services/{name}/restart [post]
 func (h *Handler) HandleRestartJSON(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	err := h.systemd.RestartService(name)
@@ -291,6 +366,19 @@ func (h *Handler) HandleRestartJSON(w http.ResponseWriter, r *http.Request) {
 //  POST /api/v1/services/{name}/enable
 // ============================================================
 
+// HandleEnableJSON 啟用指定服務（開機自動啟動）。
+// @Summary 啟用服務
+// @Description 啟用指定服務（開機自動啟動，systemctl enable）。需 `full` scope Token。
+// @Tags Services
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "服務名稱（systemd unit name）"
+// @Success 200 {object} messageJSON
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 403 {object} messageJSON "唯讀 Token 權限不足"
+// @Failure 500 {object} messageJSON "啟用失敗"
+// @Router /services/{name}/enable [post]
 func (h *Handler) HandleEnableJSON(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	err := h.systemd.EnableService(name)
@@ -331,6 +419,19 @@ func (h *Handler) HandleEnableJSON(w http.ResponseWriter, r *http.Request) {
 //  POST /api/v1/services/{name}/disable
 // ============================================================
 
+// HandleDisableJSON 停用指定服務（取消開機自動啟動）。
+// @Summary 停用服務
+// @Description 停用指定服務（取消開機自動啟動，systemctl disable）。需 `full` scope Token。
+// @Tags Services
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "服務名稱（systemd unit name）"
+// @Success 200 {object} messageJSON
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 403 {object} messageJSON "唯讀 Token 權限不足"
+// @Failure 500 {object} messageJSON "停用失敗"
+// @Router /services/{name}/disable [post]
 func (h *Handler) HandleDisableJSON(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	err := h.systemd.DisableService(name)
@@ -371,7 +472,22 @@ func (h *Handler) HandleDisableJSON(w http.ResponseWriter, r *http.Request) {
 //  GET /api/v1/audit
 // ============================================================
 
-// HandleAuditQuery returns paginated audit log entries via JSON.
+// HandleAuditQuery 查詢稽核日誌（分頁、搜尋、時間範圍）。
+// @Summary 查詢稽核日誌
+// @Description 分頁查詢稽核日誌。支援全文搜尋與日期範圍（YYYY-MM-DD）。`read` scope Token 可用。
+// @Tags Audit
+// @Produce json
+// @Security BearerAuth
+// @Param page query int false "頁碼（預設 1）" default(1)
+// @Param limit query int false "每頁筆數（預設 30，上限 100）" default(30)
+// @Param search query string false "全文搜尋關鍵字"
+// @Param from query string false "起始日期 YYYY-MM-DD"
+// @Param to query string false "結束日期 YYYY-MM-DD"
+// @Success 200 {object} audit.QueryResult
+// @Failure 400 {object} messageJSON "日期格式錯誤"
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 500 {object} messageJSON "查詢失敗"
+// @Router /audit [get]
 func (h *Handler) HandleAuditQuery(w http.ResponseWriter, r *http.Request) {
 	if h.Audit == nil {
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "audit module not initialized"})
@@ -428,7 +544,20 @@ func (h *Handler) HandleAuditQuery(w http.ResponseWriter, r *http.Request) {
 //  GET /api/v1/audit/export
 // ============================================================
 
-// HandleAuditExport exports audit log entries as CSV.
+// HandleAuditExport 匯出稽核日誌為 CSV 檔案。
+// @Summary 匯出稽核日誌（CSV）
+// @Description 依條件匯出稽核日誌為 CSV 檔案（Content-Disposition attachment）。`read` scope Token 可用。
+// @Tags Audit
+// @Produce plain
+// @Security BearerAuth
+// @Param format query string true "必須為 csv"
+// @Param search query string false "全文搜尋關鍵字"
+// @Param from query string false "起始日期 YYYY-MM-DD"
+// @Param to query string false "結束日期 YYYY-MM-DD"
+// @Success 200 {string} string "CSV 檔案內容"
+// @Failure 400 {object} messageJSON "format 非 csv 或日期格式錯誤"
+// @Failure 401 {object} messageJSON "未驗證"
+// @Router /audit/export [get]
 func (h *Handler) HandleAuditExport(w http.ResponseWriter, r *http.Request) {
 	if h.Audit == nil {
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "audit module not initialized"})
@@ -496,8 +625,20 @@ var validBatchActions = map[string]bool{
 	"restart": true,
 }
 
-// HandleBatchServices processes a batch service operation request.
-// POST /api/v1/services/batch
+// HandleBatchServices 批次操作多個服務。
+// @Summary 批次操作服務
+// @Description 對多個服務執行 start/stop/restart（最多 50 個）。鎖定服務會被拒絕。部分失敗仍回 200，以 per-service result 表示。需 `full` scope Token。
+// @Tags Services
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body batchRequest true "批次操作請求"
+// @Success 200 {object} batchResponse
+// @Failure 400 {object} messageJSON "請求無效（含鎖定服務）"
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 403 {object} messageJSON "唯讀 Token 權限不足"
+// @Failure 500 {object} messageJSON "取得服務列表失敗"
+// @Router /services/batch [post]
 func (h *Handler) HandleBatchServices(w http.ResponseWriter, r *http.Request) {
 	// 1. Decode request body
 	var req batchRequest
@@ -656,8 +797,18 @@ var wsUpgrader = websocket.Upgrader{
 	CheckOrigin: wsutil.CheckOrigin(),
 }
 
-// HandleServiceLogsWS handles WebSocket connections for streaming service logs.
-// It runs journalctl -f and pipes stdout line-by-line to the WebSocket client.
+// HandleServiceLogsWS 以 WebSocket 串流服務即時日誌（journalctl -f）。
+// @Summary 即時日誌串流（WebSocket）
+// @Description 升級為 WebSocket 並串流指定服務的 journalctl 即時日誌（每行一個 TextMessage）。\n\n**認證**：支援自訂 header 的 ws 客戶端請帶 `Authorization: Bearer` header；瀏覽器原生 WebSocket 需 session cookie。\n**錯誤**：連線後若啟動 journalctl 失敗，會收到 `{"error":"..."}` TextMessage。\n\nclient 斷線即取消 journalctl 程序。
+// @Tags Logs
+// @Security BearerAuth
+// @Param name path string true "服務名稱（systemd unit name）"
+// @Param lines query int false "起始行數（預設 100，上限 1000）" default(100)
+// @Success 101 "Switching Protocols（之後每行一個 JSON TextMessage）"
+// @Failure 400 {object} messageJSON "lines 超出範圍或服務名稱無效"
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 500 {object} messageJSON "journalctl 不可用"
+// @Router /services/{name}/logs/ws [get]
 func (h *Handler) HandleServiceLogsWS(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
@@ -756,8 +907,14 @@ type tokenListResponse struct {
 	Data []token.TokenResponse `json:"data"`
 }
 
-// HandleListTokens returns all API tokens via JSON.
-// GET /api/v1/tokens
+// HandleListTokens 列出所有 API Token。
+// @Summary 列出 API Tokens
+// @Description 列出所有 API Token（遮罩值、狀態、scope）。**僅限 session 登入**（Token 不可管理 Token）。
+// @Tags Tokens
+// @Produce json
+// @Success 200 {object} tokenListResponse
+// @Failure 401 {object} messageJSON "未驗證"
+// @Router /tokens [get]
 func (h *Handler) HandleListTokens(w http.ResponseWriter, r *http.Request) {
 	if h.TokenStore == nil {
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "token store not initialized"})
@@ -768,8 +925,18 @@ func (h *Handler) HandleListTokens(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, tokenListResponse{Data: tokens})
 }
 
-// HandleCreateToken creates a new API token and returns the raw value once.
-// POST /api/v1/tokens
+// HandleCreateToken 建立新的 API Token。
+// @Summary 建立 API Token
+// @Description 建立 API Token，原始值**僅在此回應揭露一次**（不儲存）。**僅限 session 登入**。名稱不區分大小寫唯一，最多 20 個 active Token。
+// @Tags Tokens
+// @Accept json
+// @Produce json
+// @Param body body token.CreateTokenInput true "建立請求（expires_in_days: -1=永不過期, 1-365=N 天, 0=自訂日期需帶 custom_expiry）"
+// @Success 201 {object} token.CreateTokenResponse "含原始 token（一次性）"
+// @Failure 400 {object} messageJSON "驗證失敗或達上限"
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 409 {object} messageJSON "名稱重複"
+// @Router /tokens [post]
 func (h *Handler) HandleCreateToken(w http.ResponseWriter, r *http.Request) {
 	if h.TokenStore == nil {
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "token store not initialized"})
@@ -812,8 +979,16 @@ func (h *Handler) HandleCreateToken(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, resp)
 }
 
-// HandleRevokeToken revokes an API token.
-// POST /api/v1/tokens/{id}/revoke
+// HandleRevokeToken 撤銷指定 API Token。
+// @Summary 撤銷 API Token
+// @Description 撤銷指定 API Token（冪等 — 已撤銷回傳 200 `already_revoked`）。撤銷後使用該 Token 的請求立即回 401。**僅限 session 登入**。
+// @Tags Tokens
+// @Produce json
+// @Param id path string true "Token ID（UUID）"
+// @Success 200 {object} token.RevokeResponse
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 404 {object} messageJSON "Token 不存在"
+// @Router /tokens/{id}/revoke [post]
 func (h *Handler) HandleRevokeToken(w http.ResponseWriter, r *http.Request) {
 	if h.TokenStore == nil {
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "token store not initialized"})

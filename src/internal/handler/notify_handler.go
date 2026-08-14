@@ -59,6 +59,15 @@ var telegramSubChatIDRe = regexp.MustCompile(`^\d+$`)
 // ============================================================
 
 // HandleListChannels 回傳所有 channel（masked token、無 failures）。
+// @Summary 列出通知 Channels
+// @Description 列出所有通知 Channel（Telegram token 遮罩顯示）。`read` scope Token 可用。
+// @Tags Notifications
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} map[string]interface{} "{\"data\": [Channel...]}"
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 500 {object} messageJSON "notify 未設定"
+// @Router /notify/channels [get]
 func (h *Handler) HandleListChannels(w http.ResponseWriter, r *http.Request) {
 	if h.Notify == nil {
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "notify not configured"})
@@ -77,6 +86,20 @@ func (h *Handler) HandleListChannels(w http.ResponseWriter, r *http.Request) {
 // ============================================================
 
 // HandleCreateChannel 建立 channel。
+// @Summary 建立通知 Channel
+// @Description 建立新的通知 Channel（Slack/Discord/Telegram/Custom webhook）。需 `full` scope Token。
+// @Tags Notifications
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body ChannelPayload true "Channel 設定"
+// @Success 201 {object} map[string]interface{} "{\"data\": Channel}"
+// @Failure 400 {object} messageJSON "驗證失敗"
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 403 {object} messageJSON "唯讀 Token 權限不足"
+// @Failure 409 {object} messageJSON "已達 Channel 上限（20）"
+// @Failure 500 {object} messageJSON "建立失敗"
+// @Router /notify/channels [post]
 func (h *Handler) HandleCreateChannel(w http.ResponseWriter, r *http.Request) {
 	if h.Notify == nil {
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "notify not configured"})
@@ -118,6 +141,21 @@ func (h *Handler) HandleCreateChannel(w http.ResponseWriter, r *http.Request) {
 // ============================================================
 
 // HandleUpdateChannel 覆寫更新 channel 設定。
+// @Summary 更新通知 Channel
+// @Description 覆寫更新 Channel 設定。Telegram token 留空或以 `****` 開頭時保留原值。需 `full` scope Token。
+// @Tags Notifications
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Channel ID（UUID）"
+// @Param body body ChannelPayload true "新的 Channel 設定"
+// @Success 200 {object} map[string]interface{} "{\"data\": Channel}"
+// @Failure 400 {object} messageJSON "驗證失敗"
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 403 {object} messageJSON "唯讀 Token 權限不足"
+// @Failure 404 {object} messageJSON "Channel 不存在"
+// @Failure 500 {object} messageJSON "更新失敗"
+// @Router /notify/channels/{id} [put]
 func (h *Handler) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 	if h.Notify == nil {
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "notify not configured"})
@@ -168,6 +206,18 @@ func (h *Handler) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 // ============================================================
 
 // HandleDeleteChannel 刪除 channel（關聯發送紀錄保留）。
+// @Summary 刪除通知 Channel
+// @Description 刪除 Channel（歷史發送紀錄保留）。需 `full` scope Token。
+// @Tags Notifications
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Channel ID（UUID）"
+// @Success 200 {object} messageJSON
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 403 {object} messageJSON "唯讀 Token 權限不足"
+// @Failure 404 {object} messageJSON "Channel 不存在"
+// @Failure 500 {object} messageJSON "刪除失敗"
+// @Router /notify/channels/{id} [delete]
 func (h *Handler) HandleDeleteChannel(w http.ResponseWriter, r *http.Request) {
 	if h.Notify == nil {
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "notify not configured"})
@@ -196,6 +246,21 @@ func (h *Handler) HandleDeleteChannel(w http.ResponseWriter, r *http.Request) {
 // ============================================================
 
 // HandlePatchChannelEnabled 更新 enabled（toggle）。
+// @Summary 啟用/停用通知 Channel
+// @Description 切換 Channel 的 enabled 狀態。需 `full` scope Token。
+// @Tags Notifications
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Channel ID（UUID）"
+// @Param body body PatchEnabledPayload true "{\"enabled\": true|false}"
+// @Success 200 {object} map[string]interface{} "{\"data\": Channel}"
+// @Failure 400 {object} messageJSON "請求無效"
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 403 {object} messageJSON "唯讀 Token 權限不足"
+// @Failure 404 {object} messageJSON "Channel 不存在"
+// @Failure 500 {object} messageJSON "更新失敗"
+// @Router /notify/channels/{id} [patch]
 func (h *Handler) HandlePatchChannelEnabled(w http.ResponseWriter, r *http.Request) {
 	if h.Notify == nil {
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "notify not configured"})
@@ -229,6 +294,18 @@ func (h *Handler) HandlePatchChannelEnabled(w http.ResponseWriter, r *http.Reque
 // ============================================================
 
 // HandleTestChannel 發送測試訊息（不寫 history、不累計 failures；成功歸零）。
+// @Summary 測試通知 Channel
+// @Description 向指定 Channel 發送測試通知（不寫入 history）。需 `full` scope Token。\n\n**注意**：發送失敗回 **502 Bad Gateway**（非 500）。
+// @Tags Notifications
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Channel ID（UUID）"
+// @Success 200 {object} TestResponse
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 403 {object} messageJSON "唯讀 Token 權限不足"
+// @Failure 404 {object} messageJSON "Channel 不存在"
+// @Failure 502 {object} TestResponse "發送失敗（success=false, error=原因）"
+// @Router /notify/channels/{id}/test [post]
 func (h *Handler) HandleTestChannel(w http.ResponseWriter, r *http.Request) {
 	if h.Notify == nil {
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "notify not configured"})
@@ -257,6 +334,20 @@ func (h *Handler) HandleTestChannel(w http.ResponseWriter, r *http.Request) {
 // ============================================================
 
 // HandleNotifyHistory 查詢發送紀錄（分頁 + channel + 結果篩選）。
+// @Summary 查詢通知發送紀錄
+// @Description 分頁查詢通知發送紀錄，可依 Channel 與結果篩選。`read` scope Token 可用。
+// @Tags Notifications
+// @Produce json
+// @Security BearerAuth
+// @Param page query int false "頁碼（預設 1）" default(1)
+// @Param limit query int false "每頁筆數（預設 30，上限 100）" default(30)
+// @Param channel_id query string false "依 Channel ID 篩選"
+// @Param status query string false "all|success|failure（預設 all）" Enums(all, success, failure)
+// @Success 200 {object} notify.HistoryResult
+// @Failure 400 {object} messageJSON "參數無效"
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 500 {object} messageJSON "查詢失敗"
+// @Router /notify/history [get]
 func (h *Handler) HandleNotifyHistory(w http.ResponseWriter, r *http.Request) {
 	if h.Notify == nil {
 		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "notify not configured"})

@@ -45,7 +45,7 @@ type SaveConfigResponse struct {
 
 // conflictResponse 是 PUT 409 的回應體（含現行 checksum 供前端重新載入更新基準）。
 type conflictResponse struct {
-	Error            string `json:"error"`
+	Error           string `json:"error"`
 	CurrentChecksum string `json:"currentChecksum"`
 }
 
@@ -54,6 +54,19 @@ type conflictResponse struct {
 // ============================================================
 
 // HandleGetServiceConfig 讀取服務 FragmentPath 內容（唯讀檢視，鎖定服務亦可讀，依決策 D-2）。
+// @Summary 取得服務設定檔
+// @Description 讀取指定服務的 systemd unit 設定檔內容（含 SHA-256 checksum 供後續 PUT baseChecksum）。鎖定服務亦可唯讀檢視。`read` scope Token 可用。
+// @Tags Service Config
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "服務名稱（systemd unit name）"
+// @Success 200 {object} ServiceConfigResponse
+// @Failure 400 {object} messageJSON "服務名稱無效"
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 404 {object} messageJSON "設定檔路徑或檔案不存在"
+// @Failure 413 {object} messageJSON "設定檔過大"
+// @Failure 500 {object} messageJSON "讀取失敗"
+// @Router /services/{name}/config [get]
 func (h *Handler) HandleGetServiceConfig(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	if err := systemd.ValidateServiceName(name); err != nil {
@@ -99,6 +112,23 @@ func (h *Handler) HandleGetServiceConfig(w http.ResponseWriter, r *http.Request)
 // ============================================================
 
 // HandleSaveServiceConfig 儲存設定檔：路徑驗證 → 衝突檢查 → 備份 → atomic write → daemon-reload → audit。
+// @Summary 儲存服務設定檔
+// @Description 覆寫指定服務的設定檔並執行 daemon-reload。需帶 GET 取得的 `baseChecksum` 做並發衝突偵測；衝突時回 409 與 `currentChecksum`。需 `full` scope Token。\n\n**半成功**：設定檔已寫入但 daemon-reload 失敗時回 500，附 `backupPath` 供手動還原。
+// @Tags Service Config
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "服務名稱（systemd unit name）"
+// @Param body body SaveConfigRequest true "新設定檔內容與 baseChecksum"
+// @Success 200 {object} SaveConfigResponse
+// @Failure 400 {object} messageJSON "請求無效或缺 base_checksum"
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 403 {object} messageJSON "唯讀 Token 或路徑不可寫"
+// @Failure 404 {object} messageJSON "設定檔路徑不存在"
+// @Failure 409 {object} conflictResponse "並發衝突（含 currentChecksum）"
+// @Failure 413 {object} messageJSON "設定檔超過 500KB"
+// @Failure 500 {object} map[string]interface{} "寫入/daemon-reload 失敗（含 backupPath）"
+// @Router /services/{name}/config [put]
 func (h *Handler) HandleSaveServiceConfig(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	if err := systemd.ValidateServiceName(name); err != nil {
@@ -202,7 +232,19 @@ func (h *Handler) HandleSaveServiceConfig(w http.ResponseWriter, r *http.Request
 // ============================================================
 
 // HandleValidateServiceConfig 以 systemd-analyze verify 驗證 body 內容。
-// systemd-analyze 不存在 → 200 {valid:false, available:false}（決策 D-3，非 500）。
+// @Summary 驗證服務設定檔
+// @Description 以 `systemd-analyze verify` 驗證設定內容（不寫入）。systemd-analyze 不存在時回 200 `{valid:false, available:false}`。`read` scope Token 可用。
+// @Tags Service Config
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "服務名稱（systemd unit name）"
+// @Param body body object true "{\"config\": \"<unit file 內容>\"}"
+// @Success 200 {object} systemd.ValidateResult
+// @Failure 400 {object} messageJSON "服務名稱無效或請求無效"
+// @Failure 401 {object} messageJSON "未驗證"
+// @Failure 500 {object} messageJSON "無法建立暫存檔"
+// @Router /services/{name}/config/validate [post]
 func (h *Handler) HandleValidateServiceConfig(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	if err := systemd.ValidateServiceName(name); err != nil {

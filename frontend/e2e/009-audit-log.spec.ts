@@ -119,7 +119,7 @@ function searchInput(page: any) { return page.locator('.search-box input') }
 function dateInputs(page: any) { return page.locator('.daterange input') }
 function exportBtn(page: any) { return page.locator('.btn-export') }
 function condRow(page: any) { return page.locator('.audit-toolbar .cond-row') }
-function pagination(page: any) { return page.locator('.pagination') }
+function pagination(page: any) { return page.locator('.pagination.pager-full') }
 function pageInfo(page: any) { return page.locator('.page-info') }
 function spinner(page: any) { return page.locator('.spinner-sm') }
 function errorState(page: any) { return page.locator('.empty-state') }
@@ -581,6 +581,74 @@ test.describe('UI/UX Audit: 時間欄位寬度', () => {
     const firstTimeCell = page.locator('main.app-container tbody tr td').first()
     await expect(firstTimeCell).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
     const noOverflow = await firstTimeCell.evaluate((el) => {
+      const td = el as HTMLTableCellElement
+      return td.scrollWidth <= td.clientWidth + 1
+    })
+    expect(noOverflow).toBe(true)
+  })
+})
+
+// ===================================================================
+// UI/UX Audit: C4 — iPad Air 直向時間／使用者不重疊（009 決策 8 迴歸）
+// ===================================================================
+
+test.describe('UI/UX Audit: iPad Air 直向（時間／使用者重疊迴歸）', () => {
+  const IPAD_PORTS = [
+    { name: 'iPad Air 4th portrait', width: 820, height: 1180 },
+    { name: 'iPad Air 3rd portrait', width: 768, height: 1024 },
+  ]
+
+  for (const vp of IPAD_PORTS) {
+    test(`C4: ${vp.name} → 卡片佈局，時間／使用者不重疊`, async ({ page }) => {
+      await page.setViewportSize({ width: vp.width, height: vp.height })
+      await setupApiMocks(page, { authenticated: true })
+      await setupAuditMocks(page)
+      await gotoDashboard(page)
+
+      await auditLink(page).click()
+      await page.waitForURL('**/audit')
+      await expect(auditTable(page)).toBeVisible()
+
+      // 決策 8：iPad Air 直向 ≤1023px → thead 隱藏（卡片佈局）
+      const theadVisible = await page.locator('main.app-container thead').isVisible()
+      expect(theadVisible).toBe(false)
+
+      // 時間 cell 為卡片標頭（mono nowrap），不得溢位／截斷
+      const timeOk = await page.locator('main.app-container tbody tr td.td-time').first().evaluate((el) => {
+        const td = el as HTMLTableCellElement
+        const fits = td.scrollWidth <= td.clientWidth + 1
+        const rect = td.getBoundingClientRect()
+        return { fits, left: Math.round(rect.left), right: Math.round(rect.right), w: Math.round(rect.width) }
+      })
+      expect(timeOk.fits, `時間欄溢位（${JSON.stringify(timeOk)}）`).toBe(true)
+
+      // 使用者 cell 與時間 cell 不得重疊（卡片區塊各自獨立）
+      const userRect = await page.locator('main.app-container tbody tr td.td-user').first().boundingBox()
+      expect(userRect).not.toBeNull()
+      expect(userRect!.x).toBeGreaterThanOrEqual(timeOk.left)
+    })
+  }
+
+  test('C4: iPad Air 3rd 橫向 1024px → 表格模式，Time 欄絕對寬不溢位', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 768 })
+    await setupApiMocks(page, { authenticated: true })
+    await setupAuditMocks(page)
+    await gotoDashboard(page)
+
+    await auditLink(page).click()
+    await page.waitForURL('**/audit')
+    await expect(auditTable(page)).toBeVisible()
+
+    // ≥1024px → thead 可見（表格模式）
+    await expect(page.locator('main.app-container thead')).toBeVisible()
+
+    // Time 欄絕對寬（12.5rem ≈ ≥200px），時間戳單行不溢位不重疊
+    const timeBox = await page.locator('main.app-container th').nth(0).boundingBox()
+    expect(timeBox).not.toBeNull()
+    expect(timeBox!.width).toBeGreaterThanOrEqual(200)
+
+    const timeCell = page.locator('main.app-container tbody tr td.td-time').first()
+    const noOverflow = await timeCell.evaluate((el) => {
       const td = el as HTMLTableCellElement
       return td.scrollWidth <= td.clientWidth + 1
     })

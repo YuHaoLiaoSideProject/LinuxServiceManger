@@ -326,7 +326,7 @@ body.view-mobile .frame.desktop-frame { display: none; }
 
   <!-- ══════════ 3. Mobile 比較 ══════════ -->
   <div class="frame mobile-frame">
-    <h2>3️⃣ Mobile ≤767px — BEFORE / AFTER 卡片</h2>
+    <h2>3️⃣ Mobile／平板直向 ≤1023px（含 iPad Air）— BEFORE / AFTER 卡片</h2>
     <p class="fsub">每卡高度：BEFORE ~287–309px（7 個 label/value 列）→ AFTER ~150px（4 區塊重排）。分頁：BEFORE 34px 按鈕換行 3 行 → AFTER 三鍵均分 44px。</p>
 
     <div class="cmp">
@@ -433,8 +433,9 @@ body.view-mobile .frame.desktop-frame { display: none; }
           </div>
         </div>
         <div class="anat-dims">
-          ≥768px：數字頁碼＋省略號，min-height <b>36px</b>，gap 4px，page-info 右側<br>
-          ≤767px：三鍵均分、<b>44px</b>（WCAG 2.5.5）、中央顯示「第 X / Y 頁」；<span class="bad">BEFORE 為 34px ×9 鍵換行 3 行</span>
+          ≥1024px：數字頁碼＋省略號，min-height <b>36px</b>，gap 4px，page-info 右側<br>
+          ≤1023px（含 iPad Air 直向 768／820px）：三鍵均分、<b>44px</b>（WCAG 2.5.5）、中央顯示「第 X / Y 頁」；<span class="bad">BEFORE 為 34px ×9 鍵換行 3 行</span><br>
+          <span class="bad">⚠️ 2026-08-14 修正：iPad Air 直向 768–1023px 亦為卡片布局 — 原訂「表格 overflow-x:auto」實測 Time 欄 129–138px &lt; 內容 185px，時間／使用者重疊</span>
         </div>
       </div>
       <div class="anat-card">
@@ -481,8 +482,8 @@ body.view-mobile .frame.desktop-frame { display: none; }
       <tr><td>Idle（失敗）</td><td><span class="demo-cell">左 3px danger 邊條<span class="badge-new fail">失敗</span></span></td><td>—</td></tr>
       <tr><td>Hover</td><td>整列 <code>--lms-accent-light</code>（沿用現況）</td><td>—</td></tr>
       <tr><td>Detail 過長</td><td>clamp 2 行＋ellipsis</td><td><code>title</code> 顯示全文；CSV 匯出保有完整資料</td></tr>
-      <tr><td>分頁 ≥768px</td><td>數字頁碼＋省略號；active accent 底</td><td>點擊跳頁；disabled 淡化；min-height 36px</td></tr>
-      <tr><td>分頁 ≤767px</td><td>三鍵均分 44px；中央「第 X / Y 頁」</td><td>上一頁／下一頁；中央無動作</td></tr>
+      <tr><td>分頁 ≥1024px</td><td>數字頁碼＋省略號；active accent 底</td><td>點擊跳頁；disabled 淡化；min-height 36px</td></tr>
+      <tr><td>分頁 ≤1023px</td><td>三鍵均分 44px；中央「第 X / Y 頁」</td><td>上一頁／下一頁；中央無動作</td></tr>
       <tr><td>Empty</td><td>SVG 大圖示＋訊息</td><td>「清除條件」捷徑（沿用）</td></tr>
       <tr><td>Error</td><td>SVG 警示＋訊息</td><td>「重試」按鈕（沿用）</td></tr>
       <tr><td>Loading</td><td>首次載入中央 spinner；後續保留表格防閃爍</td><td>—</td></tr>
@@ -499,10 +500,11 @@ body.view-mobile .frame.desktop-frame { display: none; }
       <tr><td>失敗徽章</td><td>淡底深字 <code>#c62828</code> on danger-light（4.77:1）</td><td><code>--lms-danger-light</code>＋<code>--lms-danger-border</code></td></tr>
       <tr><td>列結果邊條</td><td>左側 3px（取代整列淡色）</td><td><code>td:first-child border-left</code>，色取 <code>--lms-*-border</code></td></tr>
       <tr><td>Detail clamp</td><td>2 行＋ellipsis＋title</td><td><code>-webkit-line-clamp:2</code></td></tr>
-      <tr><td>時間欄</td><td>mono 0.76–0.8rem nowrap</td><td><code>--lms-mono</code></td></tr>
+      <tr><td>時間欄</td><td>mono 0.76–0.8rem nowrap；<b>絕對寬 <code>12.5rem</code></b>（fixed layout 下 <code>min-width</code> 失效，實測欄寬 138px &lt; 內容 185px → 重疊）</td><td><code>--lms-mono</code>；<code>th:nth-child(1) width</code></td></tr>
       <tr><td>Action 圖示</td><td>13–14px inline SVG</td><td><code>aria-hidden</code>；色 <code>--lms-muted</code></td></tr>
-      <tr><td>分頁 desktop</td><td>min-height 36px</td><td>沿用 <code>.page-btn</code></td></tr>
-      <tr><td>分頁 mobile</td><td>三鍵均分 44px</td><td>新增 <code>.pager-mobile</code></td></tr>
+      <tr><td>分頁 desktop（≥1024px）</td><td>min-height 36px</td><td>沿用 <code>.page-btn</code></td></tr>
+      <tr><td>分頁 mobile／平板（≤1023px）</td><td>三鍵均分 44px</td><td>新增 <code>.pager-mobile</code></td></tr>
+      <tr><td>卡片斷點</td><td>Audit 卡片 ≤1023px（iPad Air 直向）；service-table 維持 ≤767px</td><td><code>main.css</code> media query 調整</td></tr>
       <tr><td>i18n</td><td>16 個 action key（snake_case）</td><td><code>useI18n.ts</code> zh-TW + en</td></tr>
     </table>
     <div class="note"><b>動畫：</b>hover 轉場 150ms 沿用；全部動畫尊重 <code>prefers-reduced-motion</code>（main.css 既有規則，本設計不新增動畫）。<br><b>範疇聲明：</b>Toolbar（搜尋／日期／匯出）沿用 <code>docs/uiux/009-audit-toolbar-design.html</code> 定稿，本次不更動。</div>
@@ -510,7 +512,7 @@ body.view-mobile .frame.desktop-frame { display: none; }
 
   <div class="footnote">
     📄 設計文件：<b>docs/uiux/009-audit-list-redesign.md</b> ・ 本文件：<b>docs/uiux/009-audit-list-redesign-mockup.html</b>（比較稿）<br>
-    實測 base：<b>commit 6e51188</b>（dev 實例 localhost:18080，Playwright 1440/390/320px，zh-TW）・ 實作範圍：<b>AuditTable.vue</b>／<b>AuditLogView.vue</b>（分頁、Empty/Error SVG）／<b>useI18n.ts</b>／<b>main.css</b>（mobile 卡片、分頁）
+    實測 base：<b>commit 6e51188</b>（dev 實例 localhost:18080，Playwright 1440/390/320px，zh-TW）・ iPad Air 平板修正實測：<b>commit cc0e15e</b>（Playwright 820／768／1180／1024px）・ 實作範圍：<b>AuditTable.vue</b>／<b>AuditLogView.vue</b>（分頁、Empty/Error SVG）／<b>useI18n.ts</b>／<b>main.css</b>（卡片斷點 767→1023px、分頁、Time 欄絕對寬）
   </div>
 </div>
 

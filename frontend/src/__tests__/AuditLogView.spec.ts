@@ -49,6 +49,7 @@ const { mockT } = vi.hoisted(() => ({
       'audit.pagination.prev': '上一頁',
       'audit.pagination.next': '下一頁',
       'audit.pagination.info': '第 {page} / {total} 頁，共 {count} 筆',
+      'audit.pagination.pageOf': '第 {page} / {total} 頁',
       'audit.matched.prefix': '符合',
       'audit.matched.suffix': '筆記錄',
       'audit.noRecords': '尚無操作紀錄',

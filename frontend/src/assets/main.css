@@ -262,6 +262,11 @@ body {
 .menu-item:hover {
   background: var(--lms-border);
 }
+.menu-item.active {
+  background: var(--lms-border);
+  color: var(--lms-accent);
+  font-weight: 600;
+}
 .menu-item.danger {
   color: var(--lms-danger);
 }
@@ -1877,6 +1882,127 @@ tbody tr:last-child td {
   [data-theme="dark"] .table-wrapper .service-table td:nth-child(4) .status-failed   { background: rgba(197, 34, 31, 0.22); }
   [data-theme="dark"] .table-wrapper .service-table td:nth-child(4) .status-other    { background: var(--lms-warning-light); }
 
+}
+
+/* ============================================================
+   Audit 卡片佈局 ≤1023px（009 決策 5/8 — iPad Air 直向 768/820px）
+   與 ≤767px 通用卡片規則疊加；selector 加 .audit-table 提高特異性覆寫。
+   4 區塊：時間＋徽章標頭／動作次標題／meta（使用者·IP）／目標＋詳細資訊
+   ============================================================ */
+@media (max-width: 1023px) {
+  .table-wrapper table.audit-table caption { display: none; }
+  .table-wrapper table.audit-table thead { display: none; }
+  .table-wrapper table.audit-table,
+  .table-wrapper table.audit-table tbody,
+  .table-wrapper table.audit-table td { display: block; }
+
+  /* 卡片容器：grid 2 欄（內容 + 徽章） */
+  .table-wrapper table.audit-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 0.85rem;
+    background: var(--lms-surface);
+    border: 1px solid var(--lms-border);
+    border-radius: var(--lms-radius-lg, 14px);
+    margin-bottom: 0.85rem;
+    padding: 0.9rem 1rem;
+    box-shadow: var(--lms-shadow);
+    transition: border-color var(--lms-transition), box-shadow var(--lms-transition);
+  }
+  .table-wrapper table.audit-table tr:hover {
+    background: var(--lms-surface);
+    border-color: var(--lms-accent);
+  }
+
+  /* 卡片內 cell 一律 block、去底線、去 label/value 兩欄（4 區塊自明） */
+  .table-wrapper table.audit-table td {
+    display: block;
+    padding: 0.15rem 0;
+    border: none;
+    text-align: left;
+    font-size: 0.9rem;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+  .table-wrapper table.audit-table td::before { display: none; }
+
+  /* 區塊 1：時間（mono 左）＋ 結果徽章（右） */
+  .table-wrapper table.audit-table td.td-time {
+    grid-area: 1 / 1;
+    font-family: var(--lms-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+  .table-wrapper table.audit-table td.td-result {
+    grid-area: 1 / 2;
+    justify-self: end;
+    text-align: right;
+  }
+
+  /* 區塊 2：動作（icon + 文字，0.95rem semibold） */
+  .table-wrapper table.audit-table td.td-action {
+    grid-area: 2 / 1 / 3 / 3;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 0.3rem;
+    padding-top: 0.35rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--lms-text);
+  }
+  .table-wrapper table.audit-table td.td-action .act-icon { color: var(--lms-accent); }
+  .table-wrapper table.audit-table td.td-action .act-text { white-space: normal; }
+
+  /* 區塊 3：meta（使用者左 · 來源 IP 右） */
+  .table-wrapper table.audit-table td.td-user {
+    grid-area: 3 / 1;
+    font-size: 0.8rem;
+    color: var(--lms-muted);
+  }
+  .table-wrapper table.audit-table td.td-ip {
+    grid-area: 3 / 2;
+    justify-self: end;
+    text-align: right;
+    font-size: 0.8rem;
+    color: var(--lms-muted);
+    font-family: var(--lms-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  }
+
+  /* 區塊 4：目標（mono） */
+  .table-wrapper table.audit-table td.td-target {
+    grid-area: 4 / 1 / 5 / 3;
+    font-family: var(--lms-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-size: 0.8rem;
+    color: var(--lms-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 區塊 5：詳細資訊（clamp 2） */
+  .table-wrapper table.audit-table td.td-detail {
+    grid-area: 5 / 1 / 6 / 3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 0.8rem;
+    color: var(--lms-muted);
+  }
+
+  /* 空值列（target='-'／detail 無內容）於卡片模式隱藏，避免噪音列 */
+  .table-wrapper table.audit-table td.row-empty { display: none !important; }
+
+  /* 失敗卡：左 3px danger 邊條與桌機一致（box-shadow 由 scoped 提供，此處僅確保不衝突） */
+  .table-wrapper table.audit-table tr.row-failure,
+  .table-wrapper table.audit-table tr.row-success {
+    box-shadow: inset 3px 0 0 var(--lms-success-border);
+  }
+  .table-wrapper table.audit-table tr.row-failure {
+    box-shadow: inset 3px 0 0 var(--lms-danger-border);
+  }
 }
 
 /* ============================================================

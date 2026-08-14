@@ -252,7 +252,13 @@ function pageNumbers(): number[] {
 
     <!-- Error -->
     <div v-else-if="error" class="empty-state">
-      <div class="empty-icon">⚠️</div>
+      <div class="empty-icon">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 9v4"></path>
+          <path d="M12 17h.01"></path>
+          <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path>
+        </svg>
+      </div>
       <p>{{ error }}</p>
       <button class="btn btn-secondary" @click="handleRetry">{{ t('audit.retry') }}</button>
     </div>
@@ -264,7 +270,12 @@ function pageNumbers(): number[] {
 
     <!-- No match with active filters -->
     <div v-else-if="entries.length === 0 && hasActiveFilters()" class="empty-state">
-      <div class="empty-icon">🔍</div>
+      <div class="empty-icon">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"></circle>
+          <path d="M21 21l-4.3-4.3"></path>
+        </svg>
+      </div>
       <p>{{ t('audit.noMatch') }}</p>
       <a href="#" class="clear-link" @click.prevent="clearFilters">{{ t('audit.clearFilters') }}</a>
     </div>
@@ -273,8 +284,8 @@ function pageNumbers(): number[] {
     <div v-else>
       <AuditTable :entries="entries" />
 
-      <!-- Pagination -->
-      <div v-if="totalPages > 1" class="pagination">
+      <!-- 分頁 ≥1024px：完整數字頁碼 + 省略號（決策 6/8） -->
+      <div v-if="totalPages > 1" class="pagination pager-full">
         <button
           class="page-btn"
           :disabled="page <= 1"
@@ -310,6 +321,29 @@ function pageNumbers(): number[] {
           {{ t('audit.pagination.info', { page: String(page), total: String(totalPages), count: String(total) }) }}
         </span>
       </div>
+
+      <!-- 分頁 ≤1023px（含 iPad Air 直向）：三鍵均分 44px，中央「第 X / Y 頁」 -->
+      <div v-if="totalPages > 1" class="pagination pager-compact">
+        <button
+          class="page-btn"
+          :disabled="page <= 1"
+          :aria-label="t('audit.pagination.prev')"
+          @click="goToPage(page - 1)"
+        >
+          {{ t('audit.pagination.prev') }}
+        </button>
+        <span class="pager-center" aria-hidden="true">
+          {{ t('audit.pagination.pageOf', { page: String(page), total: String(totalPages) }) }}
+        </span>
+        <button
+          class="page-btn"
+          :disabled="page >= totalPages"
+          :aria-label="t('audit.pagination.next')"
+          @click="goToPage(page + 1)"
+        >
+          {{ t('audit.pagination.next') }}
+        </button>
+      </div>
     </div>
   </main>
 </template>
@@ -317,7 +351,8 @@ function pageNumbers(): number[] {
 <style scoped>
 /* Toolbar 樣式已移至 main.css（與 Dashboard 共用 token，見 docs/uiux/013） */
 
-/* ── 分頁（Audit 專用）── */
+/* ── 分頁（Audit 專用）──
+   決策 6/8：≥1024px 完整頁碼；≤1023px 三鍵均分 44px（CSS 切換，JS 不偵測視窗） */
 .pagination {
   display: flex;
   gap: 4px;
@@ -325,6 +360,44 @@ function pageNumbers(): number[] {
   margin-top: 16px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+/* 完整頁碼版（預設顯示） */
+.pager-full {
+  display: flex;
+}
+
+/* 三鍵版（≤1023px 顯示，≥1024px 隱藏） */
+.pager-compact {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .pager-full {
+    display: none;
+  }
+  .pager-compact {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 0.5rem;
+    width: 100%;
+    margin-top: 1rem;
+  }
+  .pager-compact .page-btn {
+    height: 44px;
+    min-height: 44px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+  }
+}
+
+.pager-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  color: var(--lms-muted);
+  white-space: nowrap;
 }
 
 .page-btn {

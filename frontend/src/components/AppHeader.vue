@@ -98,18 +98,6 @@ onBeforeUnmount(() => {
         :class="{ active: isAudit }"
         data-testid="nav-audit"
       >📋 {{ t('nav.audit') }}</router-link>
-      <router-link
-        to="/notifications"
-        class="nav-item"
-        :class="{ active: isNotifications }"
-        data-testid="nav-notifications"
-      >🔔 {{ t('nav.notifications') }}</router-link>
-      <router-link
-        to="/docs"
-        class="nav-item"
-        :class="{ active: isDocs }"
-        data-testid="nav-docs"
-      >📖 {{ t('nav.docs') }}</router-link>
     </nav>
 
     <div class="app-header-right">
@@ -149,6 +137,23 @@ onBeforeUnmount(() => {
             <div class="who">👤 {{ username }}</div>
             <div class="meta">{{ t('account.signedIn') }}</div>
           </div>
+          <div class="menu-section">{{ t('menu.sectionLinks') }}</div>
+          <router-link
+            to="/notifications"
+            class="menu-item"
+            role="menuitem"
+            data-testid="menu-notifications"
+            :class="{ active: isNotifications }"
+            @click="closeMenu"
+          >{{ t('menu.notifications') }}</router-link>
+          <router-link
+            to="/docs"
+            class="menu-item"
+            role="menuitem"
+            data-testid="menu-docs"
+            :class="{ active: isDocs }"
+            @click="closeMenu"
+          >{{ t('menu.docs') }}</router-link>
           <div class="menu-section">{{ t('menu.sectionSettings') }}</div>
           <router-link
             to="/tokens"

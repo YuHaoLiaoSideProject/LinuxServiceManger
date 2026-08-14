@@ -272,10 +272,11 @@ async function setupPage(page: Page, options: NotifyMockOptions = {}) {
   return setupNotifyMocks(page, options)
 }
 
-/** 登入後由 Header 點「🔔 Notifications」進入 /notifications */
+/** 登入後由 Header 帳號選單點「🔔 通知」進入 /notifications */
 async function gotoNotifications(page: Page) {
   await loginViaUI(page)
-  await page.click('[data-testid="nav-notifications"]')
+  await page.click('[data-testid="account-btn"]')
+  await page.click('[data-testid="menu-notifications"]')
   await page.waitForURL((u) => u.pathname === '/notifications', { timeout: 10_000 })
   await expect(page.locator('.notifications-page')).toBeVisible()
 }

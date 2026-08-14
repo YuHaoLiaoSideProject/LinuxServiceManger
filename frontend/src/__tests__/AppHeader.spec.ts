@@ -19,6 +19,11 @@ vi.mock('../composables/useI18n', () => ({
         'nav.audit': '稽核紀錄',
         'account.signedIn': '已登入',
         'account.toggle.title': '帳號選單',
+        'menu.sectionLinks': '功能',
+        'menu.notifications': '🔔 通知',
+        'menu.docs': '📖 API 文件',
+        'menu.sectionSettings': '設定',
+        'menu.apiTokens': 'API Tokens',
         'menu.toggleTheme': '☀️ 切換主題',
         'menu.toggleLang': '🌐 切換語言',
         'menu.logout': '🚪 登出',
@@ -74,7 +79,7 @@ describe('AppHeader — 頂部導航列（品牌 / 主導航 / 帳號選單）',
     expect(accountBtn.find('.avatar').text()).toBe('A')
   })
 
-  it('F-NAV-01: 顯示「儀表板」與「稽核紀錄」導覽連結', () => {
+  it('F-NAV-01: 顯示「儀表板」與「稽核紀錄」導覽連結（通知/API 文件已移入帳號選單）', () => {
     const wrapper = mountHeader()
     const links = navLinks(wrapper)
     const dash = links.find(l => l.props('to') === '/' && l.attributes('data-testid') === 'nav-dashboard')
@@ -83,6 +88,9 @@ describe('AppHeader — 頂部導航列（品牌 / 主導航 / 帳號選單）',
     expect(dash?.text()).toContain('儀表板')
     expect(audit?.text()).toContain('稽核紀錄')
     expect(audit?.attributes('data-testid')).toBe('nav-audit')
+    // 通知 / API 文件 不再位於主導航
+    expect(wrapper.find('[data-testid="nav-notifications"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="nav-docs"]').exists()).toBe(false)
   })
 
   it('F-NAV-02: 未登入（無 username）→ 不顯示導覽與帳號選單', () => {
@@ -144,13 +152,41 @@ describe('AppHeader — 頂部導航列（品牌 / 主導航 / 帳號選單）',
     expect(wrapper.find('[data-testid="account-menu"]').classes()).not.toContain('open')
   })
 
-  it('選單包含 主題/語言/登出 三個項目', async () => {
+  it('選單包含 功能（通知/API 文件）與 設定（主題/語言/登出）項目', async () => {
     const wrapper = mountHeader()
     await wrapper.find('[data-testid="account-btn"]').trigger('click')
 
+    expect(wrapper.find('[data-testid="menu-notifications"]').text()).toBe('🔔 通知')
+    expect(wrapper.find('[data-testid="menu-docs"]').text()).toBe('📖 API 文件')
+    expect(wrapper.find('[data-testid="menu-tokens"]').text()).toBe('API Tokens')
     expect(wrapper.find('[data-testid="menu-theme"]').text()).toBe('☀️ 切換主題')
     expect(wrapper.find('[data-testid="menu-lang"]').text()).toBe('🌐 切換語言')
     expect(wrapper.find('[data-testid="menu-logout"]').text()).toBe('🚪 登出')
+  })
+
+  it('選單「通知 / API 文件」連結到正確路由並關閉選單', async () => {
+    const wrapper = mountHeader()
+    await wrapper.find('[data-testid="account-btn"]').trigger('click')
+
+    const menuLinks = () => wrapper.findAllComponents(RouterLinkStub)
+    const notifyLink = menuLinks().find(l => l.attributes('data-testid') === 'menu-notifications')
+    expect(notifyLink?.props('to')).toBe('/notifications')
+    await notifyLink!.trigger('click')
+    expect(wrapper.find('[data-testid="account-menu"]').classes()).not.toContain('open')
+
+    await wrapper.find('[data-testid="account-btn"]').trigger('click')
+    const docsLink = menuLinks().find(l => l.attributes('data-testid') === 'menu-docs')
+    expect(docsLink?.props('to')).toBe('/docs')
+    await docsLink!.trigger('click')
+    expect(wrapper.find('[data-testid="account-menu"]').classes()).not.toContain('open')
+  })
+
+  it('選單 active 狀態跟隨目前路由（/docs → API 文件 active）', () => {
+    mocks.mockRoutePath.value = '/docs'
+    const wrapper = mountHeader()
+
+    expect(wrapper.find('[data-testid="menu-docs"]').classes()).toContain('active')
+    expect(wrapper.find('[data-testid="menu-notifications"]').classes()).not.toContain('active')
   })
 
   it('點擊選單「登出」emit logout 並帶正確 aria-label', async () => {

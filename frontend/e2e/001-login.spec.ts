@@ -107,7 +107,7 @@ test.describe('Scenario 5: session 有效時重新整理維持登入狀態', () 
 
     // Reload — session still returns authenticated
     await page.reload()
-    await page.waitForURL((url) => url.pathname === '/')
+    await page.waitForURL((url) => url.pathname === '/dashboard')
     await expect(page.locator('.app-header h1')).toContainText('Linux Service Manager')
   })
 })

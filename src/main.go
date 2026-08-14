@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"io/fs"
 	"log"
@@ -14,6 +15,7 @@ import (
 	"linux-service-manager/internal/handler"
 	"linux-service-manager/internal/middleware"
 	"linux-service-manager/internal/monitor"
+	"linux-service-manager/internal/nodes"
 	"linux-service-manager/internal/notify"
 	"linux-service-manager/internal/systemd"
 	"linux-service-manager/internal/token"
@@ -30,6 +32,9 @@ var templatesFS embed.FS
 
 //go:embed static
 var staticFS embed.FS
+
+//go:embed agents/agent-linux-amd64 agents/agent-linux-arm64
+var agentBinariesFS embed.FS
 
 // @title Linux Service Manager API
 // @version 1.0.0
@@ -122,6 +127,27 @@ func main() {
 
 	go hub.Run()
 
+	// 多機節點管理（014）：registry 載入 + supervisor 狀態機 + AgentClient
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	nodeMod, err := nodes.New(nodes.Config{
+		RegistryPath:    "/var/lib/linux-service-manager/nodes.json",
+		Hub:             hub,
+		AgentMinVersion: "1.2.0",
+	})
+	if err != nil {
+		log.Fatalf("failed to load node registry: %v", err)
+	}
+	go nodeMod.Supervisor.Run(ctx) // 5s ticker 狀態機（狀態變更才推播）
+	h.Nodes = nodeMod
+
+	// Agent binary（決策 7：CI 建置後嵌入 Manager binary）
+	if agentSub, subErr := fs.Sub(agentBinariesFS, "agents"); subErr == nil {
+		handler.SetAgentBinaries(agentSub)
+	} else {
+		log.Printf("WARNING: failed to open agents FS: %v", subErr)
+	}
+
 	// Start service status monitor (D-Bus or polling fallback)
 	go monitor.StartMonitor(hub, &systemd.DefaultManager{})
 
@@ -139,6 +165,9 @@ func main() {
 	})
 	r.Post("/api/v1/logout", h.HandleLogoutJSON)
 	r.Get("/api/v1/session", h.HandleSessionCheck)
+
+	// 心跳接收（Auth 群組外 — Agent 以節點 Bearer token 自證，D-8）
+	r.Post("/api/v1/agent/heartbeat", h.HandleAgentHeartbeat)
 
 	// Token management routes (session-only — managing tokens requires session auth)
 	r.Group(func(r chi.Router) {
@@ -176,6 +205,24 @@ func main() {
 		r.Patch("/api/v1/notify/channels/{id}", h.HandlePatchChannelEnabled)
 		r.Post("/api/v1/notify/channels/{id}/test", h.HandleTestChannel)
 		r.Get("/api/v1/notify/history", h.HandleNotifyHistory)
+		// 多機節點管理（014）— ⚠️ chi 路由註冊順序：靜態段（summary/search/test-connection）先於 {id} 參數段
+		r.Get("/api/v1/nodes", h.HandleListNodes)
+		r.Post("/api/v1/nodes", h.HandleCreateNode)
+		r.Get("/api/v1/nodes/summary", h.HandleNodesSummary)
+		r.Get("/api/v1/nodes/services/search", h.HandleSearchServices)
+		r.Post("/api/v1/nodes/test-connection", h.HandleTestConnection)
+		r.Get("/api/v1/nodes/{id}", h.HandleGetNode)
+		r.Put("/api/v1/nodes/{id}", h.HandleUpdateNode)
+		r.Delete("/api/v1/nodes/{id}", h.HandleDeleteNode)
+		r.Get("/api/v1/nodes/{id}/services", h.HandleNodeServices)
+		r.Post("/api/v1/nodes/{id}/services/{name}/start", h.HandleNodeServiceStart)
+		r.Post("/api/v1/nodes/{id}/services/{name}/stop", h.HandleNodeServiceStop)
+		r.Post("/api/v1/nodes/{id}/services/{name}/restart", h.HandleNodeServiceRestart)
+		r.Post("/api/v1/nodes/{id}/services/{name}/enable", h.HandleNodeServiceEnable)
+		r.Post("/api/v1/nodes/{id}/services/{name}/disable", h.HandleNodeServiceDisable)
+		r.Get("/api/v1/nodes/{id}/services/{name}/logs", h.HandleNodeServiceLogs)
+		r.Get("/api/v1/nodes/{id}/info", h.HandleNodeInfo)
+		r.Get("/api/v1/agents/download", h.HandleAgentDownload)
 	})
 
 	// HTML routes (legacy htmx) — protected

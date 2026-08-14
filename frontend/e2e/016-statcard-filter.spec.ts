@@ -204,7 +204,7 @@ test.describe('桌面版 Stat Card — URL 同步與跨 Tab', () => {
   test('從 URL ?status=inactive 進入 → 卡片 active 且列表正確', async ({ page }) => {
     await setupApiMocks(page, { authenticated: true, services: MOCK_016 })
 
-    await page.goto('/?status=inactive')
+    await page.goto('/dashboard?status=inactive')
     await page.waitForSelector('.app-header', { timeout: 10_000 })
 
     await assertPressed(page, 'Inactive', true)

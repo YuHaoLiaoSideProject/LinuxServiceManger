@@ -16,6 +16,8 @@ const props = defineProps<{
   selectedNames?: Set<string>
   batchExecuting?: boolean
   batchProgress?: { done: number; total: number } | null
+  expandedService?: string | null  // 014：?service= 初始展開目標（LogDrawer 由視圖層開啟）
+  actionsDisabled?: boolean       // 014：節點離線時全部操作按鈕禁用（決策 8）
 }>()
 const emit = defineEmits<{
   action: [action: ServiceAction, name: string]
@@ -180,6 +182,7 @@ function onSelectAll() {
             :togglingService="togglingService"
             :selected="selectedNamesSet.has(svc.name)"
             :batchExecuting="batchExecuting"
+            :actionsDisabled="actionsDisabled || false"
             @action="onAction"
             @toggle="(action, name) => emit('toggle', action, name)"
             @open-logs="(name) => emit('open-logs', name)"

@@ -1005,3 +1005,92 @@ func TestWriteAuditDiskFull(t *testing.T) {
 	// Operation completed without crash — the audit failure is silent
 	// (logged but not propagated)
 }
+
+// ============================================================
+//  SYS-59: Entry 含 NodeID/NodeName 且 omitempty（向後相容）
+// ============================================================
+
+func TestEntryNodeFields_Serialization(t *testing.T) {
+	// 既有單機紀錄（無節點欄位）→ 序列化不含 node_id/node_name（向後相容）
+	legacy := Entry{
+		Timestamp: "2025-08-13T10:00:00Z",
+		Username:  "admin",
+		SourceIP:  "127.0.0.1",
+		Action:    ActionStart,
+		Target:    "nginx.service",
+		Result:    ResultSuccess,
+	}
+	data, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatalf("marshal legacy entry: %v", err)
+	}
+	if strings.Contains(string(data), "node_id") || strings.Contains(string(data), "node_name") {
+		t.Errorf("legacy entry must not contain node fields (omitempty): %s", data)
+	}
+
+	// 跨節點操作（含節點欄位）→ 序列化含 node_id/node_name
+	withNode := Entry{
+		Timestamp: "2025-08-13T10:00:00Z",
+		Username:  "admin",
+		SourceIP:  "127.0.0.1",
+		Action:    ActionRestart,
+		Target:    "nginx.service",
+		Result:    ResultSuccess,
+		NodeID:    "node-123",
+		NodeName:  "web-server-01",
+	}
+	data2, err := json.Marshal(withNode)
+	if err != nil {
+		t.Fatalf("marshal entry with node fields: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(data2, &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if parsed["node_id"] != "node-123" {
+		t.Errorf("node_id: got %v", parsed["node_id"])
+	}
+	if parsed["node_name"] != "web-server-01" {
+		t.Errorf("node_name: got %v", parsed["node_name"])
+	}
+
+	// JSONL 回讀還原節點欄位（query / export 路徑）
+	var roundTrip Entry
+	if err := json.Unmarshal(data2, &roundTrip); err != nil {
+		t.Fatalf("round-trip unmarshal: %v", err)
+	}
+	if roundTrip.NodeID != "node-123" || roundTrip.NodeName != "web-server-01" {
+		t.Errorf("node fields lost in round-trip: %+v", roundTrip)
+	}
+}
+
+// ============================================================
+//  SYS-60: 節點操作 Action 常數與 display labels
+// ============================================================
+
+func TestNodeActionConstants(t *testing.T) {
+	actions := []struct {
+		action Action
+		want   string
+		label  string
+	}{
+		{ActionNodeCreate, "node_create", "新增節點"},
+		{ActionNodeUpdate, "node_update", "更新節點"},
+		{ActionNodeDelete, "node_delete", "移除節點"},
+		{ActionNodeTestConnection, "node_test_connection", "測試節點連線"},
+	}
+	for _, tc := range actions {
+		t.Run(tc.want, func(t *testing.T) {
+			if string(tc.action) != tc.want {
+				t.Errorf("action value: got %q, want %q", tc.action, tc.want)
+			}
+			if label := actionDisplayLabels[tc.action]; label != tc.label {
+				t.Errorf("display label for %q: got %q, want %q", tc.action, label, tc.label)
+			}
+			// validActions 需含新 Action → NewEntry 通過
+			if _, err := NewEntry("admin", "127.0.0.1", tc.action, "web-server-01", ResultSuccess, ""); err != nil {
+				t.Errorf("NewEntry failed for %q: %v", tc.action, err)
+			}
+		})
+	}
+}

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import type { Service, ServiceAction, BatchResult } from '../types/service'
-import { listServices, startService, stopService, restartService, enableService, disableService, batchServices } from '../api/client'
+import { listServices, startService, stopService, restartService, enableService, disableService, batchServices, getNodeServices, nodeServiceAction, getNodeLogs } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 import { useServiceStore } from '../stores/service'
+import { useNodesStore } from '../stores/nodes'
 import { useToast } from '../composables/useToast'
 import { useI18n } from '../composables/useI18n'
 import { useServiceFilter } from '../composables/useServiceFilter'
@@ -19,15 +20,32 @@ import ConfirmModal from '../components/ConfirmModal.vue'
 import ToastContainer from '../components/ToastContainer.vue'
 import LogDrawer from '../components/LogDrawer.vue'
 import ConfigEditorModal from '../components/ConfigEditorModal.vue'
+import NodeSwitcher from '../components/NodeSwitcher.vue'
 
 const { t } = useI18n()
 const auth = useAuthStore()
 const serviceStore = useServiceStore()
+const nodesStore = useNodesStore()
 const { showToast } = useToast()
+
+const route = useRoute()
+const router = useRouter()
 
 const services = ref<Service[]>([])
 const loading = ref(true)
 const tab = ref(localStorage.getItem('lms-tab') || 'my')
+
+// ── node-aware 狀態（決策 8）：?node= 存在 → 節點模式；否則單機向後相容 ──
+const nodeId = computed(() => route.query.node as string | undefined)
+const isNodeMode = computed(() => !!nodeId.value)
+const nodeOffline = computed(() => {
+  const n = nodeId.value ? nodesStore.byId(nodeId.value) : null
+  return !!n && !['online', 'degraded', 'warning'].includes(n.status)
+})
+/** 節點離線 → 操作按鈕全部禁用（BDD @offline @p1）＋ 頂部黃色 Banner「節點已離線，操作不可用」 */
+const canOperate = computed(() => !isNodeMode.value || !nodeOffline.value)
+/** ?service= 初始展開（點擊搜尋結果跳轉，決策 8） */
+const expandedServiceName = computed(() => route.query.service as string | undefined)
 
 // ── Batch selection state ──
 const selectedNames = ref<Set<string>>(new Set())
@@ -61,6 +79,8 @@ const batchConfirmDetails = computed(() => {
 const { status: wsStatus, on, disconnect } = useWebSocket()
 
 on('status_change', (msg: any) => {
+  // node 模式：服務列表來自 Agent 代理查詢，本機 WS 事件不套用（決策 6：每次皆代理，E-8）
+  if (isNodeMode.value) return
   // Suppress WebSocket updates during batch execution
   if (batchExecuting.value) return
 
@@ -75,6 +95,7 @@ on('status_change', (msg: any) => {
 })
 
 on('on_boot_change', (msg: any) => {
+  if (isNodeMode.value) return
   // on_boot_change 只帶 unitFileState（開機啟動狀態）
   serviceStore.updateService(msg.name, { unitFileState: msg.unitFileState })
   const idx = services.value.findIndex(s => s.name === msg.name)
@@ -84,6 +105,7 @@ on('on_boot_change', (msg: any) => {
 })
 
 on('service_added', (msg: any) => {
+  if (isNodeMode.value) return
   const newService: Service = {
     name: msg.name,
     active: msg.active,
@@ -101,12 +123,14 @@ on('service_added', (msg: any) => {
 })
 
 on('service_removed', (msg: any) => {
+  if (isNodeMode.value) return
   serviceStore.removeService(msg.name)
   services.value = services.value.filter(s => s.name !== msg.name)
   showToast(`服務已移除：${msg.name}`)
 })
 
 on('snapshot', (msg: any) => {
+  if (isNodeMode.value) return
   serviceStore.applySnapshot(msg.services)
   // Sync local ref from store
   services.value = [...serviceStore.services]
@@ -122,12 +146,15 @@ on('session_expired', () => {
 // Log drawer state
 const logDrawerVisible = ref(false)
 const logDrawerServiceName = ref('')
+const nodeLogsText = ref<string | null>(null) // node 模式：getNodeLogs 拉取的靜態日誌
 
+/** 服務列表載入：node mode → GET /api/v1/nodes/{id}/services（Manager 代理 Agent）；否則本機 /services（向後相容） */
 async function loadServices() {
   loading.value = true
   try {
-    services.value = await listServices()
-    serviceStore.setServices(services.value)
+    const list = nodeId.value ? await getNodeServices(nodeId.value) : await listServices()
+    services.value = list
+    serviceStore.setServices(list)
   } catch (err) {
     showToast('Failed to load services', 'error')
   } finally {
@@ -135,7 +162,34 @@ async function loadServices() {
   }
 }
 
+/** 節點模式服務操作（決策 8 / D-9）：
+ * 逾時（15s）→ Toast「web-server-01 操作逾時：nginx.service restart」＋ 按鈕恢復可點擊（BDD @timeout）
+ * in-flight 標記（同節點同服務並行限制，BDD @concurrency；key 含 nodeId，不同節點可並行） */
+async function runAction(name: string, action: 'start' | 'stop' | 'restart' | 'enable' | 'disable') {
+  if (!canOperate.value || !nodeId.value) return
+  const key = `${nodeId.value}:${name}:${action}`
+  if (nodesStore.inFlight[key]) return
+  nodesStore.markInFlight(nodeId.value, name, action, true)
+  try {
+    const res = await nodeServiceAction(nodeId.value, name, action)
+    showToast(`${nodesStore.activeNode?.name} ${name} ${res.message || '操作成功'}`, 'success')
+    await loadServices()
+  } catch (e: any) {
+    if (e.code === 'ECONNABORTED' || e?.message?.includes('timeout')) {
+      showToast(`${nodesStore.activeNode?.name} 操作逾時：${name} ${action}`, 'warning')
+    } else {
+      showToast(`${nodesStore.activeNode?.name} ${name} 操作失敗：${e?.response?.data?.error || e.message}`, 'error')
+    }
+  } finally {
+    nodesStore.markInFlight(nodeId.value, name, action, false)
+  }
+}
+
 async function handleAction(action: ServiceAction, name: string) {
+  if (isNodeMode.value) {
+    await runAction(name, action)
+    return
+  }
   try {
     const actionMap: Record<ServiceAction, { fn: Function; key: string }> = {
       start: { fn: startService, key: 'toast.started' },
@@ -163,6 +217,11 @@ async function handleToggle(action: 'enable' | 'disable', name: string) {
 }
 
 async function executeToggle(action: 'enable' | 'disable', name: string) {
+  if (isNodeMode.value) {
+    // node 模式：enable/disable 走節點代理端點（決策 8）
+    await runAction(name, action)
+    return
+  }
   togglingService.value = name
   try {
     if (action === 'enable') {
@@ -204,8 +263,6 @@ function cancelDisable() {
   showDisableConfirm.value = false
   pendingDisableService.value = undefined
 }
-
-const router = useRouter()
 
 // Service filtering composable
 const {
@@ -338,18 +395,45 @@ async function handleLogout() {
   router.replace('/login')
 }
 
-function openLogDrawer(name: string) {
+/** 開啟日誌檢視器：node 模式 → getNodeLogs 拉取靜態日誌（決策 8/F-DV-10）；單機 → LogDrawer WS 即時串流 */
+async function openLogDrawer(name: string) {
   logDrawerServiceName.value = name
+  nodeLogsText.value = null
+  if (nodeId.value) {
+    try {
+      nodeLogsText.value = await getNodeLogs(nodeId.value, name)
+    } catch {
+      nodeLogsText.value = '(無法取得日誌：節點離線或逾時)'
+    }
+  }
   logDrawerVisible.value = true
 }
 
 function closeLogDrawer() {
   logDrawerVisible.value = false
   logDrawerServiceName.value = ''
+  nodeLogsText.value = null
 }
 
-onMounted(() => {
+/** ?service= 初始展開（點擊搜尋結果跳轉，決策 8）：自動展開該服務的日誌檢視器 */
+watch(expandedServiceName, (svc) => {
+  if (svc) openLogDrawer(svc)
+}, { immediate: true })
+
+/** ?node= 變更（Header NodeSwitcher 切換，F-SW-04）：重設 active 節點 + 重新載入服務列表；
+ *  immediate 處理首次掛載（BDD @switch：讀取 ?node 設定 active 節點） */
+watch(nodeId, (id) => {
+  if (id) {
+    nodesStore.setActiveNode(id)          // 讀取 ?node（BDD @switch）
+    // 直接造訪 /dashboard?node= 時 nodes 尚未載入：補拉節點清單（離線 Banner / NodeSwitcher 依賴）
+    if (nodesStore.nodes.length === 0) nodesStore.fetchNodes()
+  } else {
+    nodesStore.setActiveNode(null)         // 非節點模式（單機向後相容）
+  }
   loadServices()
+}, { immediate: true })
+
+onMounted(() => {
   initFromQuery()
 })
 
@@ -359,7 +443,19 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="app-container">
+  <main class="app-container dashboard-page">
+    <!-- node-aware Header：NodeSwitcher + 「所有節點」返回（BDD @switch） -->
+    <div class="dashboard-header">
+      <NodeSwitcher />
+      <router-link v-if="isNodeMode" class="btn btn-sm" to="/">← 所有節點</router-link>
+    </div>
+
+    <!-- 離線 Banner（BDD @offline @p1） -->
+    <div v-if="nodeOffline" class="offline-banner" data-testid="offline-banner" role="alert">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4m0 4h.01"/></svg>
+      <span>節點已離線，操作不可用</span>
+    </div>
+
     <AppHeader :username="auth.username" :wsStatus="wsStatus" @logout="handleLogout" />
     <TabsBar :services="services" :tab="tab" @set-tab="setTab" />
     <StatsBar
@@ -395,6 +491,8 @@ onUnmounted(() => {
       :selectedNames="selectedNames"
       :batchExecuting="batchExecuting"
       :batchProgress="batchProgress"
+      :expandedService="expandedServiceName"
+      :actionsDisabled="!canOperate"
       @action="handleAction"
       @refresh="loadServices"
       @toggle="handleToggle"
@@ -422,6 +520,7 @@ onUnmounted(() => {
     <LogDrawer
       :serviceName="logDrawerServiceName"
       :visible="logDrawerVisible"
+      :logs="nodeLogsText"
       @close="closeLogDrawer"
     />
     <ConfigEditorModal />

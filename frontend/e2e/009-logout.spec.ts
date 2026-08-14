@@ -319,14 +319,17 @@ test.describe('Scenario 6: 登出按鈕可訪問性 (Accessibility)', () => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)
 
-    // Tab through header: h1 brand → Dashboard nav → Audit nav → account button
-    // （Notifications/Docs 已收進帳號選單，不再於頂部導覽列 — 009 nav 規格）
-    // Focus on a known element first
-    await page.locator('h1').click()
+    // Tab through header: h1 brand → Dashboard nav → Audit nav → Nodes nav → account button
+    // （Notifications/Docs 已收進帳號選單，不再於頂部導覽列 — 009 nav 規格；
+    //   Node Management 導覽為 014 新增 — 009-logout LO-15 修復）
+    // Focus the brand link directly（不 click：h1 內為 home-link，014 後 / 已是 Aggregate，點擊會導航）
+    await page.locator('.app-header h1 a').focus()
 
     // Tab to Dashboard nav link
     await page.keyboard.press('Tab')
     // Tab to Audit nav link
+    await page.keyboard.press('Tab')
+    // Tab to Nodes nav link
     await page.keyboard.press('Tab')
     // Tab to account button (👤 admin ▾)
     await page.keyboard.press('Tab')

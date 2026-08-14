@@ -12,6 +12,7 @@ import (
 
 	"linux-service-manager/internal/audit"
 	"linux-service-manager/internal/auth"
+	"linux-service-manager/internal/nodes"
 	"linux-service-manager/internal/notify"
 	"linux-service-manager/internal/systemd"
 	"linux-service-manager/internal/token"
@@ -27,6 +28,7 @@ type Handler struct {
 	TokenStore *token.Store
 	Config     systemd.ConfigAPI // service config store（GET/PUT/validate config API）
 	Notify     *notify.Notifier  // webhook 通知模組（由 main.go/測試指派）
+	Nodes      *nodes.Manager    // 多機節點管理模組（registry + supervisor + AgentClient 的門面；由 main.go/測試指派）
 }
 
 // New creates a new Handler with the given template filesystem and systemd manager.

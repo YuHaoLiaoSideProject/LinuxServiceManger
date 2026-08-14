@@ -20,6 +20,9 @@ type Message struct {
 	Reason        string            `json:"reason,omitempty"`
 	Timestamp     string            `json:"timestamp,omitempty"`
 	Services      []ServiceSnapshot `json:"services,omitempty"`
+	// 014：節點狀態事件承載（純資料欄位，hub 邏輯零改動）
+	LastHeartbeat string `json:"last_heartbeat,omitempty"`
+	AgentVersion  string `json:"agent_version,omitempty"`
 }
 
 // ServiceSnapshot is a lightweight service state snapshot.

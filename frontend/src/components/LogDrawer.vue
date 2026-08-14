@@ -5,6 +5,7 @@ import type { LogLine } from '../types/service'
 const props = defineProps<{
   serviceName: string
   visible: boolean
+  logs?: string | null   // 014 node 模式：getNodeLogs 拉取的靜態日誌（非 null 時不走 WS 即時串流）
 }>()
 
 const emit = defineEmits<{
@@ -46,6 +47,18 @@ const matchCount = computed(() => filteredLines.value.filter(l => l.match).lengt
 const totalLines = computed(() => logLines.value.length)
 
 // ── WebSocket connection ──
+
+/** node 模式：直接顯示 getNodeLogs 拉取的靜態日誌（無 WS 即時串流） */
+function showStaticLogs() {
+  if (props.logs == null) return
+  disconnect()
+  isLoading.value = false
+  error.value = ''
+  searchQuery.value = ''
+  isConnected.value = false
+  reconnecting.value = false
+  logLines.value = props.logs.split('\n').map(text => ({ text, match: false }))
+}
 
 function connect() {
   if (!props.visible || !props.serviceName) return
@@ -192,6 +205,10 @@ watch(
   [() => props.visible, () => props.serviceName],
   ([newVisible, newServiceName]) => {
     if (newVisible && newServiceName) {
+      if (props.logs != null) {
+        showStaticLogs()
+        return
+      }
       connect()
     } else {
       disconnect()
@@ -199,6 +216,13 @@ watch(
   },
   { immediate: true }
 )
+
+// 014 node 模式：getNodeLogs 非同步完成後更新靜態日誌
+watch(() => props.logs, (newLogs) => {
+  if (props.visible && props.serviceName && newLogs != null) {
+    showStaticLogs()
+  }
+})
 
 onMounted(() => {
   document.addEventListener('keydown', onKeydown)

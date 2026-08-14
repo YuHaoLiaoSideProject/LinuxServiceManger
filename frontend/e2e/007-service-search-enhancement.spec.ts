@@ -504,7 +504,7 @@ test.describe('URL 同步 — query string', () => {
   test('從 URL 進入時自動恢復過濾條件', async ({ page }) => {
     await setupApiMocks(page, { authenticated: true, services: MOCK_007 })
 
-    await page.goto('/?status=failed&search=crash&regex=false')
+    await page.goto('/dashboard?status=failed&search=crash&regex=false')
     await page.waitForSelector('.app-header', { timeout: 10_000 })
 
     // Status should be Failed active

@@ -75,6 +75,8 @@ test.describe('語言切換 zh-TW ↔ en', () => {
     await page.fill('input[type="password"]', 'admin123')
     await page.click('button[type="submit"]')
     await page.waitForURL((url) => url.pathname === '/')
+    // 014 決策 8：登入預設導向 /（Aggregate）；語言切換需在單機 Dashboard（/dashboard）操作
+    await page.goto('/dashboard')
     await page.waitForSelector('.app-header')
 
     // Dashboard shows English
@@ -157,7 +159,7 @@ test.describe('偏好持久化 (localStorage)', () => {
 
     // Reload — session mock uses dynamic state, survives reload
     await page.reload()
-    await page.waitForURL((url) => url.pathname === '/')
+    await page.waitForURL((url) => url.pathname === '/dashboard')
     await page.waitForSelector('.app-header')
 
     // Should still be in zh-TW (loaded from localStorage)
@@ -174,7 +176,7 @@ test.describe('偏好持久化 (localStorage)', () => {
 
     // Reload — session mock survives, so dashboard loads directly
     await page.reload()
-    await page.waitForURL((url) => url.pathname === '/')
+    await page.waitForURL((url) => url.pathname === '/dashboard')
     await page.waitForSelector('.app-header')
 
     // Should still be dark (loaded from localStorage)

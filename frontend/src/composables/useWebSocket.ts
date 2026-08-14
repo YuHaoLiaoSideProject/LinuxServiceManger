@@ -50,7 +50,21 @@ export interface NotifyChannelDisabledMessage {
   reason: string
 }
 
-export type WsMessage = StatusChangeMessage | OnBootChangeMessage | ServiceAddedMessage | ServiceRemovedMessage | SnapshotMessage | SessionExpiredMessage | NotifyChannelDisabledMessage
+import type { NodeStatus } from '../types/node'
+
+export interface NodeStatusMessage {
+  type: 'node_status' | 'node_online' | 'node_offline' | 'node_removed'
+  id: string
+  name?: string
+  active?: NodeStatus
+  last_heartbeat?: string
+  agent_version?: string
+  timestamp?: string
+}
+
+export type WsMessage =
+  | StatusChangeMessage | OnBootChangeMessage | ServiceAddedMessage | ServiceRemovedMessage
+  | SnapshotMessage | SessionExpiredMessage | NotifyChannelDisabledMessage | NodeStatusMessage
 
 export function useWebSocket() {
   const status = ref<ConnectionStatus>('connecting')

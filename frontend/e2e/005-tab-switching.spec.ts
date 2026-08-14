@@ -402,7 +402,7 @@ test.describe('Scenario 5: StatsBar 跟隨 Tab 過濾', () => {
     await expect(page.locator('.stat-total .stat-value')).toHaveText('1')
 
     await page.reload()
-    await page.waitForURL((url) => url.pathname === '/')
+    await page.waitForURL((url) => url.pathname === '/dashboard')
     await page.waitForSelector('.app-header')
 
     // Still on system tab after reload → stats still 1
@@ -576,7 +576,7 @@ test.describe('Scenario 7: Tab 持久化', () => {
 
     // Reload the page
     await page.reload()
-    await page.waitForURL((url) => url.pathname === '/')
+    await page.waitForURL((url) => url.pathname === '/dashboard')
     await page.waitForSelector('.app-header')
 
     // Should still be on system tab (loaded from localStorage)
@@ -592,7 +592,7 @@ test.describe('Scenario 7: Tab 持久化', () => {
     await assertTabActive(page, getMyTab(page))
 
     await page.reload()
-    await page.waitForURL((url) => url.pathname === '/')
+    await page.waitForURL((url) => url.pathname === '/dashboard')
     await page.waitForSelector('.app-header')
 
     await assertTabActive(page, getMyTab(page))
@@ -606,7 +606,7 @@ test.describe('Scenario 7: Tab 持久化', () => {
     await assertTabActive(page, getSystemTab(page))
 
     await page.reload()
-    await page.waitForURL((url) => url.pathname === '/')
+    await page.waitForURL((url) => url.pathname === '/dashboard')
     await page.waitForSelector('.app-header')
 
     await assertTabActive(page, getSystemTab(page))

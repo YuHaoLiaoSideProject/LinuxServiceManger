@@ -305,7 +305,7 @@ test.describe('E2E Save（@save）', () => {
     await page.locator('.config-footer button', { hasText: 'Cancel' }).click()
     await expect(page.locator('.lms-modal-overlay')).toContainText('Unsaved changes')
     await page.getByRole('button', { name: 'Discard Changes' }).click()
-    await expect(page).toHaveURL(/\/$/)
+    await expect(page).toHaveURL(/\/dashboard/)
     await expect(page.locator('#toast-container')).toContainText('Unsaved changes discarded')
   })
 
@@ -403,8 +403,8 @@ test.describe('E2E 整合情境（@integration）', () => {
     await page.waitForSelector('.cm-content', { timeout: 10_000 })
     await expect(page.locator('.cm-content')).toContainText('[Unit]')
 
-    // 回 dashboard 切回淺色
-    await page.goto('/')
+    // 回 dashboard 切回淺色（014 決策 8：單機服務視圖在 /dashboard — 含 Header 帳號選單）
+    await page.goto('/dashboard')
     await page.locator('[data-testid="account-btn"]').click()
     await page.locator('[data-testid="menu-theme"]').click()
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
@@ -445,7 +445,7 @@ test.describe('E2E 桌面 Modal（@modal）', () => {
     await getServiceRow(page, 'nginx.service').locator('button.btn-edit-config').click()
 
     await expect(page.locator('.config-modal-dialog')).toBeVisible()
-    await expect(page).toHaveURL(/\/$/)
+    await expect(page).toHaveURL(/\/dashboard/)
     // 背景 Dashboard 仍在（Modal 以 overlay 呈現，不遮擋 DOM）
     await expect(getServiceRow(page, 'nginx.service')).toBeVisible()
   })
@@ -454,7 +454,7 @@ test.describe('E2E 桌面 Modal（@modal）', () => {
     await openEditor(page)
     await page.keyboard.press('Escape')
     await expect(page.locator('.config-modal-overlay')).toHaveCount(0)
-    await expect(page).toHaveURL(/\/$/)
+    await expect(page).toHaveURL(/\/dashboard/)
   })
 
   test('E2E-M3: clean 狀態 backdrop 點擊關閉', async ({ page }) => {
@@ -490,7 +490,7 @@ test.describe('E2E 桌面 Modal（@modal）', () => {
     await expect(page.locator('.lms-modal-overlay')).toContainText('Unsaved changes')
     await page.getByRole('button', { name: 'Discard Changes' }).click()
     await expect(page.locator('.config-modal-overlay')).toHaveCount(0)
-    await expect(page).toHaveURL(/\/$/)
+    await expect(page).toHaveURL(/\/dashboard/)
   })
 
   test('E2E-M7: dirty 後 backdrop → ConfirmModal → Discard Changes 關閉', async ({ page }) => {
@@ -500,7 +500,7 @@ test.describe('E2E 桌面 Modal（@modal）', () => {
     await expect(page.locator('.lms-modal-overlay')).toContainText('Unsaved changes')
     await page.getByRole('button', { name: 'Discard Changes' }).click()
     await expect(page.locator('.config-modal-overlay')).toHaveCount(0)
-    await expect(page).toHaveURL(/\/$/)
+    await expect(page).toHaveURL(/\/dashboard/)
   })
 })
 

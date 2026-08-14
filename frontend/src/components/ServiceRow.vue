@@ -12,6 +12,7 @@ const props = defineProps<{
   togglingService?: string
   selected?: boolean
   batchExecuting?: boolean
+  actionsDisabled?: boolean // 014：節點離線時全部操作禁用（決策 8）
 }>()
 const emit = defineEmits<{
   action: [action: ServiceAction, name: string]
@@ -35,6 +36,8 @@ const dotClass = computed(() => {
   if (a === 'failed') return 'dot-failed'
   return 'dot-other'
 })
+
+const canOperateRow = computed(() => !props.actionsDisabled)
 
 const showStart = computed(() =>
   ['inactive', 'dead', 'failed'].includes(props.service.active) && !props.service.locked
@@ -125,7 +128,7 @@ function openConfigEditor(readonly: boolean) {
         v-else
         class="toggle-switch"
         :class="{ 'toggle-on': toggleOn, 'toggle-off': !toggleOn, 'toggle-loading': isLoading }"
-        :disabled="isLoading"
+        :disabled="isLoading || !canOperateRow"
         :aria-label="toggleOn ? t('autoStart.disableAria', { name: service.name }) : t('autoStart.enableAria', { name: service.name })"
         @click="doToggle"
       >
@@ -140,22 +143,22 @@ function openConfigEditor(readonly: boolean) {
         <!-- Slot 1: Primary action (Start/Stop) or Locked badge -->
         <span class="action-slot">
           <span v-if="service.locked" class="locked-badge" :title="t('locked.tooltip')">{{ t('locked.badge') }}</span>
-          <button v-else-if="showStart" class="outline secondary btn-act-start" @click="doAction('start')" :aria-label="t('action.start.aria', { name: service.name })">
+          <button v-else-if="showStart" class="outline secondary btn-act-start" :disabled="!canOperateRow" @click="doAction('start')" :aria-label="t('action.start.aria', { name: service.name })">
             <span class="btn-icon">▶</span><span class="btn-label">{{ t('action.start') }}</span>
           </button>
-          <button v-else-if="showStop" class="outline secondary btn-act-stop" @click="doAction('stop')" :aria-label="t('action.stop.aria', { name: service.name })">
+          <button v-else-if="showStop" class="outline secondary btn-act-stop" :disabled="!canOperateRow" @click="doAction('stop')" :aria-label="t('action.stop.aria', { name: service.name })">
             <span class="btn-icon">⏹</span><span class="btn-label">{{ t('action.stop') }}</span>
           </button>
         </span>
         <!-- Slot 2: Restart -->
         <span class="action-slot">
-          <button v-if="showRestart && !service.locked" class="outline secondary btn-act-restart" @click="doAction('restart')" :aria-label="t('action.restart.aria', { name: service.name })">
+          <button v-if="showRestart && !service.locked" class="outline secondary btn-act-restart" :disabled="!canOperateRow" @click="doAction('restart')" :aria-label="t('action.restart.aria', { name: service.name })">
             <span class="btn-icon">🔄</span><span class="btn-label">{{ t('action.restart') }}</span>
           </button>
         </span>
         <!-- Slot 3: Logs -->
         <span class="action-slot">
-          <button class="btn-logs outline secondary btn-act-logs" :aria-label="t('action.logs.aria', { name: service.name })" :title="t('action.logs.aria', { name: service.name })" @click.stop="$emit('open-logs', service.name)">
+          <button class="btn-logs outline secondary btn-act-logs" :disabled="!canOperateRow" :aria-label="t('action.logs.aria', { name: service.name })" :title="t('action.logs.aria', { name: service.name })" @click.stop="$emit('open-logs', service.name)">
             📋 <span class="btn-label">{{ t('action.logs') }}</span>
           </button>
         </span>

@@ -23,41 +23,50 @@ import (
 type Action string
 
 const (
-	ActionLogin       Action = "login"
-	ActionLogout      Action = "logout"
-	ActionStart       Action = "start"
-	ActionStop        Action = "stop"
-	ActionRestart     Action = "restart"
-	ActionEnable      Action = "enable"
-	ActionDisable     Action = "disable"
-	ActionTokenCreate Action = "token_create"
-	ActionTokenRevoke Action = "token_revoke"
-	ActionConfigView  Action = "config_view" // GET config 成功時（含鎖定服務唯讀檢視）
-	ActionConfigSave  Action = "config_save" // PUT config 成功（含 reload 失敗已寫入之半成功）
+	ActionLogin        Action = "login"
+	ActionLogout       Action = "logout"
+	ActionStart        Action = "start"
+	ActionStop         Action = "stop"
+	ActionRestart      Action = "restart"
+	ActionEnable       Action = "enable"
+	ActionDisable      Action = "disable"
+	ActionTokenCreate  Action = "token_create"
+	ActionTokenRevoke  Action = "token_revoke"
+	ActionConfigView   Action = "config_view" // GET config 成功時（含鎖定服務唯讀檢視）
+	ActionConfigSave   Action = "config_save" // PUT config 成功（含 reload 失敗已寫入之半成功）
 	ActionNotifyCreate Action = "notify_create"
 	ActionNotifyUpdate Action = "notify_update"
 	ActionNotifyDelete Action = "notify_delete"
 	ActionNotifyToggle Action = "notify_toggle"
 	ActionNotifyTest   Action = "notify_test"
+	// 014：節點管理操作（多機管理 Agent 模式）
+	ActionNodeCreate         Action = "node_create"
+	ActionNodeUpdate         Action = "node_update"
+	ActionNodeDelete         Action = "node_delete"
+	ActionNodeTestConnection Action = "node_test_connection"
 )
 
 var validActions = map[Action]bool{
-	ActionLogin:       true,
-	ActionLogout:      true,
-	ActionStart:       true,
-	ActionStop:        true,
-	ActionRestart:     true,
-	ActionEnable:      true,
-	ActionDisable:     true,
-	ActionTokenCreate: true,
-	ActionTokenRevoke: true,
-	ActionConfigView:  true,
-	ActionConfigSave:  true,
-	ActionNotifyCreate: true,
-	ActionNotifyUpdate: true,
-	ActionNotifyDelete: true,
-	ActionNotifyToggle: true,
-	ActionNotifyTest:   true,
+	ActionLogin:              true,
+	ActionLogout:             true,
+	ActionStart:              true,
+	ActionStop:               true,
+	ActionRestart:            true,
+	ActionEnable:             true,
+	ActionDisable:            true,
+	ActionTokenCreate:        true,
+	ActionTokenRevoke:        true,
+	ActionConfigView:         true,
+	ActionConfigSave:         true,
+	ActionNotifyCreate:       true,
+	ActionNotifyUpdate:       true,
+	ActionNotifyDelete:       true,
+	ActionNotifyToggle:       true,
+	ActionNotifyTest:         true,
+	ActionNodeCreate:         true,
+	ActionNodeUpdate:         true,
+	ActionNodeDelete:         true,
+	ActionNodeTestConnection: true,
 }
 
 // actionDisplayLabels maps each audit action to its localized display label
@@ -66,22 +75,26 @@ var validActions = map[Action]bool{
 // as the raw action value — otherwise searching for the text users actually
 // see (e.g. "登入") returns no records.
 var actionDisplayLabels = map[Action]string{
-	ActionLogin:       "登入",
-	ActionLogout:      "登出",
-	ActionStart:       "啟動",
-	ActionStop:        "停止",
-	ActionRestart:     "重啟",
-	ActionEnable:      "啟用",
-	ActionDisable:     "停用",
-	ActionTokenCreate: "建立 Token",
-	ActionTokenRevoke: "撤銷 Token",
-	ActionConfigView:  "檢視設定檔",
-	ActionConfigSave:  "儲存設定檔",
-	ActionNotifyCreate: "建立通知 Channel",
-	ActionNotifyUpdate: "更新通知 Channel",
-	ActionNotifyDelete: "刪除通知 Channel",
-	ActionNotifyToggle: "切換通知 Channel",
-	ActionNotifyTest:   "測試通知 Channel",
+	ActionLogin:              "登入",
+	ActionLogout:             "登出",
+	ActionStart:              "啟動",
+	ActionStop:               "停止",
+	ActionRestart:            "重啟",
+	ActionEnable:             "啟用",
+	ActionDisable:            "停用",
+	ActionTokenCreate:        "建立 Token",
+	ActionTokenRevoke:        "撤銷 Token",
+	ActionConfigView:         "檢視設定檔",
+	ActionConfigSave:         "儲存設定檔",
+	ActionNotifyCreate:       "建立通知 Channel",
+	ActionNotifyUpdate:       "更新通知 Channel",
+	ActionNotifyDelete:       "刪除通知 Channel",
+	ActionNotifyToggle:       "切換通知 Channel",
+	ActionNotifyTest:         "測試通知 Channel",
+	ActionNodeCreate:         "新增節點",
+	ActionNodeUpdate:         "更新節點",
+	ActionNodeDelete:         "移除節點",
+	ActionNodeTestConnection: "測試節點連線",
 }
 
 // Result represents the outcome of an audited operation.
@@ -105,6 +118,9 @@ type Entry struct {
 	Target    string `json:"target"`
 	Result    Result `json:"result"`
 	Detail    string `json:"detail"`
+	// 014 新增：跨節點操作記錄節點來源；單機紀錄無此欄位 → 讀取/匯出向後相容
+	NodeID   string `json:"node_id,omitempty"`
+	NodeName string `json:"node_name,omitempty"`
 }
 
 // ============================================================
@@ -235,7 +251,7 @@ func (m *Module) writerLoop() {
 // appendEntry serializes a single Entry as one JSON line and appends it.
 func (m *Module) appendEntry(entry Entry) {
 	if entry.Timestamp == "" {
-		entry.Timestamp = time.Now().UTC().Format(time.RFC3339)
+		entry.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
 	}
 
 	f, err := os.OpenFile(m.cfg.FilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -545,7 +561,8 @@ func NewEntry(username, sourceIP string, action Action, target string, result Re
 		return Entry{}, fmt.Errorf("invalid audit action: %s", action)
 	}
 	return Entry{
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		// RFC3339Nano：子秒精度確保同秒內多筆紀錄的排序可確定（登入/節點操作同秒發生時）
+		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 		Username:  username,
 		SourceIP:  sourceIP,
 		Action:    action,

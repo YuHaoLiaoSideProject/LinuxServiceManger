@@ -28,6 +28,7 @@ const connectionClass = computed(() => ({
 
 const isDashboard = computed(() => route.path === '/')
 const isAudit = computed(() => route.path === '/audit')
+const isNodes = computed(() => route.path === '/nodes')
 const isNotifications = computed(() => route.path === '/notifications')
 const isDocs = computed(() => route.path === '/docs')
 
@@ -98,6 +99,12 @@ onBeforeUnmount(() => {
         :class="{ active: isAudit }"
         data-testid="nav-audit"
       >📋 {{ t('nav.audit') }}</router-link>
+      <router-link
+        to="/nodes"
+        class="nav-item"
+        :class="{ active: isNodes }"
+        data-testid="nav-nodes"
+      >🌐 {{ t('nav.nodes') }}</router-link>
     </nav>
 
     <div class="app-header-right">

@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>稽核紀錄列表 — UIUX 排版審計（BEFORE / AFTER 比較稿）</title>
+<style>
+/* ════════════════════════════════════════════════════════════
+   設計 Token（對應前端 --lms-* 變數，docs/uiux/009）
+   ════════════════════════════════════════════════════════════ */
+:root {
+  --accent: #1a73e8; --accent-hover: #1557b0; --accent-light: rgba(26,115,232,0.12);
+  --success: #188038; --success-deep: #137333; --success-light: #e6f4ea; --success-border: #a8dab5;
+  --danger: #c5221f; --danger-deep: #c62828; --danger-light: #fce8e6; --danger-border: #f5c6c2;
+  --warning: #e37400; --warning-light: #fff4e5;
+  --radius: 10px; --radius-sm: 6px; --transition: 0.2s ease;
+  --h: 36px; --h-mobile: 44px; --fs: 0.875rem;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+[data-theme="light"] {
+  --bg: #ffffff; --surface: #ffffff; --surface-2: #f6f7f9; --surface-3: #eef0f3;
+  --border: #e3e6ea; --text: #374151; --muted: #9ca3af;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08); --shadow-lg: 0 12px 32px rgba(0,0,0,0.16);
+  --frame: #eef0f3;
+}
+[data-theme="dark"] {
+  --bg: #11191f; --surface: #181e25; --surface-2: #1e2530; --surface-3: #232c38;
+  --border: #262e38; --text: #c7c9ce; --muted: #7d8590;
+  --shadow: 0 2px 16px rgba(0,0,0,0.45); --shadow-lg: 0 12px 36px rgba(0,0,0,0.6);
+  --frame: #0d1318;
+  --success-light: rgba(24,128,56,0.22); --success-border: rgba(168,218,181,0.45);
+  --danger-light: rgba(197,34,31,0.22);  --danger-border: rgba(245,198,194,0.5);
+}
+[data-theme="dark"] .badge-new.ok { color: #8bdb9f; }
+[data-theme="dark"] .badge-new.fail { color: #f2a19d; }
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  background: var(--bg); color: var(--text); transition: background var(--transition), color var(--transition);
+  padding: 2rem 1.25rem 4rem;
+}
+.wrap { max-width: 1160px; margin: 0 auto; }
+.topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; }
+h1 { font-size: 1.35rem; margin: 0; }
+.sub { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+.controls { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.segmented { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 2px; }
+.segmented button { border: none; background: none; color: var(--muted); font-size: 0.85rem; padding: 0.45rem 0.9rem; border-radius: 7px; cursor: pointer; transition: all var(--transition); font-weight: 500; }
+.segmented button:hover { color: var(--text); }
+.segmented button.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+
+.frame { background: var(--frame); border: 1px solid var(--border); border-radius: 14px; padding: 1.6rem 1.5rem 1.8rem; margin-bottom: 1.5rem; }
+.frame h2 { margin: 0 0 0.25rem; font-size: 1.1rem; }
+.frame .fsub { color: var(--muted); font-size: 0.82rem; margin: 0 0 1rem; line-height: 1.6; }
+.browser-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 1rem; }
+.bdot { width: 11px; height: 11px; border-radius: 50%; }
+.bdot:nth-child(1){ background:#f87171 } .bdot:nth-child(2){ background:#fbbf24 } .bdot:nth-child(3){ background:#34d399 }
+.browser-url { flex: 1; max-width: 420px; margin-left: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.75rem; color: var(--muted); }
+.elem-count { font-size: 0.72rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 0.2rem 0.7rem; white-space: nowrap; }
+.elem-count b { color: var(--accent); }
+
+.app-page { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); transition: background var(--transition); overflow: hidden; }
+.app-page.is-mobile { max-width: 390px; margin: 0 auto; }
+
+/* ── BEFORE / AFTER 對照（上下堆疊，全寬 — 7 欄表格不可半寬塞，避免誤觸發 wrap）── */
+.cmp { display: flex; flex-direction: column; gap: 1.25rem; margin-top: 1rem; }
+.cmp-label { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; font-weight: 700; padding: 0.35rem 0.85rem; border-radius: 20px; margin-bottom: 0.6rem; }
+.cmp-label.before { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+.cmp-label.after { background: var(--accent-light); color: var(--accent); border: 1px solid rgba(26,115,232,0.3); }
+.cmp-label .delta { font-weight: 500; font-size: 0.72rem; color: var(--muted); }
+
+/* ── 稽核表格（AFTER 新樣式基底）── */
+.audit-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+.audit-table th, .audit-table td { padding: 0.6rem 0.75rem; text-align: left; vertical-align: middle; }
+.audit-table thead th {
+  background: var(--surface-2); border-bottom: 2px solid var(--border);
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); white-space: nowrap;
+}
+.audit-table tbody td { border-bottom: 1px solid var(--border); }
+.audit-table tbody tr:last-child td { border-bottom: none; }
+.audit-table tbody tr { transition: background var(--transition); }
+.audit-table tbody tr:hover { background: var(--accent-light); }
+.audit-table .t-time { font-family: var(--mono); font-size: 0.76rem; white-space: nowrap; }
+.audit-table .t-user { font-weight: 600; }
+.audit-table .t-ip { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
+.audit-table .t-target { font-family: var(--mono); font-size: 0.78rem; word-break: break-all; }
+.audit-table .t-detail { color: var(--muted); font-size: 0.78rem; }
+/* detail clamp 2（AFTER） */
+.audit-table .t-detail.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.45; }
+.audit-table th:nth-child(1), .audit-table td:nth-child(1) { width: 17%; }
+.audit-table th:nth-child(2), .audit-table td:nth-child(2) { width: 9%; }
+.audit-table th:nth-child(3), .audit-table td:nth-child(3) { width: 13%; }
+.audit-table th:nth-child(4), .audit-table td:nth-child(4) { width: 13%; }
+.audit-table th:nth-child(5), .audit-table td:nth-child(5) { width: 14%; }
+.audit-table th:nth-child(6), .audit-table td:nth-child(6) { width: 8%; }
+.audit-table th:nth-child(7), .audit-table td:nth-child(7) { width: 26%; }
+
+/* 結果徽章 — BEFORE（現況：白字實底、整列淡色、字級受 root 縮放） */
+.badge-old { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.badge-old.ok { background: var(--success); color: #fff; }
+.badge-old.fail { background: var(--danger); color: #fff; }
+tr.row-old-ok { background: rgba(0,200,0,0.05); }
+tr.row-old-fail { background: rgba(255,0,0,0.05); }
+
+/* 結果徽章 — AFTER（token 化：淡底深字，dark 主題可讀） */
+.badge-new { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; white-space: nowrap; letter-spacing: 0.01em; }
+.badge-new.ok { background: var(--success-light); color: var(--success-deep); border: 1px solid var(--success-border); }
+.badge-new.fail { background: var(--danger-light); color: var(--danger-deep); border: 1px solid var(--danger-border); }
+/* 左邊條（AFTER）— td:first-child border-left 受 tr 類別控制 */
+.audit-table tr.row-new-ok td:first-child { border-left: 3px solid var(--success-border); }
+.audit-table tr.row-new-fail td:first-child { border-left: 3px solid var(--danger-border); }
+
+/* 動作 icon（AFTER，inline SVG） */
+.act-icon { display: inline-flex; vertical-align: -2px; margin-right: 0.4rem; color: var(--muted); }
+.act-icon svg { display: block; }
+.act-cell { display: inline-flex; align-items: center; }
+.act-cell b { font-weight: 600; }
+.act-login { color: var(--accent); }
+.act-danger .act-icon { color: var(--danger); }
+
+/* 未翻譯的原始 action（BEFORE）— 紅虛線框標示 */
+.raw-act { font-family: var(--mono); font-size: 0.75rem; color: var(--danger); background: var(--danger-light); padding: 1px 6px; border-radius: 4px; border: 1px dashed var(--danger-border); }
+
+/* ── 分頁（AFTER）── */
+.pager { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 16px; flex-wrap: wrap; }
+.pager .pg { padding: 6px 12px; min-height: 36px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.85rem; transition: all var(--transition); }
+.pager .pg:hover:not(:disabled):not(.active) { border-color: var(--accent); color: var(--accent); }
+.pager .pg:disabled { opacity: 0.4; cursor: not-allowed; }
+.pager .pg.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.pager .pg-ell { padding: 6px 4px; color: var(--muted); font-size: 0.85rem; }
+.pager .pg-info { font-size: 0.8rem; color: var(--muted); margin-left: 12px; white-space: nowrap; }
+/* 分頁 BEFORE：34px、密集 */
+.pager.old .pg { min-height: 34px; padding: 6px 10px; }
+
+/* ── mobile 卡片 — BEFORE（7 個 label/value 列）── */
+.card-old { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; margin-bottom: 12px; padding: 1rem; box-shadow: var(--shadow); }
+.card-old .co-row { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+.card-old .co-row:last-child { border-bottom: none; padding-bottom: 0; }
+.card-old .co-row::before { content: attr(data-label); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); flex-shrink: 0; margin-right: 0.75rem; }
+.card-old .co-row .co-v { margin-left: auto; text-align: right; }
+/* mobile 卡片 — AFTER（4 區塊） */
+.card-new { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; margin-bottom: 12px; padding: 0.9rem 1rem; box-shadow: var(--shadow); border-left: 3px solid var(--success-border); }
+.card-new.fail { border-left-color: var(--danger-border); }
+.card-new .cn-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.4rem; }
+.card-new .cn-time { font-family: var(--mono); font-size: 0.8rem; white-space: nowrap; }
+.card-new .cn-act { font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem; }
+.card-new .cn-meta { color: var(--muted); font-size: 0.8rem; margin-bottom: 0.25rem; }
+.card-new .cn-target { font-family: var(--mono); font-size: 0.8rem; word-break: break-all; }
+.card-new .cn-detail { color: var(--muted); font-size: 0.78rem; margin-top: 0.3rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* mobile 分頁 AFTER：三鍵均分 44px */
+.pager-m { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; margin-top: 0.5rem; }
+.pager-m .pm { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all var(--transition); }
+.pager-m .pm:hover:not(:disabled):not(.center) { border-color: var(--accent); color: var(--accent); }
+.pager-m .pm.center { background: var(--surface-2); color: var(--muted); cursor: default; font-weight: 500; }
+
+/* ── 註記 ── */
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 0.5rem 1.5rem; margin-top: 1rem; }
+.anno { display: flex; gap: 0.55rem; font-size: 0.8rem; color: var(--muted); align-items: flex-start; line-height: 1.55; }
+.anno .num { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-light); color: var(--accent); font-size: 0.7rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
+.anno b { color: var(--text); }
+.anno .num.red { background: var(--danger-light); color: var(--danger); }
+
+.note { font-size: 0.78rem; color: var(--muted); margin-top: 1rem; line-height: 1.7; background: var(--surface); border: 1px dashed var(--border); border-radius: 10px; padding: 0.6rem 0.9rem; }
+.note b { color: var(--accent); }
+
+/* ── 元件解剖 ── */
+.anatomy { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-top: 1.1rem; }
+@media (max-width: 760px) { .anatomy { grid-template-columns: 1fr; } }
+.anat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem 1.1rem; }
+.anat-card h4 { margin: 0 0 0.8rem; font-size: 0.92rem; display: flex; align-items: center; gap: 0.4rem; }
+.anat-card h4 .tag { font-size: 0.62rem; font-weight: 700; background: var(--accent-light); color: var(--accent); border-radius: 20px; padding: 0.12rem 0.5rem; }
+.anat-card h4 .tag.red { background: var(--danger-light); color: var(--danger); }
+.anat-stage { background: var(--frame); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1rem; margin-bottom: 0.85rem; }
+.anat-dims { font-size: 0.74rem; color: var(--muted); line-height: 1.8; }
+.anat-dims b { color: var(--accent); font-family: var(--mono); }
+.anat-dims .bad { color: var(--danger); }
+
+/* 狀態矩陣表 */
+.states { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 1rem; }
+.states th, .states td { border: 1px solid var(--border); padding: 0.55rem 0.75rem; text-align: left; vertical-align: top; }
+.states th { background: var(--surface-2); font-size: 0.74rem; color: var(--muted); font-weight: 700; }
+.states td:first-child { white-space: nowrap; font-weight: 600; }
+.states .demo-cell { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.states code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 0.05rem 0.35rem; font-size: 0.72rem; font-family: var(--mono); }
+
+.tokens { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; margin-top: 1rem; }
+.tcard { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.8rem 0.95rem; }
+.tcard .tk { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.4px; }
+.tcard .tv { font-size: 1.05rem; font-weight: 700; color: var(--text); margin-top: 0.2rem; }
+.tcard .td { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; line-height: 1.5; }
+.tcard .tv.accent { color: var(--accent); }
+.tcard .tv.bad { color: var(--danger); }
+
+.footnote { margin-top: 2rem; font-size: 0.72rem; color: var(--muted); border-top: 1px dashed var(--border); padding-top: 0.75rem; line-height: 1.7; }
+
+/* mobile 切換 */
+.frame.mobile-frame { display: none; }
+body.view-mobile .frame.mobile-frame { display: block; }
+body.view-mobile .frame.desktop-frame { display: none; }
+.mobile-frame .app-page { max-width: 390px; margin: 0 auto; }
+
+/* 高度標註 */
+.h-note { display: inline-block; font-family: var(--mono); font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.4rem; margin-left: 0.35rem; }
+.h-note.bad { background: var(--danger-light); color: var(--danger); border: 1px dashed var(--danger-border); }
+.h-note.good { background: var(--success-light); color: var(--success-deep); border: 1px solid var(--success-border); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div>
+      <h1>稽核紀錄列表 — UIUX 排版審計</h1>
+      <div class="sub">BEFORE / AFTER 比較稿 · 表格列高／結果徽章／Mobile 卡片／分頁觸控目標 · 以 commit 6e51188 實測為依據</div>
+    </div>
+    <div class="controls">
+      <div class="segmented" id="devSwitch">
+        <button data-dev="desktop" class="active">🖥 Desktop</button>
+        <button data-dev="mobile">📱 Mobile</button>
+      </div>
+      <button class="segmented" id="themeToggle" style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:3px;">🌙 切換深色</button>
+    </div>
+  </div>
+
+  <!-- ══════════ 1. 審計摘要 ══════════ -->
+  <div class="frame">
+    <h2>1️⃣ 審計摘要（實測數據）</h2>
+    <p class="fsub">Playwright 實測（1440×900 / 390×844 / 320×700，zh-TW，真實 312 筆稽核資料，無 console error）。Toolbar 已符合 009 規格，本次範圍僅列表／分頁。</p>
+    <div class="tokens">
+      <div class="tcard"><div class="tk">P1 · Action 未翻譯</div><div class="tv bad">config_view</div><div class="td">後端 snake_case vs 前端 camelCase key；<code>notify_*</code> 無 key → 表格顯示原始字串</div></div>
+      <div class="tcard"><div class="tk">P1 · Mobile 卡片過高</div><div class="tv bad">287–309px</div><div class="td">7 個 label/value 列／卡；50 筆 ≈ 14,000px 捲動</div></div>
+      <div class="tcard"><div class="tk">P1 · 分頁觸控目標</div><div class="tv bad">34px</div><div class="td">mobile 按鈕 <b>44px</b>（WCAG 2.5.5）；換行 3 行高 73–96px</div></div>
+      <div class="tcard"><div class="tk">P1 · 列底色 dark 失效</div><div class="tv bad">rgba(0,200,0,.05)</div><div class="td">硬編碼、未用 <code>--lms-*</code>；dark surface 上近乎不可見</div></div>
+      <div class="tcard"><div class="tk">P2 · role="status" ×50</div><div class="tv bad">50</div><div class="td">每列 badge 皆 live region → SR 載入朗讀 50 次「成功」</div></div>
+      <div class="tcard"><div class="tk">P2 · 桌機列高參差</div><div class="tv bad">54 / 79px</div><div class="td">detail 換行 → 鋸齒；AFTER 以 clamp 2 有界化</div></div>
+    </div>
+    <div class="note"><b>良點保留：</b>Toolbar 36/44px、focus ring、日期無效紅框；結果 badge 文字＋色彩雙重傳達（5.02:1 / 5.8:1）；thead sticky；mobile 無 body 橫向捲動。</div>
+  </div>
+
+  <!-- ══════════ 2. Desktop 比較 ══════════ -->
+  <div class="frame desktop-frame">
+    <h2>2️⃣ Desktop ≥1024px — BEFORE / AFTER（上下堆疊全寬，避免 7 欄半寬誤觸發 wrap）</h2>
+    <p class="fsub">滑鼠移到 AFTER 表格可看 hover 效果；詳細資訊過長以 clamp 2 收斂並以 title 顯示全文。</p>
+
+    <div class="cmp">
+      <!-- BEFORE -->
+      <div>
+        <span class="cmp-label before">BEFORE — 現況 <span class="delta">（實測復刻）</span></span>
+        <div class="browser-bar">
+          <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+          <span class="browser-url">https://linux-service-manager/audit</span>
+          <span class="elem-count">問題：<b>①②③</b></span>
+        </div>
+        <div class="app-page">
+          <div style="overflow-x:auto;">
+            <table class="audit-table">
+              <thead><tr><th>時間</th><th>使用者</th><th>來源 IP</th><th>動作</th><th>目標服務</th><th>結果</th><th>詳細資訊</th></tr></thead>
+              <tbody>
+                <tr class="row-old-ok"><td class="t-time">2026-08-14 07:53:25</td><td class="t-user">admin</td><td class="t-ip">192.168.0.37</td><td>登入</td><td class="t-target">-</td><td><span class="badge-old ok">成功</span></td><td class="t-detail">-</td></tr>
+                <tr class="row-old-ok"><td class="t-time">2026-08-14 00:55:43</td><td class="t-user">admin</td><td class="t-ip">192.168.0.16</td><td><span class="raw-act">config_view</span></td><td class="t-target">down18av.service</td><td><span class="badge-old ok">成功</span></td><td class="t-detail">/etc/systemd/system/down18av.service</td></tr>
+                <tr class="row-old-ok"><td class="t-time">2026-08-14 00:54:29</td><td class="t-user">admin</td><td class="t-ip">192.168.0.16</td><td><span class="raw-act">config_view</span></td><td class="t-target">down18av.service</td><td><span class="badge-old ok">成功</span></td><td class="t-detail">/etc/systemd/system/down18av.service</td></tr>
+                <tr class="row-old-ok"><td class="t-time">2026-08-13 23:04:59</td><td class="t-user">admin</td><td class="t-ip">192.168.0.34</td><td><span class="raw-act">notify_toggle</span></td><td class="t-target">Linux 服務通知</td><td><span class="badge-old ok">成功</span></td><td class="t-detail">-</td></tr>
+                <tr class="row-old-ok"><td class="t-time">2026-08-13 22:48:06</td><td class="t-user">admin</td><td class="t-ip">192.168.0.16</td><td>登入</td><td class="t-target">-</td><td><span class="badge-old ok">成功</span></td><td class="t-detail">-</td></tr>
+                <tr class="row-old-ok"><td class="t-time">2026-08-13 16:03:53</td><td class="t-user">admin</td><td class="t-ip">100.101.89.41</td><td>啟動</td><td class="t-target">simpleddns.service</td><td><span class="badge-old ok">成功</span></td><td class="t-detail">-</td></tr>
+                <tr class="row-old-ok"><td class="t-time">2026-08-13 16:03:40</td><td class="t-user">admin</td><td class="t-ip">100.101.89.41</td><td>停止</td><td class="t-target">simpleddns.service</td><td><span class="badge-old ok">成功</span></td><td class="t-detail">-</td></tr>
+                <tr class="row-old-fail"><td class="t-time">2026-08-13 15:40:02</td><td class="t-user">admin</td><td class="t-ip">100.101.89.41</td><td>停止</td><td class="t-target">nginx.service</td><td><span class="badge-old fail">失敗</span></td><td class="t-detail" style="word-break:break-word;">Job for nginx.service failed because the control process exited with error code. See "systemctl status nginx.service" and "journalctl -xeu nginx.service" for details. 這行很長會把列高撐到 79px，與其他列參差</td></tr>
+                <tr class="row-old-ok"><td class="t-time">2026-08-12 20:15:33</td><td class="t-user">admin</td><td class="t-ip">192.168.0.20</td><td><span class="raw-act">token_create</span></td><td class="t-target">api-deploy-2026</td><td><span class="badge-old ok">成功</span></td><td class="t-detail">-</td></tr>
+                <tr class="row-old-fail"><td class="t-time">2026-08-12 18:02:11</td><td class="t-user">admin</td><td class="t-ip">192.168.0.20</td><td><span class="raw-act">config_save</span></td><td class="t-target">postgresql.service</td><td><span class="badge-old fail">失敗</span></td><td class="t-detail">驗證失敗：systemd-analyze 回傳 exit 1（非零）</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pager old">
+            <button class="pg" disabled>‹ 上一頁</button><button class="pg active">1</button><button class="pg">2</button><button class="pg">3</button><button class="pg">4</button><button class="pg">5</button><button class="pg">6</button><button class="pg">7</button><button class="pg">下一頁 ›</button>
+            <span class="pg-info">第 1 / 7 頁，共 312 筆</span>
+          </div>
+        </div>
+        <div class="legend">
+          <div class="anno"><span class="num red">1</span><span><b>Action 未翻譯</b> — <code>config_view</code>／<code>notify_toggle</code>／<code>token_create</code> 顯示原始 snake_case（i18n key 為 camelCase 且缺 notify_*）</span></div>
+          <div class="anno"><span class="num red">2</span><span><b>列高參差</b> — 短內容 54px、長 detail 換行 79px；失敗列整列淡紅</span></div>
+          <div class="anno"><span class="num red">3</span><span><b>整列淡色</b> — <code>rgba(0,200,0,.05)</code> 硬編碼；切到深色主題後幾乎不可見（試點右上 🌙）</span></div>
+        </div>
+      </div>
+
+      <!-- AFTER -->
+      <div>
+        <span class="cmp-label after">AFTER — 調整後</span>
+        <div class="browser-bar">
+          <span class="bdot"></span><span class="bdot"></span><span class="bdot"></span>
+          <span class="browser-url">https://linux-service-manager/audit</span>
+          <span class="elem-count">互動：<b>hover 列</b> ／ 深色主題檢視邊條</span>
+        </div>
+        <div class="app-page">
+          <div style="overflow-x:auto;">
+            <table class="audit-table">
+              <thead><tr><th>時間</th><th>使用者</th><th>來源 IP</th><th>動作</th><th>目標服務</th><th>結果</th><th>詳細資訊</th></tr></thead>
+              <tbody>
+                <tr class="row-new-ok"><td class="t-time">2026-08-14 07:53:25</td><td class="t-user">admin</td><td class="t-ip">192.168.0.37</td><td><span class="act-cell act-login"><span class="act-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg></span><b>登入</b></span></td><td class="t-target">-</td><td><span class="badge-new ok">成功</span></td><td class="t-detail">-</td></tr>
+                <tr class="row-new-ok"><td class="t-time">2026-08-14 00:55:43</td><td class="t-user">admin</td><td class="t-ip">192.168.0.16</td><td><span class="act-cell"><span class="act-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span><b>檢視設定檔</b></span></td><td class="t-target">down18av.service</td><td><span class="badge-new ok">成功</span></td><td class="t-detail clamp" title="/etc/systemd/system/down18av.service">/etc/systemd/system/down18av.service</td></tr>
+                <tr class="row-new-ok"><td class="t-time">2026-08-14 00:54:29</td><td class="t-user">admin</td><td class="t-ip">192.168.0.16</td><td><span class="act-cell"><span class="act-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span><b>檢視設定檔</b></span></td><td class="t-target">down18av.service</td><td><span class="badge-new ok">成功</span></td><td class="t-detail clamp" title="/etc/systemd/system/down18av.service">/etc/systemd/system/down18av.service</td></tr>
+                <tr class="row-new-ok"><td class="t-time">2026-08-13 23:04:59</td><td class="t-user">admin</td><td class="t-ip">192.168.0.34</td><td><span class="act-cell"><span class="act-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span><b>切換通知 Channel</b></span></td><td class="t-target">Linux 服務通知</td><td><span class="badge-new ok">成功</span></td><td class="t-detail">-</td></tr>
+                <tr class="row-new-ok"><td class="t-time">2026-08-13 22:48:06</td><td class="t-user">admin</td><td class="t-ip">192.168.0.16</td><td><span class="act-cell act-login"><span class="act-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg></span><b>登入</b></span></td><td class="t-target">-</td><td><span class="badge-new ok">成功</span></td><td class="t-detail">-</td></tr>
+                <tr class="row-new-ok"><td class="t-time">2026-08-13 16:03:53</td><td class="t-user">admin</td><td class="t-ip">100.101.89.41</td><td><span class="act-cell"><span class="act-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9V3z"/></svg></span><b>啟動</b></span></td><td class="t-target">simpleddns.service</td><td><span class="badge-new ok">成功</span></td><td class="t-detail">-</td></tr>
+                <tr class="row-new-ok"><td class="t-time">2026-08-13 16:03:40</td><td class="t-user">admin</td><td class="t-ip">100.101.89.41</td><td><span class="act-cell"><span class="act-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></span><b>停止</b></span></td><td class="t-target">simpleddns.service</td><td><span class="badge-new ok">成功</span></td><td class="t-detail">-</td></tr>
+                <tr class="row-new-fail"><td class="t-time">2026-08-13 15:40:02</td><td class="t-user">admin</td><td class="t-ip">100.101.89.41</td><td><span class="act-cell act-danger"><span class="act-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></span><b>停止</b></span></td><td class="t-target">nginx.service</td><td><span class="badge-new fail">失敗</span></td><td class="t-detail clamp" title="Job for nginx.service failed because the control process exited with error code. See &quot;systemctl status nginx.service&quot; and &quot;journalctl -xeu nginx.service&quot; for details.">Job for nginx.service failed because the control process exited with error code. See "systemctl status nginx.service" and "journalctl -xeu nginx.service" for details. hover 可見全文</td></tr>
+                <tr class="row-new-ok"><td class="t-time">2026-08-12 20:15:33</td><td class="t-user">admin</td><td class="t-ip">192.168.0.20</td><td><span class="act-cell"><span class="act-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.8 7.8 5.5 5.5 0 0 1 7.8-7.8zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg></span><b>建立 Token</b></span></td><td class="t-target">api-deploy-2026</td><td><span class="badge-new ok">成功</span></td><td class="t-detail">-</td></tr>
+                <tr class="row-new-fail"><td class="t-time">2026-08-12 18:02:11</td><td class="t-user">admin</td><td class="t-ip">192.168.0.20</td><td><span class="act-cell act-danger"><span class="act-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span><b>儲存設定檔</b></span></td><td class="t-target">postgresql.service</td><td><span class="badge-new fail">失敗</span></td><td class="t-detail clamp" title="驗證失敗：systemd-analyze 回傳 exit 1（非零）">驗證失敗：systemd-analyze 回傳 exit 1（非零）</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pager">
+            <button class="pg" disabled>‹ 上一頁</button><button class="pg active">1</button><button class="pg">2</button><button class="pg">3</button><button class="pg">4</button><button class="pg">5</button><button class="pg">6</button><button class="pg">7</button><button class="pg">下一頁 ›</button>
+            <span class="pg-info">第 1 / 7 頁，共 312 筆</span>
+          </div>
+        </div>
+        <div class="legend">
+          <div class="anno"><span class="num">4</span><span><b>Action 全數翻譯</b> + 語意化 inline SVG 圖示（登入／文件／鈴鐺／播放…，<code>aria-hidden</code>）— 16 個 key 以 snake_case 對齊後端</span></div>
+          <div class="anno"><span class="num">5</span><span><b>整列淡色移除</b> → 左側 <b>3px</b> 邊條（<code>--lms-success-border</code>／<code>--lms-danger-border</code>），兩主題皆清晰</span></div>
+          <div class="anno"><span class="num">6</span><span><b>徽章 token 化</b> — 淡底深字：成功 <code>#137333</code> on success-light（<b>5.26:1</b> ✓）、失敗 <code>#c62828</code> on danger-light（<b>4.77:1</b> ✓）</span></div>
+          <div class="anno"><span class="num">7</span><span><b>Detail clamp 2 行</b>＋ellipsis＋<code>title</code> 全文 → 列高有界（54 / 79px）不再無限鋸齒</span></div>
+          <div class="anno"><span class="num">8</span><span>badge 移除 <code>role="status"</code>（消除 50 個 live region 噪音）；<code>:key</code> 含 timestamp；<code>aria-label</code> 本地化</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ 3. Mobile 比較 ══════════ -->
+  <div class="frame mobile-frame">
+    <h2>3️⃣ Mobile ≤767px — BEFORE / AFTER 卡片</h2>
+    <p class="fsub">每卡高度：BEFORE ~287–309px（7 個 label/value 列）→ AFTER ~150px（4 區塊重排）。分頁：BEFORE 34px 按鈕換行 3 行 → AFTER 三鍵均分 44px。</p>
+
+    <div class="cmp">
+      <!-- BEFORE mobile -->
+      <div>
+        <span class="cmp-label before">BEFORE — 現況 <span class="delta">（390px 實測）</span></span>
+        <div class="app-page is-mobile">
+          <div style="padding:0.9rem 1rem;">
+            <div class="card-old">
+              <div class="co-row" data-label="時間"><span class="co-v">2026-08-14 07:53:25</span></div>
+              <div class="co-row" data-label="使用者"><span class="co-v">admin</span></div>
+              <div class="co-row" data-label="來源 IP"><span class="co-v">192.168.0.37</span></div>
+              <div class="co-row" data-label="動作"><span class="co-v"><span class="raw-act">config_view</span></span></div>
+              <div class="co-row" data-label="目標服務"><span class="co-v">down18av.service</span></div>
+              <div class="co-row" data-label="結果"><span class="co-v"><span class="badge-old ok">成功</span></span></div>
+              <div class="co-row" data-label="詳細資訊"><span class="co-v">/etc/systemd/system/down18av.service</span></div>
+            </div>
+            <div class="card-old" style="border-left:3px solid var(--danger-border);">
+              <div class="co-row" data-label="時間"><span class="co-v">2026-08-13 15:40:02</span></div>
+              <div class="co-row" data-label="使用者"><span class="co-v">admin</span></div>
+              <div class="co-row" data-label="來源 IP"><span class="co-v">100.101.89.41</span></div>
+              <div class="co-row" data-label="動作"><span class="co-v">停止</span></div>
+              <div class="co-row" data-label="目標服務"><span class="co-v">nginx.service</span></div>
+              <div class="co-row" data-label="結果"><span class="co-v"><span class="badge-old fail">失敗</span></span></div>
+              <div class="co-row" data-label="詳細資訊"><span class="co-v">Job for nginx.service failed…</span></div>
+            </div>
+          </div>
+          <div class="pager old" style="margin-top:0;padding:0 1rem 1rem;justify-content:flex-start;gap:4px;">
+            <button class="pg" style="min-height:34px;" disabled>‹ 上一頁</button><button class="pg" style="min-height:34px;" >1</button><button class="pg" style="min-height:34px;" >2</button><button class="pg" style="min-height:34px;" >3</button><button class="pg" style="min-height:34px;" >4</button><button class="pg" style="min-height:34px;" >5</button><button class="pg" style="min-height:34px;" >6</button><button class="pg" style="min-height:34px;" >7</button><button class="pg" style="min-height:34px;" >下一頁 ›</button>
+          </div>
+          <div style="padding:0 1rem 1rem;font-size:0.78rem;color:var(--muted);">第 1 / 7 頁，共 312 筆</div>
+        </div>
+        <div class="legend">
+          <div class="anno"><span class="num red">A</span><span><b>每卡 7 列 label/value</b> — 實測高 <b>287–309px</b>；50 筆 ≈ 14,000px 捲動量</span></div>
+          <div class="anno"><span class="num red">B</span><span><b>分頁 34px 按鈕 ×9</b> — 低於 44px 觸控目標（WCAG 2.5.5），換行 3 行（高 73–96px）</span></div>
+        </div>
+      </div>
+
+      <!-- AFTER mobile -->
+      <div>
+        <span class="cmp-label after">AFTER — 調整後</span>
+        <div class="app-page is-mobile">
+          <div style="padding:0.9rem 1rem;">
+            <div class="card-new">
+              <div class="cn-head"><span class="cn-time">2026-08-14 07:53:25</span><span class="badge-new ok">成功</span></div>
+              <div class="cn-act"><span class="act-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>檢視設定檔</div>
+              <div class="cn-meta">admin · 192.168.0.16</div>
+              <div class="cn-target">down18av.service</div>
+              <div class="cn-detail">/etc/systemd/system/down18av.service</div>
+            </div>
+            <div class="card-new fail">
+              <div class="cn-head"><span class="cn-time">2026-08-13 15:40:02</span><span class="badge-new fail">失敗</span></div>
+              <div class="cn-act"><span class="act-icon" style="color:var(--danger);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></span>停止</div>
+              <div class="cn-meta">admin · 100.101.89.41</div>
+              <div class="cn-target">nginx.service</div>
+              <div class="cn-detail">Job for nginx.service failed because the control process exited with error code. See "systemctl status nginx.service"…</div>
+            </div>
+          </div>
+          <div style="padding:0 1rem 1rem;">
+            <div class="pager-m">
+              <button class="pm">‹ 上一頁</button>
+              <span class="pm center">第 1 / 7 頁</span>
+              <button class="pm">下一頁 ›</button>
+            </div>
+          </div>
+        </div>
+        <div class="legend">
+          <div class="anno"><span class="num">C</span><span><b>4 區塊重排</b> — 時間＋結果徽章（標頭）、動作（icon＋文字次標題）、meta（使用者·IP）、目標＋詳細資訊 → 卡片 <b>~150px</b></span></div>
+          <div class="anno"><span class="num">D</span><span><b>三鍵均分 44px</b> — 頁碼收合進中央「第 1 / 7 頁」；整列高度由 73–96px 降至 44px 一列</span></div>
+          <div class="anno"><span class="num">E</span><span>失敗卡左側 <b>3px danger 邊條</b>＋紅徽章 — 與桌機同一套結果表達</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ 4. 元件解剖 ══════════ -->
+  <div class="frame">
+    <h2>4️⃣ 元件解剖 — 結果徽章與分頁</h2>
+    <p class="fsub">AFTER 規格細部：徽章對比、分頁斷點行為、action 圖示群。</p>
+    <div class="anatomy">
+      <div class="anat-card">
+        <h4>結果徽章 <span class="tag">Result Badge</span></h4>
+        <div class="anat-stage" style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+          <span class="badge-new ok">成功</span>
+          <span class="badge-new fail">失敗</span>
+          <span class="badge-old ok" style="opacity:.55;">BEFORE</span>
+        </div>
+        <div class="anat-dims">
+          AFTER：高 <b>24px</b> · 圓角 <b>20px</b> · 字級 <b>12px</b> 700<br>
+          淺色：成功 <b>#137333</b> on <code>--lms-success-light</code> ＝ <b>5.26:1</b> ✓ · 失敗 <b>#c62828</b> on <code>--lms-danger-light</code> ＝ <b>4.77:1</b> ✓<br>
+          <b>深色：</b>文字轉 <code>#8bdb9f</code>／<code>#f2a19d</code>（同 Toast 深色系）＝ <b>8.1:1 / 7.3:1</b> ✓
+          <br>
+          BEFORE：白字實底（5.02:1／5.8:1 ✓）但字級受 Pico root 縮放（16 / 12.8px 不一致）；<span class="bad">且每列帶 <code>role="status"</code> live region</span>
+        </div>
+      </div>
+      <div class="anat-card">
+        <h4>分頁 <span class="tag">Pagination</span></h4>
+        <div class="anat-stage">
+          <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:0.5rem;">
+            <button class="pg" disabled>‹ 上一頁</button><button class="pg active">3</button><button class="pg">4</button><span class="pg-ell">…</span><button class="pg">7</button><button class="pg">下一頁 ›</button>
+          </div>
+          <div class="pager-m" style="margin-top:0.75rem;">
+            <button class="pm">‹ 上一頁</button><span class="pm center">第 3 / 7 頁</span><button class="pm">下一頁 ›</button>
+          </div>
+        </div>
+        <div class="anat-dims">
+          ≥768px：數字頁碼＋省略號，min-height <b>36px</b>，gap 4px，page-info 右側<br>
+          ≤767px：三鍵均分、<b>44px</b>（WCAG 2.5.5）、中央顯示「第 X / Y 頁」；<span class="bad">BEFORE 為 34px ×9 鍵換行 3 行</span>
+        </div>
+      </div>
+      <div class="anat-card">
+        <h4>列結果表達 <span class="tag">Row Result</span></h4>
+        <div class="anat-stage">
+          <table class="audit-table" style="font-size:0.8rem;">
+            <tbody>
+              <tr class="row-new-ok"><td class="t-time" style="width:60%;">2026-08-14 00:55:43</td><td><span class="badge-new ok">成功</span></td></tr>
+              <tr class="row-new-fail"><td class="t-time">2026-08-13 15:40:02</td><td><span class="badge-new fail">失敗</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="anat-dims">
+          左側 <b>3px</b> 邊條（<code>--lms-success-border</code>／<code>--lms-danger-border</code>）取代整列淡色<br>
+          <span class="bad">BEFORE 硬編碼 <code>rgba(0,200,0,.05)</code>，dark 主題不可見</span>；hover 維持 <code>--lms-accent-light</code>
+        </div>
+      </div>
+      <div class="anat-card">
+        <h4>Action 圖示群 <span class="tag">Action Icons</span></h4>
+        <div class="anat-stage" style="display:flex;gap:0.85rem;flex-wrap:wrap;align-items:center;">
+          <span class="act-cell act-login"><span class="act-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg></span>登入</span>
+          <span class="act-cell"><span class="act-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9V3z"/></svg></span>啟動</span>
+          <span class="act-cell"><span class="act-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></span>停止</span>
+          <span class="act-cell"><span class="act-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 3v6h-6"/></svg></span>重啟</span>
+          <span class="act-cell"><span class="act-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>設定檔</span>
+          <span class="act-cell"><span class="act-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.8 7.8 5.5 5.5 0 0 1 7.8-7.8zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg></span>Token</span>
+          <span class="act-cell"><span class="act-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>通知</span>
+        </div>
+        <div class="anat-dims">
+          全部 inline SVG（<code>aria-hidden</code>）· 尺寸 <b>13–14px</b> · 色 <code>--lms-muted</code>（登入 accent、失敗動作 danger）<br>
+          ⚠️ 於設計稿內圖示僅作示意 — 實作時以專案既有 icon 或同款 stroke 風格 SVG
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ 5. 狀態矩陣 ══════════ -->
+  <div class="frame">
+    <h2>5️⃣ 狀態矩陣</h2>
+    <p class="fsub">AFTER 規格：每種狀態的視覺與互動。</p>
+    <table class="states">
+      <tr><th style="width:150px;">狀態</th><th>視覺</th><th>互動</th></tr>
+      <tr><td>Idle（成功）</td><td><span class="demo-cell">左 3px success 邊條<span class="badge-new ok">成功</span></span></td><td>—</td></tr>
+      <tr><td>Idle（失敗）</td><td><span class="demo-cell">左 3px danger 邊條<span class="badge-new fail">失敗</span></span></td><td>—</td></tr>
+      <tr><td>Hover</td><td>整列 <code>--lms-accent-light</code>（沿用現況）</td><td>—</td></tr>
+      <tr><td>Detail 過長</td><td>clamp 2 行＋ellipsis</td><td><code>title</code> 顯示全文；CSV 匯出保有完整資料</td></tr>
+      <tr><td>分頁 ≥768px</td><td>數字頁碼＋省略號；active accent 底</td><td>點擊跳頁；disabled 淡化；min-height 36px</td></tr>
+      <tr><td>分頁 ≤767px</td><td>三鍵均分 44px；中央「第 X / Y 頁」</td><td>上一頁／下一頁；中央無動作</td></tr>
+      <tr><td>Empty</td><td>SVG 大圖示＋訊息</td><td>「清除條件」捷徑（沿用）</td></tr>
+      <tr><td>Error</td><td>SVG 警示＋訊息</td><td>「重試」按鈕（沿用）</td></tr>
+      <tr><td>Loading</td><td>首次載入中央 spinner；後續保留表格防閃爍</td><td>—</td></tr>
+    </table>
+  </div>
+
+  <!-- ══════════ 6. 規格摘要 ══════════ -->
+  <div class="frame">
+    <h2>6️⃣ 規格摘要 — CSS 變數對應</h2>
+    <p class="fsub">實作時直接套用既有 token，新增樣式集中在 <code>AuditTable.vue</code> scoped 與 <code>main.css</code> mobile 區段。</p>
+    <table class="states">
+      <tr><th style="width:200px;">項目</th><th>值</th><th>對應</th></tr>
+      <tr><td>成功徽章</td><td>淡底深字 <code>#137333</code> on success-light（5.26:1）</td><td><code>--lms-success-light</code>＋<code>--lms-success-border</code></td></tr>
+      <tr><td>失敗徽章</td><td>淡底深字 <code>#c62828</code> on danger-light（4.77:1）</td><td><code>--lms-danger-light</code>＋<code>--lms-danger-border</code></td></tr>
+      <tr><td>列結果邊條</td><td>左側 3px（取代整列淡色）</td><td><code>td:first-child border-left</code>，色取 <code>--lms-*-border</code></td></tr>
+      <tr><td>Detail clamp</td><td>2 行＋ellipsis＋title</td><td><code>-webkit-line-clamp:2</code></td></tr>
+      <tr><td>時間欄</td><td>mono 0.76–0.8rem nowrap</td><td><code>--lms-mono</code></td></tr>
+      <tr><td>Action 圖示</td><td>13–14px inline SVG</td><td><code>aria-hidden</code>；色 <code>--lms-muted</code></td></tr>
+      <tr><td>分頁 desktop</td><td>min-height 36px</td><td>沿用 <code>.page-btn</code></td></tr>
+      <tr><td>分頁 mobile</td><td>三鍵均分 44px</td><td>新增 <code>.pager-mobile</code></td></tr>
+      <tr><td>i18n</td><td>16 個 action key（snake_case）</td><td><code>useI18n.ts</code> zh-TW + en</td></tr>
+    </table>
+    <div class="note"><b>動畫：</b>hover 轉場 150ms 沿用；全部動畫尊重 <code>prefers-reduced-motion</code>（main.css 既有規則，本設計不新增動畫）。<br><b>範疇聲明：</b>Toolbar（搜尋／日期／匯出）沿用 <code>docs/uiux/009-audit-toolbar-design.html</code> 定稿，本次不更動。</div>
+  </div>
+
+  <div class="footnote">
+    📄 設計文件：<b>docs/uiux/009-audit-list-redesign.md</b> ・ 本文件：<b>docs/uiux/009-audit-list-redesign-mockup.html</b>（比較稿）<br>
+    實測 base：<b>commit 6e51188</b>（dev 實例 localhost:18080，Playwright 1440/390/320px，zh-TW）・ 實作範圍：<b>AuditTable.vue</b>／<b>AuditLogView.vue</b>（分頁、Empty/Error SVG）／<b>useI18n.ts</b>／<b>main.css</b>（mobile 卡片、分頁）
+  </div>
+</div>
+
+<script>
+// ── 通用切換（模板內建）──
+const themeBtn = document.getElementById('themeToggle');
+themeBtn.addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+  themeBtn.textContent = dark ? '🌙 切換深色' : '☀️ 切換淺色';
+});
+const devSwitch = document.getElementById('devSwitch');
+devSwitch.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+  devSwitch.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  document.body.classList.toggle('view-mobile', b.dataset.dev === 'mobile');
+}));
+
+// ── 互動：AFTER 分頁 demo（點擊切換 active）──
+document.querySelectorAll('.pager:not(.old) .pg').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.disabled) return;
+    const pager = btn.closest('.pager');
+    pager.querySelectorAll('.pg').forEach(x => x.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>

@@ -814,6 +814,22 @@ test.describe('Scenario 13: 手機版設計提案排版', () => {
     expect(navBox!.y).toBeGreaterThan(brandBox!.y + brandBox!.height - 2)
   })
 
+  test('Header 手機版：帳號名隱藏、只剩圓形頭像（009 nav 規格）', async ({ page }) => {
+    await setupApiMocks(page, { authenticated: false, includeActions: true })
+    await loginViaUI(page)
+
+    const name = page.locator('.account-name')
+    const avatar = page.locator('.account-btn .avatar')
+
+    await expect(name).toBeHidden()
+    await expect(avatar).toBeVisible()
+
+    // 按鈕仍保留 chevron 觸發器（剩頭像 + ▾，不換行）
+    const btn = page.locator('.account-btn')
+    const chevron = btn.locator('.chevron')
+    await expect(chevron).toBeVisible()
+  })
+
   test('Stat 卡片圖示為 40px 色塊方塊', async ({ page }) => {
     await setupApiMocks(page, { authenticated: false, includeActions: true })
     await loginViaUI(page)

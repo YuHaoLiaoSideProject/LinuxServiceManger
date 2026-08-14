@@ -1458,6 +1458,10 @@ tbody tr:last-child td {
     font-size: 0.9rem;
   }
 
+  /* ── Account（規格：009-audit-nav-proposal — mobile 只留圓形頭像）── */
+  .account-name { display: none; }
+  .account-btn { padding-right: 0.45rem; }
+
   /* ── Stats: horizontal swipe chips ──
      ⚠️ 不再使用 scroll-snap-type / scroll-snap-align：在真實手機上（iOS Safari /
      部分 Android）點擊位於 snap 點附近的卡片時，瀏覽器會把點擊視為

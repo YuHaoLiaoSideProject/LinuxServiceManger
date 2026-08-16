@@ -7,9 +7,10 @@ import { useWebSocket } from '../composables/useWebSocket'
 import { useI18n } from '../composables/useI18n'
 import NodeCard from '../components/NodeCard.vue'
 import NodeDetailPanel from '../components/NodeDetailPanel.vue'
+import NodeFormModal from '../components/NodeFormModal.vue'
 import EmptyState from '../components/EmptyState.vue'
 import ToastContainer from '../components/ToastContainer.vue'
-import type { SearchResponse } from '../types/node'
+import type { Node, SearchResponse } from '../types/node'
 
 const nodesStore = useNodesStore()
 const router = useRouter()
@@ -21,6 +22,7 @@ const searchResult = ref<SearchResponse | null>(null)
 const searchOpen = ref(false)
 const searching = ref(false)
 const detailNodeId = ref<string | null>(null)
+const editingNode = ref<Node | null>(null)   // 詳情面板「編輯設定」→ NodeFormModal 預填（缺口 #3）
 
 const summary = computed(() => nodesStore.summary)
 
@@ -63,6 +65,11 @@ function onCardClick(nodeId: string, status: string): void {
   } else {
     detailNodeId.value = nodeId                                     // 離線 → 離線資訊面板（BDD @node-detail）
   }
+}
+
+/** 詳情面板「編輯設定」→ 開 NodeFormModal（預填目前詳情節點；儲存後由 saved 重新拉取 store） */
+function onEditDetailNode(): void {
+  editingNode.value = nodesStore.byId(detailNodeId.value ?? '') ?? null
 }
 
 function onSearchResultClick(item: { node_id: string; service: string }): void {
@@ -163,7 +170,9 @@ onMounted(() => {
       <NodeCard v-for="n in sortedNodes" :key="n.id" :node="n" @click="onCardClick(n.id, n.status)" @detail="detailNodeId = n.id" />
     </div>
 
-    <NodeDetailPanel v-if="detailNodeId" :node-id="detailNodeId" @close="detailNodeId = null" />
+    <NodeDetailPanel v-if="detailNodeId" :node-id="detailNodeId" @close="detailNodeId = null" @edit="onEditDetailNode" />
+
+    <NodeFormModal v-if="editingNode" :node="editingNode" @close="editingNode = null" @saved="editingNode = null; nodesStore.fetchNodes()" />
 
     <!-- Toast（節點離線/恢復/註冊等全域通知；UIUX 014 決策 7：三視圖皆需 Toast） -->
     <ToastContainer />

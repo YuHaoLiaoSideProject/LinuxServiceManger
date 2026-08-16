@@ -65,6 +65,7 @@ func setupNodeRouter(h *Handler) *chi.Mux {
 		r.Get("/api/v1/nodes/{id}", h.HandleGetNode)
 		r.Put("/api/v1/nodes/{id}", h.HandleUpdateNode)
 		r.Delete("/api/v1/nodes/{id}", h.HandleDeleteNode)
+		r.Post("/api/v1/nodes/{id}/reconnect", h.HandleNodeReconnect)
 		r.Get("/api/v1/nodes/{id}/services", h.HandleNodeServices)
 		r.Post("/api/v1/nodes/{id}/services/{name}/start", h.HandleNodeServiceStart)
 		r.Post("/api/v1/nodes/{id}/services/{name}/stop", h.HandleNodeServiceStop)
@@ -489,6 +490,132 @@ func TestHandleDeleteNode_AuditKept(t *testing.T) {
 	}
 	if res.Total < 1 || res.Entries[0].Action != audit.ActionNodeDelete {
 		t.Errorf("expected ActionNodeDelete audit entry, got %+v", res.Entries)
+	}
+}
+
+// ============================================================
+//  HDL-10b: POST /nodes/{id}/reconnect 重新連線
+// ============================================================
+
+func TestHandleNodeReconnect_NotFound(t *testing.T) {
+	withAdminAuth(t)
+	m := newNodesManager(t)
+	router := setupNodeRouter(newNodeHandler(t, m, nil))
+	cookie := adminCookie(t, router)
+
+	w := postJSON(t, router, cookie, http.MethodPost, "/api/v1/nodes/ghost/reconnect", "")
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "node not found") {
+		t.Errorf("expected error node not found, got %s", w.Body.String())
+	}
+}
+
+func TestHandleNodeReconnect_Success(t *testing.T) {
+	withAdminAuth(t)
+	agent := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/health" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Write([]byte(`{"version":"1.2.3","hostname":"web-server-01","os":"Ubuntu 22.04"}`))
+	}))
+	defer agent.Close()
+
+	auditMod := newTestAuditModule(t)
+	m := newNodesManager(t)
+	// 節點已離線、但保有最後心跳附帶的 service_stats
+	n, err := m.Registry.Create(&nodes.Node{
+		Name:          "web-server-01",
+		Address:       strings.TrimPrefix(agent.URL, "https://"),
+		TLSFingerprint: serverFingerprint(t, agent),
+		ServiceStats:  nodes.ServiceStats{Total: 3, Active: 2, Failed: 1},
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	m.Registry.SetStatus(n.ID, nodes.StatusOffline)
+
+	router := setupNodeRouter(newNodeHandler(t, m, auditMod))
+	cookie := adminCookie(t, router)
+
+	w := postJSON(t, router, cookie, http.MethodPost, "/api/v1/nodes/"+n.ID+"/reconnect", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var body struct {
+		Data map[string]any `json:"data"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &body)
+	if body.Data["agent_version"] != "1.2.3" || body.Data["hostname"] != "web-server-01" || body.Data["os"] != "Ubuntu 22.04" {
+		t.Errorf("health snapshot fields not updated: %v", body.Data)
+	}
+	if body.Data["status"] != "online" {
+		t.Errorf("status after reconnect: got %v, want online", body.Data["status"])
+	}
+	hb, _ := body.Data["last_heartbeat"].(string)
+	if _, err := time.Parse(time.RFC3339, hb); err != nil {
+		t.Errorf("last_heartbeat not RFC3339 UTC after reconnect: %q", hb)
+	}
+
+	// service_stats 不得被健康檢查覆寫（決策 3）
+	nn := m.Registry.Get(n.ID)
+	if nn.ServiceStats != (nodes.ServiceStats{Total: 3, Active: 2, Failed: 1}) {
+		t.Errorf("service_stats overwritten by reconnect: %+v", nn.ServiceStats)
+	}
+
+	// audit ActionNodeReconnect 成功紀錄
+	auditMod.Shutdown()
+	res, err := auditMod.Query(audit.QueryParams{Page: 1, Limit: 10})
+	if err != nil {
+		t.Fatalf("audit query: %v", err)
+	}
+	if res.Total < 1 || res.Entries[0].Action != audit.ActionNodeReconnect || res.Entries[0].Result != audit.ResultSuccess {
+		t.Errorf("expected ActionNodeReconnect success entry, got %+v", res.Entries)
+	}
+	if res.Entries[0].NodeID != n.ID {
+		t.Errorf("audit node_id mismatch: got %q want %q", res.Entries[0].NodeID, n.ID)
+	}
+}
+
+func TestHandleNodeReconnect_NodeOffline(t *testing.T) {
+	withAdminAuth(t)
+	// 取得一個已關閉的 port（connection refused）
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	addr := l.Addr().String()
+	l.Close()
+
+	auditMod := newTestAuditModule(t)
+	m := newNodesManager(t)
+	n, err := m.Registry.Create(&nodes.Node{Name: "web-server-01", Address: addr, Token: "x"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	router := setupNodeRouter(newNodeHandler(t, m, auditMod))
+	cookie := adminCookie(t, router)
+
+	w := postJSON(t, router, cookie, http.MethodPost, "/api/v1/nodes/"+n.ID+"/reconnect", "")
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "node offline") {
+		t.Errorf("expected error node offline, got %s", w.Body.String())
+	}
+
+	// 失敗亦記錄 audit（failure）
+	auditMod.Shutdown()
+	res, err := auditMod.Query(audit.QueryParams{Page: 1, Limit: 10})
+	if err != nil {
+		t.Fatalf("audit query: %v", err)
+	}
+	if res.Total < 1 || res.Entries[0].Action != audit.ActionNodeReconnect || res.Entries[0].Result != audit.ResultFailure {
+		t.Errorf("expected ActionNodeReconnect failure entry, got %+v", res.Entries)
 	}
 }
 

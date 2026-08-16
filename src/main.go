@@ -139,6 +139,15 @@ func main() {
 		log.Fatalf("failed to load node registry: %v", err)
 	}
 	go nodeMod.Supervisor.Run(ctx) // 5s ticker 狀態機（狀態變更才推播）
+
+	// 啟動健康檢查（決策 2 / §5.2）：背景 goroutine 非阻塞，對每個節點並行 GET /health
+	// （semaphore 10）嘗試建立第一筆 last_heartbeat；失敗節點靜默跳過，不延遲 ListenAndServe。
+	go func() {
+		res := nodeMod.StartupHealthCheck(ctx)
+		if res.Total > 0 {
+			log.Printf("startup health check: %d/%d nodes reachable (%d failed)", res.Success, res.Total, res.Failed)
+		}
+	}()
 	h.Nodes = nodeMod
 
 	// Agent binary（決策 7：CI 建置後嵌入 Manager binary）
@@ -214,6 +223,7 @@ func main() {
 		r.Get("/api/v1/nodes/{id}", h.HandleGetNode)
 		r.Put("/api/v1/nodes/{id}", h.HandleUpdateNode)
 		r.Delete("/api/v1/nodes/{id}", h.HandleDeleteNode)
+		r.Post("/api/v1/nodes/{id}/reconnect", h.HandleNodeReconnect)
 		r.Get("/api/v1/nodes/{id}/services", h.HandleNodeServices)
 		r.Post("/api/v1/nodes/{id}/services/{name}/start", h.HandleNodeServiceStart)
 		r.Post("/api/v1/nodes/{id}/services/{name}/stop", h.HandleNodeServiceStop)

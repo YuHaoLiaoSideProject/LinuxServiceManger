@@ -31,6 +31,30 @@ jobs:
           npm ci
           npm run build
 
+      # Agent binary（決策 7）：CI 建置真 binary 覆寫 repo 內的 placeholder。
+      # repo 中的 src/agents/agent-linux-{amd64,arm64} 只是 31-byte 佔位檔
+      # （讓本機 `go build main.go` 的 go:embed 可編譯），真正下載內容由 CI 在此產生。
+      # ⚠️ 這兩個 step 必須在 manager build 之前：go:embed 在編譯時嵌入
+      # src/agents/ 的現有內容，順序對了 Manager 才會嵌入真 binary。
+      - name: Build Agent binary (linux/amd64, static)
+        run: |
+          cd src
+          # repo 內的 placeholder 是文字檔，go build -o 不會覆寫非 object 檔 → 先刪除
+          rm -f ../src/agents/agent-linux-amd64
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -ldflags="-s -w" \
+            -o ../src/agents/agent-linux-amd64 \
+            ./cmd/agent
+
+      - name: Build Agent binary (linux/arm64, static)
+        run: |
+          cd src
+          rm -f ../src/agents/agent-linux-arm64
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build \
+            -ldflags="-s -w" \
+            -o ../src/agents/agent-linux-arm64 \
+            ./cmd/agent
+
       - name: Build Go binary (linux/amd64, static)
         run: |
           cd src
@@ -44,4 +68,6 @@ jobs:
         with:
           files: |
             linux-service-manager-linux-amd64
+            src/agents/agent-linux-amd64
+            src/agents/agent-linux-arm64
           fail_on_unmatched_files: true

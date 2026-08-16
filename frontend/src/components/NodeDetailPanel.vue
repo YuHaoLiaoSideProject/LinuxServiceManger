@@ -1,17 +1,22 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useNodesStore } from '../stores/nodes'
-import { getNodeInfo } from '../api/client'
+import { deleteNode, getNodeInfo, reconnectNode } from '../api/client'
 import NodeStatusDot from './NodeStatusDot.vue'
+import ConfirmModal from './ConfirmModal.vue'
+import { useToast } from '../composables/useToast'
 import type { NodeSystemInfo } from '../types/node'
 
 const props = defineProps<{ nodeId: string }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; edit: [] }>()
 
+const { showToast } = useToast()
 const nodesStore = useNodesStore()
 const node = computed(() => nodesStore.byId(props.nodeId))
 const info = ref<NodeSystemInfo | null>(null)
 const offline = computed(() => node.value?.status === 'offline' || node.value?.status === 'long_offline')
+const deleting = ref(false)        // ConfirmModal 顯示與否（沿用 NodeManagementView pattern）
+const reconnecting = ref(false)    // 重新連線按鈕 loading spinner
 
 /** 上線時長（uptime_seconds → Xd Xh Xm）／離線持續時間（now - last_heartbeat） */
 const uptimeText = computed(() => {
@@ -49,6 +54,35 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onDocumentKeydown)
 })
+
+/** 重新連線（POST /nodes/{id}/reconnect）：成功 → Toast + 重新拉取 store；失敗 → 錯誤 Toast；按鈕 loading spinner */
+async function handleReconnect(): Promise<void> {
+  if (reconnecting.value) return
+  reconnecting.value = true
+  try {
+    await reconnectNode(props.nodeId)
+    showToast('節點已重新連線', 'success')
+    await nodesStore.fetchNodes()
+  } catch (e: any) {
+    showToast(`無法連線：${e?.response?.data?.error || e.message}`, 'error')
+  } finally {
+    reconnecting.value = false
+  }
+}
+
+/** 移除節點：確認 → DELETE + Toast → emit close + 重新拉取 store（面板隨之關閉） */
+async function handleConfirmDelete(): Promise<void> {
+  try {
+    await deleteNode(props.nodeId)
+    showToast('節點已移除', 'success')
+    deleting.value = false
+    emit('close')
+    await nodesStore.fetchNodes()
+  } catch (e: any) {
+    showToast(`移除失敗：${e?.response?.data?.error || e.message}`, 'error')
+    deleting.value = false
+  }
+}
 </script>
 
 <template>
@@ -86,10 +120,22 @@ onBeforeUnmount(() => {
         <span>⚠ Agent 版本過舊 ({{ node.agent_version }})，建議升級至 v1.2+</span>
       </p>
       <div class="panel-actions">
-        <button class="btn btn-secondary">重新連線</button>
-        <button v-if="node?.status === 'online'" class="btn btn-secondary">編輯設定</button>
-        <button class="btn btn-danger">移除節點</button>
+        <button class="btn btn-secondary" :disabled="reconnecting" data-testid="reconnect-node" @click="handleReconnect">
+          <span v-if="reconnecting" class="spinner-sm" aria-hidden="true"></span> 重新連線
+        </button>
+        <button v-if="node?.status === 'online'" class="btn btn-secondary" data-testid="edit-node" @click="$emit('edit')">編輯設定</button>
+        <button class="btn btn-danger" data-testid="remove-node" @click="deleting = true">移除節點</button>
       </div>
+
+      <ConfirmModal
+        v-if="deleting"
+        :show="true"
+        title="移除節點"
+        message="確定要移除此節點？所有歷史資料將保留。"
+        confirm-label="確認移除"
+        @confirm="handleConfirmDelete"
+        @cancel="deleting = false"
+      />
     </aside>
   </div>
 </template>

@@ -192,6 +192,11 @@ export async function deleteNode(id: string): Promise<void> {
   await api.delete(`/nodes/${id}`)
 }
 
+export async function reconnectNode(id: string): Promise<Node> {
+  const { data } = await api.post<{ data: Node }>(`/nodes/${id}/reconnect`)
+  return data.data
+}
+
 export async function testConnection(req: TestConnectionRequest): Promise<TestConnectionResult> {
   const { data } = await api.post<TestConnectionResult>('/nodes/test-connection', req)
   return data

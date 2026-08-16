@@ -285,6 +285,52 @@ func (h *Handler) HandleDeleteNode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, messageJSON{Message: "節點已移除"})
 }
 
+// HandleNodeReconnect — POST /api/v1/nodes/{id}/reconnect
+// 手動重新連線：registry lookup → 404；對節點位址發 GET /health（5s 逾時，走 AgentClient，
+// 用節點儲存的 token/TLS fingerprint）：
+//   - 成功 → SetHealthSnapshot（last_heartbeat=now + agent_version/hostname/os，
+//     不覆寫 service_stats — 決策 3：統計僅由心跳帶入）+ SetStatus(online)
+//     → 200 {data: Node} + audit ActionNodeReconnect
+//   - 失敗（offline/TLS 失敗/非 200）→ 502 {"error":"node offline"} + audit failure
+func (h *Handler) HandleNodeReconnect(w http.ResponseWriter, r *http.Request) {
+	if h.Nodes == nil {
+		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "nodes module not initialized"})
+		return
+	}
+	id := chi.URLParam(r, "id")
+	n := h.Nodes.Registry.Get(id)
+	if n == nil {
+		writeJSON(w, http.StatusNotFound, messageJSON{Error: "node not found"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	code, body, err := h.Nodes.Client.Do(ctx, n, http.MethodGet, "/health", nil)
+	if err != nil || code != http.StatusOK {
+		h.writeNodeAudit(r, audit.ActionNodeReconnect, n.ID, n.Name, n.Name, audit.ResultFailure, "node offline")
+		writeJSON(w, http.StatusBadGateway, messageJSON{Error: "node offline"})
+		return
+	}
+
+	var health struct {
+		Version  string `json:"version"`
+		Hostname string `json:"hostname"`
+		OS       string `json:"os"`
+	}
+	_ = json.Unmarshal(body, &health)
+
+	h.Nodes.Registry.SetHealthSnapshot(n.ID, health.Version, health.Hostname, health.OS)
+	h.Nodes.Registry.SetStatus(n.ID, nodes.StatusOnline)
+	h.writeNodeAudit(r, audit.ActionNodeReconnect, n.ID, n.Name, n.Name, audit.ResultSuccess, "")
+
+	node := h.Nodes.Registry.Get(id)
+	cp := *node
+	cp.Token = nodes.MaskToken(node.Token)
+	writeJSON(w, http.StatusOK, map[string]any{"data": cp})
+}
+
 // HandleTestConnection — POST /api/v1/nodes/test-connection
 // body {address, tls_fingerprint, token}（決策 6：Agent GET /health，5s 逾時，帶入表單位址/憑證即時驗證）。
 // 成功 → 200 {version, hostname, os, uptime}；connection refused / TLS 驗證失敗 → 502（body 含具體原因）；

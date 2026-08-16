@@ -44,6 +44,7 @@ const (
 	ActionNodeUpdate         Action = "node_update"
 	ActionNodeDelete         Action = "node_delete"
 	ActionNodeTestConnection Action = "node_test_connection"
+	ActionNodeReconnect      Action = "node_reconnect"
 )
 
 var validActions = map[Action]bool{
@@ -67,6 +68,7 @@ var validActions = map[Action]bool{
 	ActionNodeUpdate:         true,
 	ActionNodeDelete:         true,
 	ActionNodeTestConnection: true,
+	ActionNodeReconnect:      true,
 }
 
 // actionDisplayLabels maps each audit action to its localized display label
@@ -95,6 +97,7 @@ var actionDisplayLabels = map[Action]string{
 	ActionNodeUpdate:         "更新節點",
 	ActionNodeDelete:         "移除節點",
 	ActionNodeTestConnection: "測試節點連線",
+	ActionNodeReconnect:      "重新連線節點",
 }
 
 // Result represents the outcome of an audited operation.

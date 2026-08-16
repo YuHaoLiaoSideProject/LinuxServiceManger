@@ -326,6 +326,31 @@ func (r *Registry) SetHeartbeat(nodeName string, hb Heartbeat) {
 	}
 }
 
+// SetHealthSnapshot 更新啟動健康檢查建立的連線資訊（決策 2）：
+// last_heartbeat=now + agent_version/hostname/os（取自 Agent GET /health 回應）。
+// 與 SetHeartbeat 不同 — 不覆寫 service_stats（/health 回應不含服務統計，
+// 最後心跳附帶的統計需保留，決策 3）。Status 不在此處修改（由 supervisor 下輪判定）；
+// 不觸發 save（熱路徑零 IO）。
+func (r *Registry) SetHealthSnapshot(id, version, hostname, os string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	n, ok := r.nodes[id]
+	if !ok || n == nil {
+		return
+	}
+	n.LastHeartbeat = nowUTC()
+	if version != "" {
+		n.AgentVersion = version
+	}
+	if hostname != "" {
+		n.Hostname = hostname
+	}
+	if os != "" {
+		n.OS = os
+	}
+}
+
 // SetStatus 更新狀態（supervisor 呼叫）；狀態變更才 save。
 func (r *Registry) SetStatus(id string, st Status) {
 	r.mu.Lock()

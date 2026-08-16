@@ -1078,6 +1078,7 @@ func TestNodeActionConstants(t *testing.T) {
 		{ActionNodeUpdate, "node_update", "更新節點"},
 		{ActionNodeDelete, "node_delete", "移除節點"},
 		{ActionNodeTestConnection, "node_test_connection", "測試節點連線"},
+		{ActionNodeReconnect, "node_reconnect", "重新連線節點"},
 	}
 	for _, tc := range actions {
 		t.Run(tc.want, func(t *testing.T) {

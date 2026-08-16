@@ -17,7 +17,12 @@ import (
 const version = "1.2.0" // 與 Manager 的 AgentMinVersion 同步（決策 3）
 
 func main() {
-	cfg, err := agent.LoadConfig("/etc/linux-service-manager/agent.yaml")
+	// Config path is overridable via LSM_AGENT_CONFIG (default: /etc/linux-service-manager/agent.yaml).
+	cfgPath := os.Getenv("LSM_AGENT_CONFIG")
+	if cfgPath == "" {
+		cfgPath = "/etc/linux-service-manager/agent.yaml"
+	}
+	cfg, err := agent.LoadConfig(cfgPath)
 	if err != nil {
 		log.Fatalf("agent: %v", err) // 缺必填欄位啟動即失敗（SYS-45）
 	}

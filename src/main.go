@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"path/filepath"
+
 	"linux-service-manager/internal/audit"
 	"linux-service-manager/internal/auth"
 	"linux-service-manager/internal/handler"
@@ -60,6 +62,13 @@ var agentBinariesFS embed.FS
 // @in header
 // @name Authorization
 func main() {
+	// Data directory is overridable via LSM_DATA_DIR (default: /var/lib/linux-service-manager).
+	// Useful for isolated deployments / test environments.
+	dataDir := os.Getenv("LSM_DATA_DIR")
+	if dataDir == "" {
+		dataDir = "/var/lib/linux-service-manager"
+	}
+
 	// Extract the templates directory as a sub-filesystem
 	templates, err := fs.Sub(templatesFS, "templates")
 	if err != nil {
@@ -67,14 +76,14 @@ func main() {
 	}
 
 	auditMod := audit.New(audit.Config{
-		FilePath:      "/var/lib/linux-service-manager/audit.jsonl",
+		FilePath:      filepath.Join(dataDir, "audit.jsonl"),
 		MaxFileSizeMB: 100,
 		RetentionDays: 90,
 	})
 	defer auditMod.Shutdown()
 
 	// Initialize token store
-	tokenStore := token.NewStore("/var/lib/linux-service-manager/tokens.json")
+	tokenStore := token.NewStore(filepath.Join(dataDir, "tokens.json"))
 	if err := tokenStore.Load(); err != nil {
 		log.Fatalf("failed to load token store: %v", err)
 	}
@@ -112,8 +121,8 @@ func main() {
 
 	// Initialize notify module (webhook notification) — before hub.Run registration
 	notifyMod := notify.New(notify.Config{
-		ChannelsPath:  "/var/lib/linux-service-manager/notify.json",
-		HistoryPath:   "/var/lib/linux-service-manager/notify-history.jsonl",
+		ChannelsPath:  filepath.Join(dataDir, "notify.json"),
+		HistoryPath:   filepath.Join(dataDir, "notify-history.jsonl"),
 		RetentionDays: 30,
 		Hub:           hub,
 	})
@@ -131,7 +140,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	nodeMod, err := nodes.New(nodes.Config{
-		RegistryPath:    "/var/lib/linux-service-manager/nodes.json",
+		RegistryPath:    filepath.Join(dataDir, "nodes.json"),
 		Hub:             hub,
 		AgentMinVersion: "1.2.0",
 	})

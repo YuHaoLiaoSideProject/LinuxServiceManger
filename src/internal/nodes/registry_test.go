@@ -469,6 +469,74 @@ func TestRegistryFileMode0600(t *testing.T) {
 }
 
 // ============================================================
+//  缺口 #5：ClientCert/ClientKey（決策 5 方案 B — Manager 端 mTLS client cert）
+// ============================================================
+
+func TestRegistryCreate_ClientCertPersisted(t *testing.T) {
+	r := newTestRegistry(t)
+	created, err := r.Create(&Node{
+		Name:       "web-server-01",
+		Address:    "10.0.0.5:8443",
+		ClientCert: "/etc/lsm/manager/client.crt",
+		ClientKey:  "/etc/lsm/manager/client.key",
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if created.ClientCert != "/etc/lsm/manager/client.crt" || created.ClientKey != "/etc/lsm/manager/client.key" {
+		t.Errorf("client cert fields not set on create: %+v", created)
+	}
+
+	// 持久化於 nodes.json（reload 後仍在）
+	r2 := NewRegistry(r.filePath)
+	if err := r2.Load(); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	got := r2.Get(created.ID)
+	if got == nil || got.ClientCert != "/etc/lsm/manager/client.crt" || got.ClientKey != "/etc/lsm/manager/client.key" {
+		t.Errorf("client cert fields not persisted in nodes.json: %+v", got)
+	}
+}
+
+func TestRegistryUpdate_ClientCertEmptyKeepsValue(t *testing.T) {
+	r := newTestRegistry(t)
+	created, err := r.Create(&Node{
+		Name:       "web-server-01",
+		Address:    "10.0.0.5:8443",
+		ClientCert: "/etc/lsm/manager/client.crt",
+		ClientKey:  "/etc/lsm/manager/client.key",
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// 留空 → 不變更（與 token 同 pattern，決策 5 風險緩解）
+	updated, err := r.Update(created.ID, &Node{Address: "10.0.0.6:8443"})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if updated.ClientCert != "/etc/lsm/manager/client.crt" || updated.ClientKey != "/etc/lsm/manager/client.key" {
+		t.Errorf("client cert must be kept when patch empty: %+v", updated)
+	}
+
+	// 非空 → 覆寫並持久化
+	updated2, err := r.Update(created.ID, &Node{ClientCert: "/new/client.crt", ClientKey: "/new/client.key"})
+	if err != nil {
+		t.Fatalf("update 2: %v", err)
+	}
+	if updated2.ClientCert != "/new/client.crt" || updated2.ClientKey != "/new/client.key" {
+		t.Errorf("client cert not updated: %+v", updated2)
+	}
+	r3 := NewRegistry(r.filePath)
+	if err := r3.Load(); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if got := r3.Get(created.ID); got == nil || got.ClientCert != "/new/client.crt" {
+		t.Errorf("client cert update not persisted: %+v", got)
+	}
+}
+
+// ============================================================
 //  MaskToken 遮罩格式（API 回應用，決策 5）
 // ============================================================
 

@@ -54,6 +54,8 @@ type Node struct {
 	Address        string       `json:"address"`                   // host:port
 	TLSFingerprint string       `json:"tls_fingerprint,omitempty"` // SHA-256 指紋（選填，mTLS/自簽 pin）
 	Token          string       `json:"token"`                     // 共享 secret lsm_node_…；API 回應回 masked
+	ClientCert     string       `json:"client_cert,omitempty"`      // Manager 端 client cert PEM 路徑（選填，mTLS，決策 5 方案 B）
+	ClientKey      string       `json:"client_key,omitempty"`       // Manager 端 client key PEM 路徑（選填，mTLS）
 	Notes          string       `json:"notes,omitempty"`
 	Status         Status       `json:"status"`                   // 由 supervisor 更新
 	LastHeartbeat  string       `json:"last_heartbeat,omitempty"` // RFC3339 UTC
@@ -224,6 +226,8 @@ func (r *Registry) Create(n *Node) (*Node, error) {
 		Address:        n.Address,
 		TLSFingerprint: n.TLSFingerprint,
 		Token:          n.Token,
+		ClientCert:     n.ClientCert,
+		ClientKey:      n.ClientKey,
 		Notes:          n.Notes,
 		Status:         StatusOffline, // 初始離線；由啟動健康檢查/心跳/狀態機更新
 		ServiceStats:   n.ServiceStats,
@@ -272,6 +276,12 @@ func (r *Registry) Update(id string, patch *Node) (*Node, error) {
 	}
 	if patch.Token != "" { // 留空表示不變更（編輯表單不回傳 token）
 		n.Token = patch.Token
+	}
+	if patch.ClientCert != "" { // 留空表示不變更（與 token 同 pattern，決策 5 方案 B）
+		n.ClientCert = patch.ClientCert
+	}
+	if patch.ClientKey != "" {
+		n.ClientKey = patch.ClientKey
 	}
 	if patch.Notes != "" {
 		n.Notes = patch.Notes

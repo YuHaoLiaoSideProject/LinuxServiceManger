@@ -1,13 +1,22 @@
 package handler
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -113,6 +122,43 @@ func registerNode(t *testing.T, m *nodes.Manager, name, addr, fp string) *nodes.
 	}
 	m.Registry.SetStatus(n.ID, nodes.StatusOnline)
 	return n
+}
+
+// writeTestClientCert 產生 Manager 端 mTLS client cert 並寫為 PEM 檔（test-connection mTLS 用）。
+func writeTestClientCert(t *testing.T) (certPath, keyPath string, leaf *x509.Certificate) {
+	t.Helper()
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "lsm-manager-test"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &priv.PublicKey, priv)
+	if err != nil {
+		t.Fatalf("create certificate: %v", err)
+	}
+
+	dir := t.TempDir()
+	certPath = filepath.Join(dir, "client.crt")
+	keyPath = filepath.Join(dir, "client.key")
+	if err := os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0600); err != nil {
+		t.Fatalf("write client cert pem: %v", err)
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+	if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
+		t.Fatalf("write client key pem: %v", err)
+	}
+	leaf, err = x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatalf("parse certificate: %v", err)
+	}
+	return certPath, keyPath, leaf
 }
 
 // postJSON 發送帶 session cookie 的 JSON 請求。
@@ -616,6 +662,130 @@ func TestHandleNodeReconnect_NodeOffline(t *testing.T) {
 	}
 	if res.Total < 1 || res.Entries[0].Action != audit.ActionNodeReconnect || res.Entries[0].Result != audit.ResultFailure {
 		t.Errorf("expected ActionNodeReconnect failure entry, got %+v", res.Entries)
+	}
+}
+
+// ============================================================
+//  HDL-05b: POST credential 三選一門（decoding 5 方案 B）— client_cert 單獨存在即可建立
+// ============================================================
+
+func TestValidateNodePayload_CredentialGate(t *testing.T) {
+	cases := []struct {
+		name    string
+		payload NodePayload
+		wantMsg string
+	}{
+		{"all empty", NodePayload{Name: "web-server-01", Address: "10.0.0.5:8443"}, "token, tls_fingerprint or client_cert is required"},
+		{"token only", NodePayload{Name: "web-server-01", Address: "10.0.0.5:8443", Token: "lsm_node_x"}, ""},
+		{"fingerprint only", NodePayload{Name: "web-server-01", Address: "10.0.0.5:8443", TLSFingerprint: "aabb"}, ""},
+		{"client_cert only", NodePayload{Name: "web-server-01", Address: "10.0.0.5:8443", ClientCert: "/etc/lsm/manager/client.crt"}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := validateNodePayload(&tc.payload, true); got != tc.wantMsg {
+				t.Errorf("validateNodePayload: got %q want %q", got, tc.wantMsg)
+			}
+		})
+	}
+}
+
+func TestHandleCreateNode_ClientCertOnly(t *testing.T) {
+	withAdminAuth(t)
+	m := newNodesManager(t)
+	router := setupNodeRouter(newNodeHandler(t, m, nil))
+	cookie := adminCookie(t, router)
+
+	w := postJSON(t, router, cookie, http.MethodPost, "/api/v1/nodes",
+		`{"name":"web-server-01","address":"10.0.0.5:8443","client_cert":"/etc/lsm/manager/client.crt","client_key":"/etc/lsm/manager/client.key"}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Data map[string]any `json:"data"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &body)
+	if body.Data["client_cert"] != "/etc/lsm/manager/client.crt" || body.Data["client_key"] != "/etc/lsm/manager/client.key" {
+		t.Errorf("client cert not returned in response: %v", body.Data)
+	}
+
+	// registry 內持久化
+	n := m.Registry.Get(body.Data["id"].(string))
+	if n == nil || n.ClientCert != "/etc/lsm/manager/client.crt" || n.ClientKey != "/etc/lsm/manager/client.key" {
+		t.Errorf("client cert not persisted in registry: %+v", n)
+	}
+}
+
+// ============================================================
+//  HDL-09b: PUT client_cert 更新（留空 → 不變更，與 token 同 pattern）
+// ============================================================
+
+func TestHandleUpdateNode_ClientCert(t *testing.T) {
+	withAdminAuth(t)
+	m := newNodesManager(t)
+	n, err := m.Registry.Create(&nodes.Node{
+		Name:       "web-server-01",
+		Address:    "10.0.0.5:8443",
+		ClientCert: "/etc/lsm/manager/client.crt",
+		ClientKey:  "/etc/lsm/manager/client.key",
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	router := setupNodeRouter(newNodeHandler(t, m, nil))
+	cookie := adminCookie(t, router)
+
+	// PUT 未帶 client_cert → 保留原值（前端編輯不回傳）
+	w := postJSON(t, router, cookie, http.MethodPut, "/api/v1/nodes/"+n.ID,
+		`{"name":"web-server-01","address":"10.0.0.6:8443"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := m.Registry.Get(n.ID).ClientCert; got != "/etc/lsm/manager/client.crt" {
+		t.Errorf("client_cert must be kept when patch empty, got %q", got)
+	}
+
+	// PUT 帶新值 → 覆寫
+	w2 := postJSON(t, router, cookie, http.MethodPut, "/api/v1/nodes/"+n.ID,
+		`{"name":"web-server-01","address":"10.0.0.6:8443","client_cert":"/new/client.crt","client_key":"/new/client.key"}`)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w2.Code, w2.Body.String())
+	}
+	got := m.Registry.Get(n.ID)
+	if got.ClientCert != "/new/client.crt" || got.ClientKey != "/new/client.key" {
+		t.Errorf("client cert not updated: %+v", got)
+	}
+}
+
+// ============================================================
+//  HDL-11b: test-connection 帶 mTLS client cert（mTLS 節點可在註冊前測試連線）
+// ============================================================
+
+func TestHandleTestConnection_MTLS(t *testing.T) {
+	withAdminAuth(t)
+	certPath, keyPath, leaf := writeTestClientCert(t)
+	pool := x509.NewCertPool()
+	pool.AddCert(leaf)
+
+	agent := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/health" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Write([]byte(`{"version":"1.2.3","hostname":"web-server-01","os":"Ubuntu 22.04","uptime":3600}`))
+	}))
+	agent.TLS = &tls.Config{ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: pool}
+	agent.StartTLS()
+	defer agent.Close()
+
+	m := newNodesManager(t)
+	router := setupNodeRouter(newNodeHandler(t, m, nil))
+	cookie := adminCookie(t, router)
+
+	w := postJSON(t, router, cookie, http.MethodPost, "/api/v1/nodes/test-connection",
+		`{"address":"`+strings.TrimPrefix(agent.URL, "https://")+`","tls_fingerprint":"`+serverFingerprint(t, agent)+`","client_cert":"`+certPath+`","client_key":"`+keyPath+`"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

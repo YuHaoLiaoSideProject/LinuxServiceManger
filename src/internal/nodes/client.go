@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -96,11 +97,16 @@ func (c *AgentClient) transportFor(n *Node) *http.Transport {
 	cfg := tlsConfigFor(n)
 	if base.TLSClientConfig != nil {
 		// 保留 base 既有 TLS 設定（http2 NextProtos / 測試注入的 mTLS client cert），
-		// 僅疊加指紋 pin 欄位（InsecureSkipVerify + VerifyPeerCertificate）
+		// 僅疊加指紋 pin 欄位（InsecureSkipVerify + VerifyPeerCertificate）；
+		// node 有 client cert → 覆寫 merged.Certificates（node 層級優先，決策 5 方案 B）；
+		// node 無 → 保留 base（SYS-40 測試縫不破壞）。
 		merged := base.TLSClientConfig.Clone()
 		if cfg != nil {
 			merged.InsecureSkipVerify = cfg.InsecureSkipVerify
 			merged.VerifyPeerCertificate = cfg.VerifyPeerCertificate
+			if len(cfg.Certificates) > 0 {
+				merged.Certificates = cfg.Certificates
+			}
 		}
 		cloned.TLSClientConfig = merged
 	} else {
@@ -128,17 +134,39 @@ func (e *NodeTimeoutError) Error() string {
 	return fmt.Sprintf("node %s request timeout: %s", e.Node, e.Path)
 }
 
-// tlsConfigFor 依節點設定組 tls.Config：
+// tlsConfigFor 依節點設定組 tls.Config（決策 5 方案 B：完整 mTLS 為選填）：
+//   - ClientCert/ClientKey 非空 → tls.LoadX509KeyPair 載入 Manager 端 client cert
+//     （握手時送出；載入失敗 → log 並產生不含 cert 的 config，連線自然失敗為 NodeOfflineError）
 //   - TLSFingerprint 非空 → InsecureSkipVerify + VerifyPeerCertificate 比對 SHA-256 指紋
-//     （不信任系統 CA、直接 pin，決策 5；自簽憑證情境）
-//   - 無指紋 → nil（使用系統 CA；自簽憑證將驗證失敗 — pin 為必要路徑）
+//     （不信任系統 CA、直接 pin；自簽憑證情境）
+//   - 無指紋且無 client cert → nil（使用系統 CA）
 func tlsConfigFor(n *Node) *tls.Config {
-	if n == nil || n.TLSFingerprint == "" {
+	if n == nil || (n.TLSFingerprint == "" && n.ClientCert == "" && n.ClientKey == "") {
 		return nil
 	}
+
+	var clientCerts []tls.Certificate
+	if n.ClientCert != "" && n.ClientKey != "" {
+		cert, err := tls.LoadX509KeyPair(n.ClientCert, n.ClientKey)
+		if err != nil {
+			// 載入失敗不 crash、不注入：連線將缺 client cert → Agent RequireAndVerifyClientCert 拒絕 → NodeOfflineError
+			log.Printf("nodes: failed to load client cert for node %s (%s): %v", n.Name, n.ClientCert, err)
+		} else {
+			clientCerts = []tls.Certificate{cert}
+		}
+	}
+
+	if n.TLSFingerprint == "" {
+		if clientCerts == nil {
+			return nil
+		}
+		return &tls.Config{Certificates: clientCerts}
+	}
+
 	fp := strings.ToLower(n.TLSFingerprint)
 	return &tls.Config{
-		InsecureSkipVerify: true,
+		Certificates:          clientCerts,
+		InsecureSkipVerify:    true,
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 			if len(rawCerts) == 0 {
 				return errors.New("no peer certificate")

@@ -14,6 +14,8 @@ export interface Node {
   address: string
   tls_fingerprint?: string
   token?: string            // API 回傳 masked（lsm_node_****xxxx）；編輯時留空表示不變更
+  client_cert?: string      // Manager 端 client cert PEM 路徑（選填，mTLS，決策 5 方案 B）
+  client_key?: string       // Manager 端 client key PEM 路徑（選填，mTLS）
   notes?: string
   status: NodeStatus
   last_heartbeat?: string   // RFC3339 UTC
@@ -42,6 +44,8 @@ export interface NodePayload {
   address: string
   tls_fingerprint: string
   token: string
+  client_cert: string       // 留空 = 不設定 / 編輯時不變更（與後端 NodePayload 同構）
+  client_key: string
   notes: string
 }
 
@@ -49,6 +53,8 @@ export interface TestConnectionRequest {
   address: string
   tls_fingerprint?: string
   token?: string
+  client_cert?: string
+  client_key?: string
 }
 
 export interface TestConnectionResult {

@@ -27,18 +27,20 @@ var agentBinaryFS fs.FS
 func SetAgentBinaries(f fs.FS) { agentBinaryFS = f }
 
 // NodePayload 是節點建立/更新的 request body（決策 4/5；與前端 types/node.ts 同構）。
-// 驗證：name/address 必填、address 為 host:port；token 與 tls_fingerprint 至少填其一（皆空 → 400）；
-// PUT 時 token 留空表示不變更（決策 5 風險緩解）。
+// 驗證：name/address 必填、address 為 host:port；token、tls_fingerprint、client_cert 三選一
+// （全空 → 400，決策 5 方案 B）；PUT 時 token/client_cert/client_key 留空表示不變更。
 type NodePayload struct {
 	Name           string `json:"name"`
 	Address        string `json:"address"`
 	TLSFingerprint string `json:"tls_fingerprint"`
 	Token          string `json:"token"`
+	ClientCert     string `json:"client_cert"` // Manager 端 client cert PEM 路徑（選填，mTLS，決策 5 方案 B）
+	ClientKey      string `json:"client_key"`  // Manager 端 client key PEM 路徑（選填，mTLS）
 	Notes          string `json:"notes"`
 }
 
 // validateNodePayload 驗證 NodePayload。
-// requireCredential=true（POST 建立）：token 或 fingerprint 至少填其一（決策 5）；
+// requireCredential=true（POST 建立）：token / fingerprint / client_cert 至少填其一（決策 5 方案 B）；
 // requireCredential=false（PUT 更新）：既有節點已有憑證，不重複要求。
 // 回傳空字串表示通過；否則回傳錯誤訊息。
 func validateNodePayload(p *NodePayload, requireCredential bool) string {
@@ -51,8 +53,8 @@ func validateNodePayload(p *NodePayload, requireCredential bool) string {
 	if !validHostPort(p.Address) {
 		return "address must be in host:port format"
 	}
-	if requireCredential && p.Token == "" && p.TLSFingerprint == "" {
-		return "token or tls_fingerprint is required"
+	if requireCredential && p.Token == "" && p.TLSFingerprint == "" && p.ClientCert == "" {
+		return "token, tls_fingerprint or client_cert is required"
 	}
 	return ""
 }
@@ -159,6 +161,8 @@ func (h *Handler) HandleCreateNode(w http.ResponseWriter, r *http.Request) {
 		Address:        p.Address,
 		TLSFingerprint: p.TLSFingerprint,
 		Token:          p.Token,
+		ClientCert:     p.ClientCert,
+		ClientKey:      p.ClientKey,
 		Notes:          p.Notes,
 	})
 	if err != nil {
@@ -235,6 +239,8 @@ func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) {
 		Address:        p.Address,
 		TLSFingerprint: p.TLSFingerprint,
 		Token:          p.Token,
+		ClientCert:     p.ClientCert,
+		ClientKey:      p.ClientKey,
 		Notes:          p.Notes,
 	})
 	if err != nil {
@@ -332,7 +338,8 @@ func (h *Handler) HandleNodeReconnect(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleTestConnection — POST /api/v1/nodes/test-connection
-// body {address, tls_fingerprint, token}（決策 6：Agent GET /health，5s 逾時，帶入表單位址/憑證即時驗證）。
+// body {address, tls_fingerprint, token, client_cert, client_key}（決策 6：Agent GET /health，5s 逾時，帶入表單位址/憑證即時驗證；
+// client_cert/client_key 選填 — mTLS 節點可在註冊前測試連線，決策 5 方案 B）。
 // 成功 → 200 {version, hostname, os, uptime}；connection refused / TLS 驗證失敗 → 502（body 含具體原因）；
 // 逾時 → 504。+ audit ActionNodeTestConnection。
 func (h *Handler) HandleTestConnection(w http.ResponseWriter, r *http.Request) {
@@ -344,6 +351,8 @@ func (h *Handler) HandleTestConnection(w http.ResponseWriter, r *http.Request) {
 		Address        string `json:"address"`
 		TLSFingerprint string `json:"tls_fingerprint"`
 		Token          string `json:"token"`
+		ClientCert     string `json:"client_cert"` // Manager 端 client cert PEM 路徑（選填，mTLS）
+		ClientKey      string `json:"client_key"`  // Manager 端 client key PEM 路徑（選填，mTLS）
 	}
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		writeJSON(w, http.StatusBadRequest, messageJSON{Error: "invalid request body"})
@@ -359,6 +368,8 @@ func (h *Handler) HandleTestConnection(w http.ResponseWriter, r *http.Request) {
 		Address:        p.Address,
 		TLSFingerprint: p.TLSFingerprint,
 		Token:          p.Token,
+		ClientCert:     p.ClientCert,
+		ClientKey:      p.ClientKey,
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)

@@ -15,6 +15,8 @@ const form = reactive({
   address: props.node?.address ?? '',
   tls_fingerprint: props.node?.tls_fingerprint ?? '',
   token: '',
+  client_cert: props.node?.client_cert ?? '',
+  client_key: props.node?.client_key ?? '',
   notes: props.node?.notes ?? '',
 })
 const errors = ref<Record<string, string>>({})
@@ -36,7 +38,7 @@ async function handleTest(): Promise<void> {
   testing.value = true
   testResult.value = null
   try {
-    const r = await testConnection({ address: form.address, tls_fingerprint: form.tls_fingerprint, token: form.token })
+    const r = await testConnection({ address: form.address, tls_fingerprint: form.tls_fingerprint, token: form.token, client_cert: form.client_cert, client_key: form.client_key })
     testResult.value = { ok: true, message: `連線成功 — Agent v${r.version} @ ${r.hostname} (${r.os})` }
   } catch (e: any) {
     testResult.value = { ok: false, message: `無法連線：${e?.response?.data?.error || e.message}` }
@@ -86,7 +88,7 @@ onBeforeUnmount(() => {
 async function handleSave(): Promise<void> {
   if (!validate()) return
   saving.value = true
-  const payload: NodePayload = { name: form.name.trim(), address: form.address.trim(), tls_fingerprint: form.tls_fingerprint, token: form.token, notes: form.notes }
+  const payload: NodePayload = { name: form.name.trim(), address: form.address.trim(), tls_fingerprint: form.tls_fingerprint, token: form.token, client_cert: form.client_cert, client_key: form.client_key, notes: form.notes }
   try {
     if (props.node) {
       await updateNode(props.node.id, payload)   // 編輯：PUT，token 留空表示不變更（決策 5）
@@ -123,6 +125,10 @@ async function handleSave(): Promise<void> {
         <input v-model="form.tls_fingerprint" placeholder="SHA-256" />
         <label>API Token（選填）</label>
         <input v-model="form.token" type="password" :placeholder="props.node ? '留空表示不變更' : 'lsm_node_…'" />
+        <label>客戶端憑證路徑（mTLS，選填）</label>
+        <input v-model="form.client_cert" placeholder="/etc/lsm/manager/client.crt" data-testid="node-client-cert" />
+        <label>客戶端金鑰路徑（mTLS，選填）</label>
+        <input v-model="form.client_key" placeholder="/etc/lsm/manager/client.key" data-testid="node-client-key" />
         <label>備註（選填）</label>
         <input v-model="form.notes" />
 

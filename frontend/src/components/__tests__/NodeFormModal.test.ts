@@ -46,10 +46,12 @@ function mountForm(node: Node | null = null) {
   return mount(NodeFormModal, { props: { node } })
 }
 
-async function fillForm(wrapper: ReturnType<typeof mountForm>, fields: { name?: string; address?: string; token?: string }) {
+async function fillForm(wrapper: ReturnType<typeof mountForm>, fields: { name?: string; address?: string; token?: string; client_cert?: string; client_key?: string }) {
   if (fields.name !== undefined) await wrapper.find('[data-testid="node-name"]').setValue(fields.name)
   if (fields.address !== undefined) await wrapper.find('[data-testid="node-address"]').setValue(fields.address)
   if (fields.token !== undefined) await wrapper.find('input[type="password"]').setValue(fields.token)
+  if (fields.client_cert !== undefined) await wrapper.find('[data-testid="node-client-cert"]').setValue(fields.client_cert)
+  if (fields.client_key !== undefined) await wrapper.find('[data-testid="node-client-key"]').setValue(fields.client_key)
 }
 
 async function submitForm(wrapper: ReturnType<typeof mountForm>) {
@@ -71,12 +73,16 @@ describe('NodeFormModal（F-NF）', () => {
     document.body.innerHTML = ''
   })
 
-  it('F-NF-01: Modal 欄位完整（名稱* / 位址* / TLS 指紋 / Token / 備註 + 測試連線/註冊/取消）', () => {
+  it('F-NF-01: Modal 欄位完整（名稱* / 位址* / TLS 指紋 / Token / mTLS 憑證 / 備註 + 測試連線/註冊/取消）', () => {
     const wrapper = mountForm()
     expect(wrapper.find('[data-testid="node-name"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="node-address"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('TLS 憑證指紋（選填）')
     expect(wrapper.text()).toContain('API Token（選填）')
+    expect(wrapper.find('[data-testid="node-client-cert"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="node-client-key"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('客戶端憑證路徑（mTLS，選填）')
+    expect(wrapper.text()).toContain('客戶端金鑰路徑（mTLS，選填）')
     expect(wrapper.text()).toContain('備註（選填）')
     expect(wrapper.find('[data-testid="test-connection"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="node-save"]').exists()).toBe(true)
@@ -213,6 +219,75 @@ describe('NodeFormModal（F-NF）', () => {
     expect(mockUpdateNode).toHaveBeenCalledWith('n1', expect.objectContaining({ name: 'web-server-01', token: '' }))
     expect(mockToast).toHaveBeenCalledWith('節點設定已更新', 'success')
     expect(wrapper.emitted('saved')).toBeTruthy()
+  })
+
+  it('F-NF-03b: test-connection 帶 mTLS client cert 欄位（mTLS 節點可在註冊前測試連線，決策 5 方案 B）', async () => {
+    mockTestConnection.mockResolvedValue({ version: '1.2.3', hostname: 'web-server-01', os: 'Ubuntu 22.04', uptime: 100 })
+    const wrapper = mountForm()
+    await fillForm(wrapper, { name: 'web-server-01', address: '10.0.0.5:8443', client_cert: '/etc/lsm/manager/client.crt', client_key: '/etc/lsm/manager/client.key' })
+
+    await wrapper.find('[data-testid="test-connection"]').trigger('click')
+    await flushPromises()
+
+    expect(mockTestConnection).toHaveBeenCalledWith(expect.objectContaining({
+      address: '10.0.0.5:8443',
+      tls_fingerprint: '',
+      client_cert: '/etc/lsm/manager/client.crt',
+      client_key: '/etc/lsm/manager/client.key',
+    }))
+  })
+
+  it('F-NF-10b: 填寫 mTLS 欄位 → payload 含 client_cert/client_key（註冊，決策 5 方案 B）', async () => {
+    mockCreateNode.mockResolvedValue(makeNode({ id: 'n1', name: 'web-server-01', status: 'online' }))
+    const wrapper = mountForm()
+    await fillForm(wrapper, {
+      name: 'web-server-01',
+      address: '10.0.0.5:8443',
+      token: 'lsm_node_x',
+      client_cert: '/etc/lsm/manager/client.crt',
+      client_key: '/etc/lsm/manager/client.key',
+    })
+    await submitForm(wrapper)
+    await flushPromises()
+
+    expect(mockCreateNode).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'web-server-01',
+      address: '10.0.0.5:8443',
+      token: 'lsm_node_x',
+      client_cert: '/etc/lsm/manager/client.crt',
+      client_key: '/etc/lsm/manager/client.key',
+    }))
+    // 未填 mTLS 時 payload 仍含空字串欄位（與後端 NodePayload 同構）
+    mockCreateNode.mockClear()
+    mockCreateNode.mockResolvedValue(makeNode({ id: 'n2', name: 'db-server-01', status: 'offline' }))
+    const wrapper2 = mountForm()
+    await fillForm(wrapper2, { name: 'db-server-01', address: '10.0.0.9:8443', token: 'lsm_node_y' })
+    await submitForm(wrapper2)
+    await flushPromises()
+    expect(mockCreateNode).toHaveBeenCalledWith(expect.objectContaining({ client_cert: '', client_key: '' }))
+  })
+
+  it('F-NF-10c: 編輯模式預填 mTLS 欄位；儲存 → PUT 帶 client_cert/client_key', async () => {
+    const node = makeNode({
+      id: 'n1',
+      name: 'web-server-01',
+      address: '10.0.0.5:8443',
+      client_cert: '/etc/lsm/manager/client.crt',
+      client_key: '/etc/lsm/manager/client.key',
+    })
+    const wrapper = mountForm(node)
+
+    expect((wrapper.find('[data-testid="node-client-cert"]').element as HTMLInputElement).value).toBe('/etc/lsm/manager/client.crt')
+    expect((wrapper.find('[data-testid="node-client-key"]').element as HTMLInputElement).value).toBe('/etc/lsm/manager/client.key')
+
+    mockUpdateNode.mockResolvedValue(node)
+    await wrapper.findAll('button').find(b => b.text().includes('儲存'))!.trigger('click')
+    await flushPromises()
+    expect(mockUpdateNode).toHaveBeenCalledWith('n1', expect.objectContaining({
+      name: 'web-server-01',
+      client_cert: '/etc/lsm/manager/client.crt',
+      client_key: '/etc/lsm/manager/client.key',
+    }))
   })
 
   it('F-NF-11: 註冊按鈕 loading（saving → disabled，防重複送出）', async () => {

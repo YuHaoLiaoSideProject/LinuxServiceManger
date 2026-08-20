@@ -9,11 +9,14 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
+	"encoding/pem"
 	"errors"
 	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -77,6 +80,28 @@ func newTestClientCert(t *testing.T) (tls.Certificate, *x509.Certificate) {
 		t.Fatalf("parse certificate: %v", err)
 	}
 	return cert, leaf
+}
+
+// writeTestClientCertPEM 將 test client cert 寫為 PEM 檔案（Node.ClientCert/ClientKey 路徑用）。
+func writeTestClientCertPEM(t *testing.T, tc tls.Certificate) (certPath, keyPath string) {
+	t.Helper()
+	dir := t.TempDir()
+	certPath = filepath.Join(dir, "client.crt")
+	keyPath = filepath.Join(dir, "client.key")
+
+	der := tc.Certificate[0]
+	if err := os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0600); err != nil {
+		t.Fatalf("write client cert pem: %v", err)
+	}
+	priv, ok := tc.PrivateKey.(*rsa.PrivateKey)
+	if !ok {
+		t.Fatalf("unexpected private key type %T", tc.PrivateKey)
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+	if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
+		t.Fatalf("write client key pem: %v", err)
+	}
+	return certPath, keyPath
 }
 
 // closedAddr 回傳一個無 listener 的位址（connection refused）。
@@ -368,6 +393,115 @@ func TestAgentClient_NotFoundPassthrough(t *testing.T) {
 	}
 	if string(body) != `{"error":"service not found"}` {
 		t.Errorf("body not passed through verbatim: %q", string(body))
+	}
+}
+
+// ============================================================
+//  缺口 #5：Manager 端 mTLS client cert（決策 5 方案 B — 真雙向 mTLS）
+//  Node.ClientCert/ClientKey → tls.LoadX509KeyPair → 握手送出 client cert
+// ============================================================
+
+func TestAgentClient_MTLSNodeClientCert(t *testing.T) {
+	// Agent 端：RequireAndVerifyClientCert + ClientCAs（mirror cmd/agent/main.go）
+	clientCert, clientLeaf := newTestClientCert(t)
+	certPath, keyPath := writeTestClientCertPEM(t, clientCert)
+	pool := x509.NewCertPool()
+	pool.AddCert(clientLeaf)
+
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	srv.TLS = &tls.Config{ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: pool}
+	srv.StartTLS()
+	defer srv.Close()
+
+	node := testNode(strings.TrimPrefix(srv.URL, "https://"), serverFingerprint(t, srv), "lsm_node_x")
+	node.ClientCert = certPath
+	node.ClientKey = keyPath
+	ac := NewAgentClient()
+
+	code, body, err := ac.Do(context.Background(), node, http.MethodGet, "/api/v1/services", nil)
+	if err != nil {
+		t.Fatalf("mTLS with node-level client cert should succeed: %v", err)
+	}
+	if code != http.StatusOK || string(body) != `{"ok":true}` {
+		t.Errorf("unexpected response: code=%d body=%q", code, string(body))
+	}
+}
+
+func TestAgentClient_MTLSNodeWithoutCertFails(t *testing.T) {
+	// Agent 端信任某 cert，但 Node 未設定 client cert → 握手被拒
+	_, clientLeaf := newTestClientCert(t)
+	pool := x509.NewCertPool()
+	pool.AddCert(clientLeaf)
+
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	srv.TLS = &tls.Config{ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: pool}
+	srv.StartTLS()
+	defer srv.Close()
+
+	node := testNode(strings.TrimPrefix(srv.URL, "https://"), serverFingerprint(t, srv), "lsm_node_x")
+	ac := NewAgentClient()
+
+	_, _, err := ac.Do(context.Background(), node, http.MethodGet, "/api/v1/services", nil)
+	var offErr *NodeOfflineError
+	if !errors.As(err, &offErr) {
+		t.Fatalf("expected NodeOfflineError for missing client cert, got %v", err)
+	}
+}
+
+func TestAgentClient_MTLSNodeBadCertPath(t *testing.T) {
+	// 載入失敗 → 產生不含 cert 的 config → 連線自然失敗（NodeOfflineError），不 crash
+	_, clientLeaf := newTestClientCert(t)
+	pool := x509.NewCertPool()
+	pool.AddCert(clientLeaf)
+
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	srv.TLS = &tls.Config{ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: pool}
+	srv.StartTLS()
+	defer srv.Close()
+
+	node := testNode(strings.TrimPrefix(srv.URL, "https://"), serverFingerprint(t, srv), "lsm_node_x")
+	node.ClientCert = filepath.Join(t.TempDir(), "missing.crt")
+	node.ClientKey = filepath.Join(t.TempDir(), "missing.key")
+	ac := NewAgentClient()
+
+	_, _, err := ac.Do(context.Background(), node, http.MethodGet, "/api/v1/services", nil)
+	var offErr *NodeOfflineError
+	if !errors.As(err, &offErr) {
+		t.Fatalf("expected NodeOfflineError for bad cert path, got %v", err)
+	}
+}
+
+// tlsConfigFor 從 Node.ClientCert/ClientKey 載入 client cert（決策 5 方案 B）。
+func TestTLSConfigFor_ClientCert(t *testing.T) {
+	clientCert, _ := newTestClientCert(t)
+	certPath, keyPath := writeTestClientCertPEM(t, clientCert)
+	fp := strings.Repeat("ab", 32)
+
+	cfg := tlsConfigFor(&Node{Name: "web-server-01", TLSFingerprint: fp, ClientCert: certPath, ClientKey: keyPath})
+	if cfg == nil {
+		t.Fatal("expected non-nil tls.Config")
+	}
+	if len(cfg.Certificates) != 1 {
+		t.Errorf("expected 1 client certificate loaded, got %d", len(cfg.Certificates))
+	}
+	if !cfg.InsecureSkipVerify || cfg.VerifyPeerCertificate == nil {
+		t.Error("fingerprint pin must be preserved alongside client cert")
+	}
+
+	// 載入失敗 → 不含 cert 的 config（連線自然失敗為 NodeOfflineError）
+	badCfg := tlsConfigFor(&Node{Name: "web-server-01", TLSFingerprint: fp, ClientCert: "/nonexistent/cert.pem", ClientKey: "/nonexistent/key.pem"})
+	if badCfg == nil {
+		t.Fatal("expected non-nil config even when cert load fails")
+	}
+	if len(badCfg.Certificates) != 0 {
+		t.Errorf("failed cert load must not inject certificates, got %d", len(badCfg.Certificates))
 	}
 }
 

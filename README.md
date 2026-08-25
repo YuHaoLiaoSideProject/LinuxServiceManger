@@ -26,6 +26,11 @@
 | 🛎️ **Toast 通知** | 操作結果即時彈出通知（成功 / 失敗） |
 | 📱 **RWD 響應式** | 桌面表格、平板精簡、手機 sticky header + segmented tabs + bottom sheet 佈局 |
 | 🚀 **單檔部署** | 一個約 15MB 的 binary，內嵌 Vue 3 SPA，`scp` 上傳直接執行，無 runtime 依賴 |
+| 🖧 **多機管理** | Manager + Agent 架構，透過 WebSocket 長連線管理多台 Linux 機器，支援節點 CRUD、心跳監控、狀態即時推送 |
+| 📡 **Agent 模式** | 輕量 Agent 部署於被控端，outbound 撥號連線 Manager，指數退避重連，支援 TLS 指紋 pinning |
+| 🟢 **節點狀態機** | online → offline → long_offline 自動偵測，30s/300s 閾值，啟動寬限期，WS 即時推送狀態變更 |
+| 🖥️ **節點管理頁** | 節點列表 + CRUD Modal + 測試連線 + 下載 Agent binary，支援搜尋篩選 |
+| 🔄 **Aggregate Dashboard** | 節點總覽 + 單節點切換，`?node={id}` query 分流，離線 Banner + 操作禁用 |
 
 ## 🛠 技術棧
 
@@ -48,34 +53,54 @@
 ### 架構圖
 
 ```
-┌──────────────────────────────────────────┐
-│                Browser                    │
-│         (Vue 3 SPA + 自訂 CSS)            │
-└──────────────┬───────────────────────────┘
-               │ HTTP (Cookie Session)
-               │ /api/v1/*  JSON API
-               │ /*         SPA static files
-┌──────────────▼───────────────────────────┐
-│           Go Binary (單一執行檔)           │
-│                                           │
-│  ┌─────────┐  ┌──────────┐  ┌─────────┐ │
-│  │  chi    │  │  auth    │  │ systemd │ │
-│  │ router  │──│ middleware│──│ handler │ │
-│  └────┬────┘  └──────────┘  └────┬────┘ │
-│       │                          │       │                          │       │
-│  ┌────▼────┐  ┌──────────┐  ┌───▼──────┐ │
-│  │ embed   │  │ websocket│  │  godbus/ │ │
-│  │ static/ │  │ hub      │  │  dbus5   │ │
-│  │ (Vue    │  │ + client │  └────┬─────┘ │
-│  │  SPA)   │  └────┬─────┘       │       │
-│  └─────────┘       │             │       │
-│                    │  WS 雙向    │ D-Bus │
-└────────────────────┼─────────────┼───────┘
-                     │             │
-              ┌──────▼──┐   ┌─────▼────────┐
-              │ Browser │   │   systemd     │
-              │ (即時推) │   │ (系統 init)   │
-              └─────────┘   └──────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                      Browser                            │
+│               (Vue 3 SPA + 自訂 CSS)                    │
+└──────────────────────┬──────────────────────────────────┘
+                       │ HTTP (Cookie Session)
+                       │ /api/v1/*  JSON API
+                       │ /*         SPA static files
+┌──────────────────────▼──────────────────────────────────┐
+│              Manager (Go Binary)                         │
+│                                                          │
+│  ┌─────────┐  ┌──────────┐  ┌──────────┐  ┌─────────┐ │
+│  │  chi    │  │  auth    │  │  nodes   │  │ systemd │ │
+│  │ router  │──│ middleware│──│ handler  │──│ handler │ │
+│  └────┬────┘  └──────────┘  └────┬─────┘  └─────────┘ │
+│       │                          │                      │
+│  ┌────▼────┐  ┌──────────┐  ┌───▼──────┐  ┌─────────┐ │
+│  │ embed   │  │ websocket│  │ nodemoni-│  │noderegis-│ │
+│  │ static/ │  │ hub      │  │ tor      │  │ try      │ │
+│  │ (Vue    │  │ (browser)│  │ (心跳)   │  │(nodes.  │ │
+│  │  SPA)   │  └────┬─────┘  └──────────┘  │ json)   │ │
+│  └─────────┘       │                       └─────────┘ │
+│                    │                                    │
+│  ┌─────────────────▼──────────────────────────────────┐ │
+│  │              nodeproxy Hub                          │ │
+│  │  (Agent WS 連線管理 + RPC 轉發 + singleflight)     │ │
+│  └─────────────────────┬──────────────────────────────┘ │
+└────────────────────────┼────────────────────────────────┘
+                         │ WebSocket (wss://)
+                         │ /api/v1/agent/ws?token=
+           ┌─────────────┼─────────────┐
+           │             │             │
+    ┌──────▼──────┐ ┌───▼─────┐ ┌─────▼──────┐
+    │   Agent     │ │  Agent  │ │   Agent    │
+    │  (web-01)   │ │ (db-01) │ │  (app-01)  │
+    │ ┌─────────┐ │ │         │ │            │
+    │ │agentcli-│ │ │         │ │            │
+    │ │ent (WS) │ │ │         │ │            │
+    │ ├─────────┤ │ │         │ │            │
+    │ │agentapi │ │ │         │ │            │
+    │ │(本地    │ │ │         │ │            │
+    │ │ HTTP)   │ │ │         │ │            │
+    │ └────┬────┘ │ │         │ │            │
+    └──────┼──────┘ └────┬────┘ └─────┬──────┘
+           │             │             │
+    ┌──────▼──────┐ ┌───▼─────┐ ┌─────▼──────┐
+    │  systemd    │ │ systemd │ │  systemd   │
+    │ (系統 init) │ │         │ │            │
+    └─────────────┘ └─────────┘ └────────────┘
 ```
 
 ## 🚀 快速開始
@@ -143,6 +168,9 @@ make linux-build
 # 交叉編譯 Linux amd64（靜態，最可攜）
 make linux-static
 
+# 編譯 Agent binary（amd64 + arm64）
+make build-agent
+
 # 執行測試
 make test
 
@@ -177,6 +205,12 @@ go build -o ../linux-service-manager main.go
 | `PORT` | `8080` | HTTP 監聽埠號 |
 | `SECURE_COOKIE` | `true` | Session cookie 是否啟用 `Secure` flag。純 HTTP 部署（無 HTTPS）**必須設為 `false`**，否則瀏覽器會拒絕 cookie 導致無法登入 |
 | `UNLOCKED_SERVICES` | (空) | 解鎖指定服務的 glob 模式，逗號分隔（見下方說明） |
+| `NODES_FILE_PATH` | `/var/lib/linux-service-manager/nodes.json` | 節點設定持久化路徑 |
+| `AGENT_BINARY_DIR` | `/var/lib/linux-service-manager/agents` | Agent binary 存放目錄 |
+| `MANAGER_OFFLINE_THRESHOLD` | `30s` | 節點離線判定閾值（3× 心跳間隔） |
+| `MANAGER_LONG_OFFLINE_THRESHOLD` | `300s` | 長期離線判定閾值 |
+| `MANAGER_RPC_TIMEOUT_ACTION` | `15s` | 服務操作 RPC 逾時 |
+| `MANAGER_RPC_TIMEOUT_QUERY` | `10s` | 查詢類 RPC 逾時 |
 
 > ⚠️ **重要**：`ADMIN_PASS` 和 `SESSION_KEY` 兩個環境變數必須明確設定，使用預設值會導致程式拒絕啟動。
 > 
@@ -200,17 +234,42 @@ export UNLOCKED_SERVICES="ssh,nginx,docker,my-*"
 ```
 linux-service-manager/
 ├── src/
-│   ├── main.go                    # 進入點 (Go embed static/)
+│   ├── main.go                    # Manager 進入點 (Go embed static/)
 │   ├── go.mod / go.sum            # Go module 依賴
+│   ├── cmd/
+│   │   └── agent/
+│   │       └── main.go            # Agent 進入點（WS client + 本地 HTTP API）
 │   ├── internal/
+│   │   ├── agentproto/
+│   │   │   ├── proto.go           # Manager↔Agent WS wire protocol 類型
+│   │   │   └── proto_test.go      # Wire protocol 測試
+│   │   ├── agentclient/
+│   │   │   ├── client.go          # Agent 側 WS 客戶端（撥號/重連/heartbeat/RPC dispatch）
+│   │   │   └── client_test.go     # Agent client 測試
+│   │   ├── agentapi/
+│   │   │   ├── api.go             # Agent 本機 JSON API（/health, /api/v1/services）
+│   │   │   └── api_test.go        # Agent API 測試
+│   │   ├── noderegistry/
+│   │   │   ├── registry.go        # 節點 CRUD + nodes.json atomic write
+│   │   │   └── registry_test.go   # Registry 測試
+│   │   ├── nodemonitor/
+│   │   │   ├── monitor.go         # 心跳狀態機（online→offline→long_offline）
+│   │   │   └── monitor_test.go    # 心跳監控測試（fake clock）
+│   │   ├── nodeproxy/
+│   │   │   ├── hub.go             # Agent WS 連線 Hub + RPC 轉發
+│   │   │   ├── rpc.go             # WS RPC pending map + singleflight
+│   │   │   ├── tls.go             # TLS 指紋 pinning
+│   │   │   ├── hub_test.go        # Hub + RPC 測試
+│   │   │   └── tls_test.go        # TLS 測試
 │   │   ├── audit/
-│   │   │   ├── audit.go           # 審計日誌記錄與查詢
+│   │   │   ├── audit.go           # 審計日誌記錄與查詢（含 node_id/node_name）
 │   │   │   └── audit_test.go      # 審計日誌測試
 │   │   ├── auth/
 │   │   │   ├── auth.go            # Session 管理、登入驗證
 │   │   │   └── auth_test.go       # Session 測試
 │   │   ├── handler/
 │   │   │   ├── handler.go         # HTML/htmx 路由（legacy）+ WebSocket handler
+│   │   │   ├── nodes_handler.go   # /api/v1/nodes/* 全部端點（13 handlers）
 │   │   │   ├── handler_test.go    # JSON API 測試
 │   │   │   ├── handler_audit_test.go  # 審計 API 測試
 │   │   │   ├── handler_batch_test.go  # 批次操作 API 測試
@@ -227,7 +286,7 @@ linux-service-manager/
 │   │   │   ├── systemd.go         # D-Bus / systemctl 操作 systemd
 │   │   │   └── systemd_test.go    # systemd 測試
 │   │   └── websocket/
-│   │       ├── hub.go             # WebSocket Hub（client 管理與廣播）
+│   │       ├── hub.go             # WebSocket Hub（client 管理與廣播 + node 事件）
 │   │       ├── hub_test.go        # Hub 測試
 │   │       ├── client.go          # WebSocket client 連線
 │   │       └── origin.go          # WebSocket origin 檢查
@@ -241,8 +300,9 @@ linux-service-manager/
 │   │   ├── App.vue                # 根元件
 │   │   ├── views/
 │   │   │   ├── LoginView.vue      # 登入頁面
-│   │   │   ├── DashboardView.vue  # 儀表板（服務管理）
-│   │   │   └── AuditLogView.vue   # 審計日誌查詢頁面
+│   │   │   ├── DashboardView.vue  # 儀表板（服務管理 + 節點切換）
+│   │   │   ├── AuditLogView.vue   # 審計日誌查詢頁面
+│   │   │   └── NodeManagementView.vue  # 節點管理頁面（列表 + CRUD）
 │   │   ├── components/
 │   │   │   ├── AppHeader.vue      # 頁首：導覽、重新整理、登出、主題/語言切換
 │   │   │   ├── AuditTable.vue     # 審計日誌表格（含時間範圍、搜尋、匯出）
@@ -253,28 +313,35 @@ linux-service-manager/
 │   │   │   ├── EmptyState.vue     # 空狀態提示
 │   │   │   ├── LogDrawer.vue      # 日誌檢視器（WebSocket 即時串流）
 │   │   │   ├── LoginForm.vue      # 登入表單
+│   │   │   ├── NodeCard.vue       # 節點卡片（狀態燈/摘要/相對時間）
+│   │   │   ├── NodeFormModal.vue  # 新增/編輯節點 Modal（含測試連線）
+│   │   │   ├── NodeSummaryBar.vue # 頂部節點匯總統計列
+│   │   │   ├── NodeSwitcher.vue   # Header 節點下拉選單
 │   │   │   ├── ServiceRow.vue     # 單一服務列（含操作按鈕、多選 checkbox）
 │   │   │   ├── ServiceTable.vue   # 可排序、可篩選的服務表格
 │   │   │   ├── StatsBar.vue       # 統計卡：總數 / 執行中 / 失敗（可點擊篩選）
 │   │   │   ├── TabsBar.vue        # 分頁：我的服務 / 系統服務
 │   │   │   ├── ToastContainer.vue # Toast 通知容器
 │   │   │   └── Toolbar.vue        # 搜尋欄 + 批次模式切換
+│   │   ├── stores/
+│   │   │   ├── auth.ts            # Pinia 認證 store
+│   │   │   ├── service.ts         # Pinia 服務狀態 store（WebSocket 即時同步）
+│   │   │   └── node.ts            # Pinia 節點 store（列表/摘要/WS 事件整合）
+│   │   ├── api/
+│   │   │   ├── client.ts          # Axios API 客戶端
+│   │   │   └── nodeApi.ts         # 節點 CRUD + 服務代理 API
 │   │   ├── composables/
 │   │   │   ├── useAuditLog.ts     # 審計日誌查詢邏輯
 │   │   │   ├── useI18n.ts         # 繁體中文 / English 翻譯
 │   │   │   ├── useServiceFilter.ts # 服務搜尋過濾邏輯
 │   │   │   ├── useTheme.ts        # 亮色 / 暗色主題
 │   │   │   ├── useToast.ts        # Toast 通知狀態
-│   │   │   └── useWebSocket.ts    # WebSocket 連線管理
-│   │   ├── stores/
-│   │   │   ├── auth.ts            # Pinia 認證 store
-│   │   │   └── service.ts         # Pinia 服務狀態 store（WebSocket 即時同步）
-│   │   ├── api/
-│   │   │   └── client.ts          # Axios API 客戶端
+│   │   │   └── useWebSocket.ts    # WebSocket 連線管理（含 node.* 事件）
 │   │   ├── router/
-│   │   │   └── index.ts           # Vue Router 設定
+│   │   │   └── index.ts           # Vue Router 設定（含 /nodes 路由）
 │   │   ├── types/
-│   │   │   └── service.ts         # TypeScript 型別定義
+│   │   │   ├── service.ts         # TypeScript 型別定義
+│   │   │   └── node.ts            # ManagedNode / NodeSummary 型別
 │   │   └── __tests__/             # 元件與 composable 單元測試
 │   └── ...                        # Vite 設定、package.json 等
 ├── scripts/
@@ -313,6 +380,20 @@ linux-service-manager/
 | `GET` | `/api/v1/ws` | WebSocket 服務狀態即時推送 | ✅ |
 | `GET` | `/api/v1/audit` | 查詢審計日誌（支援分頁、搜尋、時間範圍） | ✅ |
 | `GET` | `/api/v1/audit/export` | 匯出審計日誌（CSV） | ✅ |
+| `POST` | `/api/v1/nodes` | 新增節點（name, address 必填） | ✅ |
+| `GET` | `/api/v1/nodes` | 取得所有節點列表 | ✅ |
+| `GET` | `/api/v1/nodes/summary` | 取得節點匯總統計 | ✅ |
+| `GET` | `/api/v1/nodes/agent-binary` | 下載 Agent binary（?arch=amd64\|arm64） | ✅ |
+| `GET` | `/api/v1/nodes/{id}` | 取得單一節點詳情 | ✅ |
+| `PUT` | `/api/v1/nodes/{id}` | 更新節點設定 | ✅ |
+| `DELETE` | `/api/v1/nodes/{id}` | 移除節點 | ✅ |
+| `POST` | `/api/v1/nodes/{id}/reconnect` | 觸發節點重連 | ✅ |
+| `POST` | `/api/v1/nodes/test-connection` | 測試 Agent 連線 | ✅ |
+| `GET` | `/api/v1/nodes/{id}/services` | 代理查詢節點服務列表 | ✅ |
+| `POST` | `/api/v1/nodes/{id}/services/{name}/{action}` | 代理執行服務操作 | ✅ |
+| `GET` | `/api/v1/nodes/{id}/services/{name}/logs` | 代理查詢服務日誌 | ✅ |
+| `GET` | `/api/v1/nodes/{id}/info` | 代理查詢節點系統資訊 | ✅ |
+| `GET` | `/api/v1/agent/ws` | Agent WebSocket 升級端點（token 驗證） | Agent |
 
 ### 📖 互動式 API 文件
 
@@ -427,6 +508,9 @@ server {
 | **HTTPS** | 生產環境請搭配 reverse proxy 啟用 HTTPS |
 | **Session** | Cookie 設為 HttpOnly，30 分鐘閒置自動逾時 |
 | **權限** | 避免以 root 直接執行，可考慮使用 `sudo` 或 polkit 設定 |
+| **Agent Token** | Agent 設定檔中的 auth_token 用於反向驗證 Manager 身分，節點設定以 0600 權限儲存 |
+| **TLS 指紋** | 支援 SHA-256 憑證指紋 pinning，防止中間人攻擊；空指紋 = 僅加密不驗證 |
+| **節點上限** | 單一 Manager 最多管理 50 台 Agent 節點 |
 
 ## 📖 相關文件
 
@@ -444,6 +528,7 @@ server {
 | 008 | WebSocket 狀態推送 | — | [📄](docs/bdds/008-websocket-status-push.feature) | [📄](docs/development/008-websocket-status-push.md) | [📄](docs/test-plans/008-websocket-status-push測試計畫.md) | [📄](docs/interaction-flows/008-websocket-status-push.md) | [📄](docs/tech-decisions/008-websocket-status-push.md) |
 | 009 | 審計日誌 | — | [📄](docs/bdds/009-audit-log.feature) | [📄](docs/development/009-audit-log.md) | [📄](docs/test-plans/009-audit-log測試計畫.md) | [📄](docs/interaction-flows/009-audit-log.md) | [📄](docs/tech-decisions/009-audit-log.md) |
 | 010 | 批次操作 | — | [📄](docs/bdds/010-batch-operations.feature) | [📄](docs/development/010-batch-operations.md) | [📄](docs/test-plans/010-batch-operations測試計畫.md) | [📄](docs/interaction-flows/010-batch-operations.md) | [📄](docs/tech-decisions/010-batch-operations.md) |
+| 014 | 多機管理 Agent 模式 | — | [📄](docs/bdds/014-multi-node-agent-management.feature) | [📄](docs/development/014-multi-node-agent-management.md) | [📄](docs/test-plans/014-multi-node-agent-management測試計畫.md) | [📄](docs/interaction-flows/014-multi-node-agent-management.md) | [📄](docs/tech-decisions/014-multi-node-agent-management.md) |
 
 ### 綜合文件
 

@@ -2,27 +2,17 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import LoginView from '../views/LoginView.vue'
 import DashboardView from '../views/DashboardView.vue'
-import AggregateDashboardView from '../views/AggregateDashboardView.vue'
 
 const AuditLogView = () => import('../views/AuditLogView.vue')
-const TokenManageView = () => import('../views/TokenManageView.vue')
-const ConfigEditorView = () => import('../views/ConfigEditorView.vue')
-const NotificationsView = () => import('../views/NotificationsView.vue')
-const ApiDocsView = () => import('../views/ApiDocsView.vue')
 const NodeManagementView = () => import('../views/NodeManagementView.vue')
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', name: 'login', component: LoginView, meta: { guest: true } },
-    { path: '/', name: 'aggregate', component: AggregateDashboardView, meta: { auth: true } },  // 決策 8：登入預設 / 為 Aggregate
-    { path: '/dashboard', name: 'dashboard', component: DashboardView, meta: { auth: true } },  // ?node= node-aware（決策 8）
+    { path: '/', name: 'dashboard', component: DashboardView, meta: { auth: true } },
     { path: '/audit', name: 'audit', component: AuditLogView, meta: { auth: true } },
-    { path: '/tokens', name: 'tokens', component: TokenManageView, meta: { auth: true } },
-    { path: '/services/:name/config', name: 'config-editor', component: ConfigEditorView, meta: { auth: true } },
-    { path: '/notifications', name: 'notifications', component: NotificationsView, meta: { auth: true } },
-    { path: '/nodes', name: 'nodes', component: NodeManagementView, meta: { auth: true } },
-    { path: '/docs', name: 'docs', component: ApiDocsView, meta: { auth: true } },
+    { path: '/nodes', name: 'NodeManagement', component: NodeManagementView, meta: { auth: true } },
   ],
 })
 

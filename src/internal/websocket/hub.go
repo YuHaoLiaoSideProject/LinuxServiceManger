@@ -12,17 +12,17 @@ import (
 // Message represents a WebSocket push message
 type Message struct {
 	Type          string            `json:"type"`
-	ID            string            `json:"id,omitempty"`
 	Name          string            `json:"name,omitempty"`
 	Active        string            `json:"active,omitempty"`
 	Sub           string            `json:"sub,omitempty"`
 	UnitFileState string            `json:"unitFileState,omitempty"`
-	Reason        string            `json:"reason,omitempty"`
 	Timestamp     string            `json:"timestamp,omitempty"`
 	Services      []ServiceSnapshot `json:"services,omitempty"`
-	// 014：節點狀態事件承載（純資料欄位，hub 邏輯零改動）
-	LastHeartbeat string `json:"last_heartbeat,omitempty"`
-	AgentVersion  string `json:"agent_version,omitempty"`
+	// Node fields
+	NodeID        string            `json:"id,omitempty"`
+	NodeName      string            `json:"node_name,omitempty"`
+	Status        string            `json:"status,omitempty"`
+	Message       string            `json:"message,omitempty"`
 }
 
 // ServiceSnapshot is a lightweight service state snapshot.
@@ -53,10 +53,7 @@ type Hub struct {
 	Register   chan *Client
 	Unregister chan *Client
 	OnSnapshot func() []ServiceSnapshot
-	// OnStatusChange 於 BroadcastStatusChange 廣播前呼叫（nil 檢查）。
-	// 由 main.go 註冊為 notifier.HandleStatusChange；回呼須快速返回。
-	OnStatusChange func(name, active, sub string)
-	SessionTTL     time.Duration // 0 means use DefaultSessionTTL
+	SessionTTL time.Duration // 0 means use DefaultSessionTTL
 }
 
 const channelBufferSize = 256
@@ -166,9 +163,6 @@ func (h *Hub) BroadcastMessage(msg Message) {
 
 // BroadcastStatusChange sends a status_change message (active/sub only).
 func (h *Hub) BroadcastStatusChange(name, active, sub string) {
-	if h.OnStatusChange != nil {
-		h.OnStatusChange(name, active, sub)
-	}
 	h.BroadcastMessage(Message{
 		Type:   "status_change",
 		Name:   name,
@@ -184,6 +178,28 @@ func (h *Hub) BroadcastOnBootChange(name, unitFileState string) {
 		Name:          name,
 		UnitFileState: unitFileState,
 	})
+}
+
+// BroadcastNodeStatusChanged pushes node status change to all connected browsers
+func (h *Hub) BroadcastNodeStatusChanged(id, name, status, message string) {
+	h.BroadcastMessage(Message{
+		Type:     "node_status_changed",
+		NodeID:   id,
+		NodeName: name,
+		Status:   status,
+		Message:  message,
+	})
+}
+
+// BroadcastNodeRegistryChanged pushes node add/remove to all connected browsers
+func (h *Hub) BroadcastNodeRegistryChanged(action string, nodeData interface{}) {
+	raw := map[string]interface{}{
+		"type":   "node_registry_changed",
+		"action": action,
+		"node":   nodeData,
+	}
+	data, _ := json.Marshal(raw)
+	h.Broadcast <- data
 }
 
 // Connected returns the number of connected clients.

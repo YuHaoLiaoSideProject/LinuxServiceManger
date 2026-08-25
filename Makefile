@@ -36,6 +36,12 @@ linux-build: frontend
 linux-static: frontend
 	cd $(SRC_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o ../$(APP_NAME)-linux-amd64 main.go
 
+# ── Agent ──
+
+build-agent:
+	cd $(SRC_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o ../bin/agent-linux-amd64 ./cmd/agent
+	cd $(SRC_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o ../bin/agent-linux-arm64 ./cmd/agent
+
 # ── Development ──
 
 # Start Go backend (for dev with npm run dev proxy)
@@ -48,7 +54,7 @@ dev-frontend:
 
 clean:
 	rm -f $(APP_NAME) $(APP_NAME)-linux-amd64
-	rm -rf $(SRC_DIR)/static $(FE_DIR)/dist
+	rm -rf $(SRC_DIR)/static $(FE_DIR)/dist bin/
 
 test:
 	cd $(SRC_DIR) && go test ./...

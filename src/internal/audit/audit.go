@@ -23,52 +23,23 @@ import (
 type Action string
 
 const (
-	ActionLogin        Action = "login"
-	ActionLogout       Action = "logout"
-	ActionStart        Action = "start"
-	ActionStop         Action = "stop"
-	ActionRestart      Action = "restart"
-	ActionEnable       Action = "enable"
-	ActionDisable      Action = "disable"
-	ActionTokenCreate  Action = "token_create"
-	ActionTokenRevoke  Action = "token_revoke"
-	ActionConfigView   Action = "config_view" // GET config 成功時（含鎖定服務唯讀檢視）
-	ActionConfigSave   Action = "config_save" // PUT config 成功（含 reload 失敗已寫入之半成功）
-	ActionNotifyCreate Action = "notify_create"
-	ActionNotifyUpdate Action = "notify_update"
-	ActionNotifyDelete Action = "notify_delete"
-	ActionNotifyToggle Action = "notify_toggle"
-	ActionNotifyTest   Action = "notify_test"
-	// 014：節點管理操作（多機管理 Agent 模式）
-	ActionNodeCreate         Action = "node_create"
-	ActionNodeUpdate         Action = "node_update"
-	ActionNodeDelete         Action = "node_delete"
-	ActionNodeTestConnection Action = "node_test_connection"
-	ActionNodeReconnect      Action = "node_reconnect"
+	ActionLogin    Action = "login"
+	ActionLogout   Action = "logout"
+	ActionStart    Action = "start"
+	ActionStop     Action = "stop"
+	ActionRestart  Action = "restart"
+	ActionEnable   Action = "enable"
+	ActionDisable  Action = "disable"
 )
 
 var validActions = map[Action]bool{
-	ActionLogin:              true,
-	ActionLogout:             true,
-	ActionStart:              true,
-	ActionStop:               true,
-	ActionRestart:            true,
-	ActionEnable:             true,
-	ActionDisable:            true,
-	ActionTokenCreate:        true,
-	ActionTokenRevoke:        true,
-	ActionConfigView:         true,
-	ActionConfigSave:         true,
-	ActionNotifyCreate:       true,
-	ActionNotifyUpdate:       true,
-	ActionNotifyDelete:       true,
-	ActionNotifyToggle:       true,
-	ActionNotifyTest:         true,
-	ActionNodeCreate:         true,
-	ActionNodeUpdate:         true,
-	ActionNodeDelete:         true,
-	ActionNodeTestConnection: true,
-	ActionNodeReconnect:      true,
+	ActionLogin:   true,
+	ActionLogout:  true,
+	ActionStart:   true,
+	ActionStop:    true,
+	ActionRestart: true,
+	ActionEnable:  true,
+	ActionDisable: true,
 }
 
 // actionDisplayLabels maps each audit action to its localized display label
@@ -77,27 +48,13 @@ var validActions = map[Action]bool{
 // as the raw action value — otherwise searching for the text users actually
 // see (e.g. "登入") returns no records.
 var actionDisplayLabels = map[Action]string{
-	ActionLogin:              "登入",
-	ActionLogout:             "登出",
-	ActionStart:              "啟動",
-	ActionStop:               "停止",
-	ActionRestart:            "重啟",
-	ActionEnable:             "啟用",
-	ActionDisable:            "停用",
-	ActionTokenCreate:        "建立 Token",
-	ActionTokenRevoke:        "撤銷 Token",
-	ActionConfigView:         "檢視設定檔",
-	ActionConfigSave:         "儲存設定檔",
-	ActionNotifyCreate:       "建立通知 Channel",
-	ActionNotifyUpdate:       "更新通知 Channel",
-	ActionNotifyDelete:       "刪除通知 Channel",
-	ActionNotifyToggle:       "切換通知 Channel",
-	ActionNotifyTest:         "測試通知 Channel",
-	ActionNodeCreate:         "新增節點",
-	ActionNodeUpdate:         "更新節點",
-	ActionNodeDelete:         "移除節點",
-	ActionNodeTestConnection: "測試節點連線",
-	ActionNodeReconnect:      "重新連線節點",
+	ActionLogin:   "登入",
+	ActionLogout:  "登出",
+	ActionStart:   "啟動",
+	ActionStop:    "停止",
+	ActionRestart: "重啟",
+	ActionEnable:  "啟用",
+	ActionDisable: "停用",
 }
 
 // Result represents the outcome of an audited operation.
@@ -121,9 +78,8 @@ type Entry struct {
 	Target    string `json:"target"`
 	Result    Result `json:"result"`
 	Detail    string `json:"detail"`
-	// 014 新增：跨節點操作記錄節點來源；單機紀錄無此欄位 → 讀取/匯出向後相容
-	NodeID   string `json:"node_id,omitempty"`
-	NodeName string `json:"node_name,omitempty"`
+	NodeID    string `json:"node_id,omitempty"`   // empty for local operations
+	NodeName  string `json:"node_name,omitempty"` // e.g. "web-server-01"
 }
 
 // ============================================================
@@ -254,7 +210,7 @@ func (m *Module) writerLoop() {
 // appendEntry serializes a single Entry as one JSON line and appends it.
 func (m *Module) appendEntry(entry Entry) {
 	if entry.Timestamp == "" {
-		entry.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
+		entry.Timestamp = time.Now().UTC().Format(time.RFC3339)
 	}
 
 	f, err := os.OpenFile(m.cfg.FilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -564,8 +520,7 @@ func NewEntry(username, sourceIP string, action Action, target string, result Re
 		return Entry{}, fmt.Errorf("invalid audit action: %s", action)
 	}
 	return Entry{
-		// RFC3339Nano：子秒精度確保同秒內多筆紀錄的排序可確定（登入/節點操作同秒發生時）
-		Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Username:  username,
 		SourceIP:  sourceIP,
 		Action:    action,
@@ -575,114 +530,37 @@ func NewEntry(username, sourceIP string, action Action, target string, result Re
 	}, nil
 }
 
-// ============================================================
-//  Trusted proxy handling
-// ============================================================
-
-var (
-	trustedProxyOnce sync.Once
-	trustedProxySet  map[string]struct{}
-)
-
-// trustedProxies returns the set of proxy IPs whose forwarded headers
-// (X-Forwarded-For / X-Real-IP) are trusted. Loopback addresses are trusted
-// by default; extend via the TRUSTED_PROXY_IPS environment variable
-// (comma-separated, e.g. "TRUSTED_PROXY_IPS=10.0.0.1,10.0.0.2").
-func trustedProxies() map[string]struct{} {
-	trustedProxyOnce.Do(func() {
-		// Only build the default set when no test override is installed.
-		if trustedProxySet != nil {
-			return
-		}
-		trustedProxySet = map[string]struct{}{
-			"127.0.0.1": {},
-			"::1":       {},
-		}
-		if raw := os.Getenv("TRUSTED_PROXY_IPS"); raw != "" {
-			for _, part := range strings.Split(raw, ",") {
-				if ip := net.ParseIP(strings.TrimSpace(part)); ip != nil {
-					trustedProxySet[ip.String()] = struct{}{}
-				}
-			}
-		}
-	})
-	return trustedProxySet
+// NewNodeEntry creates an Entry with node metadata. Returns an error if action is invalid.
+func NewNodeEntry(username, sourceIP string, action Action, target string, result Result, detail, nodeID, nodeName string) Entry {
+	return Entry{
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Username:  username,
+		SourceIP:  sourceIP,
+		Action:    action,
+		Target:    target,
+		Result:    result,
+		Detail:    detail,
+		NodeID:    nodeID,
+		NodeName:  nodeName,
+	}
 }
 
-// setTrustedProxiesForTest replaces the trusted proxy set (testing only).
-// With no arguments the override is cleared and the next access re-reads the
-// TRUSTED_PROXY_IPS environment variable.
-func setTrustedProxiesForTest(ips ...string) {
-	trustedProxyOnce = sync.Once{}
-	if len(ips) == 0 {
-		trustedProxySet = nil
-		return
-	}
-	set := map[string]struct{}{}
-	for _, ip := range ips {
-		set[ip] = struct{}{}
-	}
-	trustedProxySet = set
-}
-
-// ExtractClientIP extracts the client IP from a request.
-//
-// Forwarded headers (X-Forwarded-For / X-Real-IP) are only trusted when the
-// immediate TCP peer (RemoteAddr) is a trusted proxy — loopback by default,
-// extendable via TRUSTED_PROXY_IPS. Otherwise the peer address itself is
-// returned, so a client that connects directly cannot forge its source IP in
-// the audit log by sending a fake X-Forwarded-For header.
-//
-// When the peer is a trusted proxy, the rightmost X-Forwarded-For entry that
-// is not itself a trusted proxy is used: that is the client as observed by
-// the outermost trusted proxy, so forged entries appended by the client (e.g.
-// via nginx's $proxy_add_x_forwarded_for) are ignored. X-Real-IP is used as a
-// fallback (nginx sets it from $remote_addr), then the peer address.
+// ExtractClientIP extracts the client IP from a request, preferring
+// X-Forwarded-For over RemoteAddr.
 func ExtractClientIP(r *http.Request) string {
-	peer := peerIP(r.RemoteAddr)
-
-	trusted := trustedProxies()
-	if _, ok := trusted[peer]; !ok {
-		// Direct connection or untrusted intermediary: never trust
-		// client-supplied forwarded headers.
-		return peer
-	}
-
-	// Peer is a trusted proxy: walk X-Forwarded-For right-to-left and return
-	// the first entry that is not itself a trusted proxy.
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// Take the first IP in the comma-separated list
 		parts := strings.Split(xff, ",")
-		for i := len(parts) - 1; i >= 0; i-- {
-			ip := net.ParseIP(strings.TrimSpace(parts[i]))
-			if ip == nil {
-				continue
-			}
-			if _, isProxy := trusted[ip.String()]; !isProxy {
-				return ip.String()
+		if len(parts) > 0 {
+			ip := strings.TrimSpace(parts[0])
+			if ip != "" {
+				return ip
 			}
 		}
 	}
-
-	// Fall back to X-Real-IP (only read because the peer is already confirmed
-	// to be a trusted proxy).
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		if ip := net.ParseIP(strings.TrimSpace(xri)); ip != nil {
-			return ip.String()
-		}
-	}
-
-	return peer
-}
-
-// peerIP extracts the IP portion of a RemoteAddr ("host:port"), returning
-// the input unchanged when it has no port.
-func peerIP(remoteAddr string) string {
-	host, _, err := net.SplitHostPort(remoteAddr)
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return remoteAddr
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		return ip.String()
+		return r.RemoteAddr
 	}
 	return host
 }

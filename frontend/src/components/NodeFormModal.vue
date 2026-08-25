@@ -1,163 +1,297 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import type { Node, NodePayload } from '../types/node'
-import { createNode, updateNode, testConnection } from '../api/client'
+import { ref, watch } from 'vue'
+import type { ManagedNode, NodeFormInput, TestConnectionResult } from '../types/node'
+import { createNode, updateNode, testConnection } from '../api/nodeApi'
 import { useToast } from '../composables/useToast'
 
-const props = defineProps<{ node: Node | null }>()  // null = 新增
-const emit = defineEmits<{ close: []; saved: [] }>()
+const props = defineProps<{
+  mode: 'create' | 'edit'
+  initialData?: ManagedNode
+}>()
+
+const emit = defineEmits<{
+  close: []
+  created: [node: ManagedNode]
+  updated: [node: ManagedNode]
+}>()
 
 const { showToast } = useToast()
-const overlayEl = ref<HTMLElement | null>(null)
-const nameInput = ref<HTMLInputElement | null>(null)
-const form = reactive({
-  name: props.node?.name ?? '',
-  address: props.node?.address ?? '',
-  tls_fingerprint: props.node?.tls_fingerprint ?? '',
-  token: '',
-  client_cert: props.node?.client_cert ?? '',
-  client_key: props.node?.client_key ?? '',
-  notes: props.node?.notes ?? '',
-})
-const errors = ref<Record<string, string>>({})
-const testing = ref(false)
-const testResult = ref<{ ok: boolean; message: string } | null>(null)
-const saving = ref(false)
 
-/** 必填欄位驗證（BDD @validation）：名稱與位址空白 → 紅色標示且不發送 POST /api/v1/nodes */
+const name = ref('')
+const address = ref('')
+const tlsFingerprint = ref('')
+const token = ref('')
+const note = ref('')
+
+const nameError = ref('')
+const addressError = ref('')
+const formError = ref('')
+
+const testing = ref(false)
+const testResult = ref<TestConnectionResult | null>(null)
+const submitting = ref(false)
+
+watch(() => props.initialData, (data) => {
+  if (data && props.mode === 'edit') {
+    name.value = data.name
+    address.value = data.address
+    tlsFingerprint.value = data.tls_fingerprint || ''
+    note.value = data.note || ''
+    token.value = ''
+  }
+}, { immediate: true })
+
 function validate(): boolean {
-  errors.value = {}
-  if (!form.name.trim()) errors.value.name = '節點名稱為必填'
-  if (!form.address.trim()) errors.value.address = 'Agent 位址為必填'
-  return Object.keys(errors.value).length === 0
+  let valid = true
+  nameError.value = ''
+  addressError.value = ''
+  formError.value = ''
+
+  if (!name.value.trim()) {
+    nameError.value = '請輸入節點名稱'
+    valid = false
+  }
+  if (!address.value.trim()) {
+    addressError.value = '請輸入 Agent 位址 (host:port)'
+    valid = false
+  }
+  return valid
 }
 
-/** 測試連線（BDD @node-mgmt @smoke）：POST /nodes/test-connection → 成功綠色提示 / 失敗紅色提示（Modal 保持開啟） */
-async function handleTest(): Promise<void> {
-  if (!form.address.trim()) { errors.value.address = '請先填寫 Agent 位址'; return }
+async function onTestConnection() {
+  if (!address.value.trim()) {
+    addressError.value = '請先輸入 Agent 位址'
+    return
+  }
   testing.value = true
   testResult.value = null
   try {
-    const r = await testConnection({ address: form.address, tls_fingerprint: form.tls_fingerprint, token: form.token, client_cert: form.client_cert, client_key: form.client_key })
-    testResult.value = { ok: true, message: `連線成功 — Agent v${r.version} @ ${r.hostname} (${r.os})` }
-  } catch (e: any) {
-    testResult.value = { ok: false, message: `無法連線：${e?.response?.data?.error || e.message}` }
+    testResult.value = await testConnection({
+      address: address.value.trim(),
+      tls_fingerprint: tlsFingerprint.value.trim() || undefined,
+      token: token.value.trim() || undefined,
+    })
+  } catch (err: any) {
+    testResult.value = { ok: false, error: err.response?.data?.error || '連線失敗' }
   } finally {
     testing.value = false
   }
 }
 
-/** Focus trap + Esc 關閉（UIUX §7 4.1.2 / §5.3）：Modal 內 Tab 循環；Esc 關閉 */
-function onOverlayKeydown(e: KeyboardEvent): void {
-  if (e.key === 'Escape') {
-    e.preventDefault()
-    emit('close')
-    return
+async function onSubmit() {
+  if (!validate()) return
+
+  submitting.value = true
+  formError.value = ''
+
+  const body: NodeFormInput = {
+    name: name.value.trim(),
+    address: address.value.trim(),
+    tls_fingerprint: tlsFingerprint.value.trim() || undefined,
+    note: note.value.trim() || undefined,
   }
-  if (e.key !== 'Tab') return
-  const overlay = overlayEl.value
-  if (!overlay) return
-  const focusables = Array.from(
-    overlay.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
-  ).filter(el => !el.hasAttribute('disabled'))
-  if (focusables.length === 0) return
-  const first = focusables[0]
-  const last = focusables[focusables.length - 1]
-  const active = document.activeElement as HTMLElement | null
-  if (e.shiftKey && (active === first || !overlay.contains(active))) {
-    e.preventDefault()
-    last.focus()
-  } else if (!e.shiftKey && (active === last || !overlay.contains(active))) {
-    e.preventDefault()
-    first.focus()
+
+  if (props.mode === 'create') {
+    body.token = token.value.trim() || undefined
+  }
+
+  try {
+    if (props.mode === 'create') {
+      const node = await createNode(body)
+      showToast('節點已建立', 'success')
+      emit('created', node)
+    } else {
+      const node = await updateNode(props.initialData!.id, body)
+      showToast('節點已更新', 'success')
+      emit('updated', node)
+    }
+  } catch (err: any) {
+    if (err.response?.status === 409) {
+      showToast('節點名稱重複', 'error')
+      nameError.value = '節點名稱重複'
+    } else {
+      formError.value = err.response?.data?.error || '操作失敗'
+    }
+  } finally {
+    submitting.value = false
   }
 }
 
-onMounted(() => {
-  nameInput.value?.focus()
-  document.body.style.overflow = 'hidden' // 背景捲動鎖定
-})
-
-onBeforeUnmount(() => {
-  document.body.style.overflow = ''
-})
-
-/** 註冊 / 儲存（BDD @happy-path / @duplicate / @error-handling / @node-mgmt 編輯）：
- * 新增成功 → Toast「節點 X 已註冊並上線」；註冊後節點離線 → Toast「節點 X 已註冊但無法連線」（由後端在註冊時健康檢查判定）；
- * 編輯儲存 → Toast「節點設定已更新」（BDD 編輯 Scenario / F-NM-04 / E2E-33）；409 名稱重複 → Toast 且 Modal 保持開啟。 */
-async function handleSave(): Promise<void> {
-  if (!validate()) return
-  saving.value = true
-  const payload: NodePayload = { name: form.name.trim(), address: form.address.trim(), tls_fingerprint: form.tls_fingerprint, token: form.token, client_cert: form.client_cert, client_key: form.client_key, notes: form.notes }
-  try {
-    if (props.node) {
-      await updateNode(props.node.id, payload)   // 編輯：PUT，token 留空表示不變更（決策 5）
-      showToast('節點設定已更新', 'success')
-    } else {
-      const saved = await createNode(payload)
-      if (saved.status === 'online') showToast(`節點 ${saved.name} 已註冊並上線`, 'success')
-      else showToast(`節點 ${saved.name} 已註冊但無法連線`, 'warning')
-    }
-    emit('saved')
-  } catch (e: any) {
-    const msg = e?.response?.data?.error || e.message
-    showToast(msg.includes('重複') ? '節點名稱重複，請使用不同名稱' : msg, 'error')
-  } finally {
-    saving.value = false
+function onOverlayClick(e: MouseEvent) {
+  if ((e.target as HTMLElement).classList.contains('lms-modal-overlay')) {
+    emit('close')
   }
 }
 </script>
 
 <template>
-  <div ref="overlayEl" class="modal-overlay" role="presentation" @click.self="$emit('close')" @keydown="onOverlayKeydown">
-    <div class="lms-modal node-form-modal" role="dialog" aria-modal="true" aria-labelledby="node-form-title">
-      <h3 id="node-form-title">{{ props.node ? '編輯節點' : '新增節點' }}</h3>
-      <form @submit.prevent="handleSave">
-        <label for="node-form-name">節點名稱 <span class="req">*</span></label>
-        <input id="node-form-name" ref="nameInput" v-model="form.name" :class="{ 'field-error': errors.name }" data-testid="node-name" />
-        <p v-if="errors.name" class="field-error-text">{{ errors.name }}</p>
+  <Teleport to="body">
+    <div class="lms-modal-overlay" @click="onOverlayClick">
+      <div class="lms-modal node-form-modal" role="dialog" aria-modal="true">
+        <h3>{{ mode === 'create' ? '新增節點' : '編輯節點' }}</h3>
 
-        <label>Agent 位址（host:port）<span class="req">*</span></label>
-        <input v-model="form.address" placeholder="10.0.0.5:8443" :class="{ 'field-error': errors.address }" data-testid="node-address" />
-        <p v-if="errors.address" class="field-error-text">{{ errors.address }}</p>
+        <form class="node-form" @submit.prevent="onSubmit">
+          <!-- 節點名稱 -->
+          <div class="node-form__field" :class="{ 'has-error': !!nameError }">
+            <label for="node-name">節點名稱 <span class="required">*</span></label>
+            <input id="node-name" v-model="name" type="text" placeholder="例如：production-web-1" />
+            <span v-if="nameError" class="node-form__error">{{ nameError }}</span>
+          </div>
 
-        <label>TLS 憑證指紋（選填）</label>
-        <input v-model="form.tls_fingerprint" placeholder="SHA-256" />
-        <label>API Token（選填）</label>
-        <input v-model="form.token" type="password" :placeholder="props.node ? '留空表示不變更' : 'lsm_node_…'" />
-        <label>客戶端憑證路徑（mTLS，選填）</label>
-        <input v-model="form.client_cert" placeholder="/etc/lsm/manager/client.crt" data-testid="node-client-cert" />
-        <label>客戶端金鑰路徑（mTLS，選填）</label>
-        <input v-model="form.client_key" placeholder="/etc/lsm/manager/client.key" data-testid="node-client-key" />
-        <label>備註（選填）</label>
-        <input v-model="form.notes" />
+          <!-- Agent 位址 -->
+          <div class="node-form__field" :class="{ 'has-error': !!addressError }">
+            <label for="node-address">Agent 位址 <span class="required">*</span></label>
+            <input id="node-address" v-model="address" type="text" placeholder="host:port" />
+            <span v-if="addressError" class="node-form__error">{{ addressError }}</span>
+          </div>
 
-        <p
-          v-if="testResult"
-          class="test-result"
-          :class="testResult.ok ? 'test-ok' : 'test-fail'"
-          role="status"
-          aria-live="polite"
-        >
-          <svg v-if="testResult.ok" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M20 6L9 17l-5-5" />
-          </svg>
-          <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-          <span>{{ testResult.message }}</span>
-        </p>
+          <!-- TLS 憑證指紋 -->
+          <div class="node-form__field">
+            <label for="node-tls">TLS 憑證指紋</label>
+            <input id="node-tls" v-model="tlsFingerprint" type="text" placeholder="SHA-256 指紋（選填）" />
+          </div>
 
-        <div class="form-actions">
-          <button type="button" class="btn btn-secondary" @click="$emit('close')">取消</button>
-          <button type="button" class="btn btn-secondary" :disabled="testing" data-testid="test-connection" @click="handleTest">
-            <span v-if="testing" class="spinner-sm" /> 測試連線
-          </button>
-          <button type="button" class="btn btn-primary" :disabled="saving" data-testid="node-save" @click="handleSave">
-            <span v-if="saving" class="spinner-sm" /> {{ props.node ? '儲存' : '註冊' }}
-          </button>
-        </div>
-      </form>
+          <!-- API Token -->
+          <div v-if="mode === 'create'" class="node-form__field">
+            <label for="node-token">API Token</label>
+            <input id="node-token" v-model="token" type="password" placeholder="選填" />
+          </div>
+
+          <!-- 備註 -->
+          <div class="node-form__field">
+            <label for="node-note">備註</label>
+            <textarea id="node-note" v-model="note" rows="2" placeholder="選填"></textarea>
+          </div>
+
+          <!-- 測試連線結果 -->
+          <div v-if="testResult" class="node-form__result" :class="testResult.ok ? 'node-form__result--ok' : 'node-form__result--error'">
+            <template v-if="testResult.ok">
+              ✅ 連線成功 — 版本 {{ testResult.version || '未知' }}・主機 {{ testResult.hostname || '未知' }}
+            </template>
+            <template v-else>
+              ❌ 連線失敗：{{ testResult.error || '未知錯誤' }}
+            </template>
+          </div>
+
+          <!-- 表單錯誤 -->
+          <div v-if="formError" class="node-form__form-error" role="alert">{{ formError }}</div>
+
+          <!-- 操作按鈕 -->
+          <div class="node-form__actions">
+            <button type="button" class="secondary" :disabled="testing" @click="onTestConnection">
+              {{ testing ? '測試中...' : '測試連線' }}
+            </button>
+            <div class="node-form__actions-right">
+              <button type="button" class="secondary" @click="emit('close')">取消</button>
+              <button type="submit" class="btn-primary" :disabled="submitting">
+                {{ submitting ? '提交中...' : (mode === 'create' ? '建立節點' : '更新節點') }}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
     </div>
-  </div>
+  </Teleport>
 </template>
+
+<style scoped>
+.node-form-modal {
+  max-width: 520px;
+}
+
+.node-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.node-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.node-form__field label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.node-form__field input,
+.node-form__field textarea {
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--lms-border);
+  border-radius: var(--lms-radius-sm);
+  background: var(--lms-surface);
+  font-size: 0.9rem;
+}
+
+.node-form__field.has-error input,
+.node-form__field.has-error textarea {
+  border-color: var(--lms-danger);
+}
+
+.required {
+  color: var(--lms-danger);
+}
+
+.node-form__error {
+  font-size: 0.8rem;
+  color: var(--lms-danger);
+}
+
+.node-form__result {
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--lms-radius-sm);
+  font-size: 0.85rem;
+}
+
+.node-form__result--ok {
+  background: var(--lms-success-light);
+  color: var(--lms-success);
+  border: 1px solid var(--lms-success-border);
+}
+
+.node-form__result--error {
+  background: var(--lms-danger-light);
+  color: var(--lms-danger);
+  border: 1px solid var(--lms-danger-border);
+}
+
+.node-form__form-error {
+  font-size: 0.85rem;
+  color: var(--lms-danger);
+  padding: 0.4rem 0;
+}
+
+.node-form__actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.node-form__actions-right {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-primary {
+  background: var(--lms-accent);
+  color: #fff;
+  border: none;
+  padding: 0.45rem 1rem;
+  border-radius: var(--lms-radius-sm);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.btn-primary:hover {
+  background: var(--lms-accent-hover);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+</style>

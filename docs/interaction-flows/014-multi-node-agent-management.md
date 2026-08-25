@@ -4,13 +4,15 @@
 > **功能編號**：014
 > **狀態**：設計中
 > **設計日期**：2025-08-09
-> **最後更新**：2025-08-09
+> **最後更新**：2025-08-25
+>
+> **📋 變更紀錄（2025-08-25）**：UIUX 決策確認採「純節點切換」模式（見 `docs/uiux/014-multi-node-view-redesign.md`）。**跨節點服務搜尋已移出本功能範圍，移入未來 backlog**。相關段落標註 ⛔ REMOVED 保留供追溯。
 
 ---
 
 ## 1. 功能概述
 
-讓一台主控面板（Manager）管理多台 Linux 機器的 systemd 服務。每台被控端執行輕量 Agent binary，主控端透過統一 Dashboard 監控所有節點健康狀態、切換節點操作服務、匯總跨節點服務狀態。
+讓一台主控面板（Manager）管理多台 Linux 機器的 systemd 服務。每台被控端執行輕量 Agent binary，主控端透過統一 Dashboard 監控所有節點健康狀態、切換節點操作服務。
 
 **核心價值**：從單機管理擴展到多機維運，不需在每台機器上分別開啟管理介面。同一操作介面即可掌握整個基礎設施的服務狀態，大幅降低分散環境的管理負擔。
 
@@ -23,7 +25,7 @@
 | **角色** | 已登入的管理員（目前唯一角色，後續 RBAC 可限縮節點管理權限） |
 | **觸發入口** | 登入後預設進入 Aggregate Dashboard（多節點匯總視圖）。Header 新增「Node Management」導覽連結 |
 | **前置條件** | ☑ 已登入、☑ Manager 已啟動、☑ 至少一台 Agent 已註冊並上線 |
-| **使用情境** | 1. 管理員登入後一眼看到所有節點狀態（線上/離線/服務健康摘要），優先處理異常節點<br>2. 管理員需要操作某台特定機器的服務時，從節點切換器選取該節點，進入單節點服務管理<br>3. 管理員新增一台 Linux 機器到管理範圍：部署 Agent、在 Manager 註冊節點、驗證上線<br>4. 管理員發現某節點離線，查看最後心跳時間、診斷原因<br>5. 管理員從節點列表中移除已下線或不再管理的機器<br>6. 管理員在 Aggregate Dashboard 快速搜尋某個服務在所有節點上的執行狀況 |
+| **使用情境** | 1. 管理員登入後一眼看到所有節點狀態（線上/離線/服務健康摘要），優先處理異常節點<br>2. 管理員需要操作某台特定機器的服務時，從節點切換器選取該節點，進入單節點服務管理<br>3. 管理員新增一台 Linux 機器到管理範圍：部署 Agent、在 Manager 註冊節點、驗證上線<br>4. 管理員發現某節點離線，查看最後心跳時間、診斷原因<br>5. 管理員從節點列表中移除已下線或不再管理的機器（跨節點搜尋已移除，見變更紀錄） |
 
 ---
 
@@ -79,14 +81,6 @@ flowchart TD
     BackAgg --> LoadAgg
 
     UserAction -- 點擊「Node Management」 --> NodeMgmt[導航至 /nodes 管理頁面]
-
-    UserAction -- 搜尋服務 --> SearchSvc["在搜尋框輸入服務名稱
-    跨節點搜尋
-    顯示匹配的節點+服務"]
-
-    SearchSvc --> SearchResult[搜尋結果列表：
-    節點名 / 服務名 / 狀態
-    點擊跳轉至該節點+服務]
 
     UserAction -- 查看節點詳情 --> NodeDetail[顯示節點詳細資訊面板：
     系統資訊、資源使用、最近操作]
@@ -337,13 +331,7 @@ flowchart TD
 
 ### 步驟 7：跨節點搜尋服務
 
-| | 描述 |
-|---|------|
-| **觸發** | 管理員在 Aggregate Dashboard 的搜尋框輸入服務名稱（如 "nginx"） |
-| **操作前** | Aggregate Dashboard，顯示所有節點 Card |
-| **系統回應** | 搜尋框 debounce 300ms。發送 `GET /api/v1/nodes/services/search?q=nginx`。Manager 向所有線上 Agent 並行查詢匹配的服務，彙總結果回傳 |
-| **操作後** | 搜尋結果列表顯示：節點名稱、匹配的服務名稱、服務狀態。點擊任一結果跳轉至該節點的單節點視圖，並自動展開該服務。若無匹配結果顯示「沒有找到匹配的服務」 |
-| **狀態變化** | Dashboard：Card 視圖 → 搜尋結果列表（可關閉返回 Card 視圖） |
+> ⛔ **REMOVED（2025-08-25）**：本步驟已移出功能範圍（純切換模式決策），移入未來 backlog。保留編號以維持後續步驟引用與 BDD 追溯標記穩定。
 
 ### 步驟 8：查看節點詳細資訊
 
@@ -374,7 +362,7 @@ flowchart TD
 | **Agent 服務掛掉（心跳中斷）** | 節點 Card 狀態 → 🔴 離線。若正在該節點頁面：服務列表操作按鈕禁用、頂部黃色 Banner「節點已離線」。Toast 通知「{node-name} 已離線」 | 重啟 Agent。Agent 重新連線後自動恢復，Toast 通知「已恢復連線」 |
 | **Manager 與 Agent 網路中斷** | 同上（網路中斷導致心跳超時） | 網路恢復後 Agent 自動重連。寬限期內恢復 → 無縫回復；超過寬限期 → 需手動檢查 |
 | **服務操作逾時（Agent 回應慢）** | 操作按鈕顯示 loading spinner 超過預設時間（如 10 秒）。逾時後 Toast 顯示「[Node-Name] 操作逾時：nginx.service restart」 | 管理員可重試操作，或檢查 Agent 機器負載狀況 |
-| **Agent 回傳部分失敗（並行查詢）** | Aggregate Dashboard 中僅部分節點的搜尋結果顯示，離線節點旁標示「無法查詢」。不會阻塞其他節點的結果 | 等節點恢復上線後重新搜尋 |
+| **Agent 回傳部分失敗（並行查詢）** | ⛔ REMOVED：隨跨節點搜尋移除，本情境不再適用 | — |
 | **TLS 憑證過期或不符** | 新增節點時測試連線失敗：「TLS 憑證驗證失敗：certificate expired」。已註冊節點若憑證過期，Manager 無法連線 → 節點標示為離線 | 更新 Agent 端 TLS 憑證，Manager 端更新指紋後重新連線 |
 | **Manager 重啟（所有 Agent 斷線）** | Aggregate Dashboard 所有節點短暫顯示為離線。Manager 重啟後主動重新連接所有已註冊 Agent | Manager 啟動時依 node registry 逐一重連。連線成功後狀態自動恢復。30 秒內不觸發離線通知（啟動寬限期） |
 | **同一個 Agent 被多個 Manager 註冊** | Agent 僅接受第一個 Manager 的連線。第二個 Manager 連線被拒絕，節點顯示為離線 | 確認 Agent 設定檔中的 manager_addr 指向唯一 Manager |
@@ -389,7 +377,7 @@ flowchart TD
 |------|---------|
 | **最大節點數** | Manager 單實例支援最多 50 個 Agent 節點。超過需評估 Manager 資源（CPU/Memory）及並行連線能力 |
 | **心跳間隔** | Agent 每 10 秒發送一次心跳。離線偵測閾值為連續 3 次未收到心跳（30 秒）。寬限期 300 秒（5 分鐘）後標示為長期離線 |
-| **操作逾時** | 單一服務操作逾時為 15 秒（含 Manager → Agent 來回）。跨節點查詢（如搜尋）總逾時為 10 秒，部分結果先回 |
+| **操作逾時** | 單一服務操作逾時為 15 秒（含 Manager → Agent 來回） |
 | **並行操作限制** | 同一節點同一服務不允許並行操作（前一個操作未完成時按鈕保持 disabled）。不同節點可並行 |
 | **TLS / mTLS** | Manager ↔ Agent 通訊強制使用 TLS。可選啟用 mTLS（Agent 驗證 Manager 憑證 + Manager 驗證 Agent 憑證） |
 | **Agent Binary** | Agent 為精簡版 LinuxServiceManager binary（無前端內嵌、無靜態資源）。僅包含 API server + systemd 操作模組 + 心跳模組 |
@@ -419,9 +407,9 @@ flowchart TD
 - [ ] `POST /api/v1/nodes/{id}/services/{name}/start|stop|restart` 代理操作
 - [ ] `POST /api/v1/nodes/{id}/services/{name}/enable|disable` 代理 enable/disable
 - [ ] `GET /api/v1/nodes/{id}/services/{name}/logs` 代理日誌查詢
-- [ ] `GET /api/v1/nodes/services/search?q=` 跨節點服務搜尋
-- [ ] `GET /api/v1/nodes/summary` 匯總所有節點服務統計
 - [ ] `GET /api/v1/nodes/{id}/info` 節點系統資訊
+- [ ] `GET /api/v1/nodes/summary` 匯總所有節點服務統計
+- [ ] ~~`GET /api/v1/nodes/services/search?q=` 跨節點服務搜尋~~ ⛔ REMOVED（2025-08-25）
 - [ ] API Proxy 正確轉發請求並回傳 Agent 回應
 - [ ] API Proxy 正確處理 Agent 離線時的錯誤回應
 
@@ -479,7 +467,9 @@ flowchart TD
 
 ### 前端 — 跨節點搜尋
 
-- [ ] Aggregate Dashboard 搜尋框支援跨節點服務搜尋
+> ⛔ REMOVED（2025-08-25）：整節隨跨節點搜尋移除，移入未來 backlog。
+
+- [x] ~~Aggregate Dashboard 搜尋框支援跨節點服務搜尋~~
 - [ ] 搜尋結果顯示節點名稱 + 服務名稱 + 狀態
 - [ ] 點擊結果跳轉至對應節點+展開服務
 - [ ] debounce 300ms
@@ -508,7 +498,6 @@ flowchart TD
 - [ ] Manager + 3 Agents：Aggregate Dashboard 正確顯示所有節點
 - [ ] Agent 離線 → Dashboard 更新 → Agent 恢復 → Dashboard 恢復
 - [ ] Manager 重啟 → 所有 Agent 自動重連
-- [ ] 跨節點搜尋在部分節點離線時仍回傳可達節點的結果
 - [ ] Audit Log 記錄包含節點資訊
 - [ ] TLS / mTLS 通訊正常（憑證有效時）
 - [ ] TLS 憑證無效時正確拒絕連線並提示

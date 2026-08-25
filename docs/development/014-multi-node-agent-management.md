@@ -1,36 +1,30 @@
 # 多機管理 Agent 模式 — 開發規格
 
 > **對應 Roadmap**：Phase 4 — `docs/development/002-expansion-roadmap.md` 項目 #12
-> **技術決策**：`docs/tech-decisions/014-multi-node-agent-management.md`（9 項決策）
+> **技術棧**：Go 1.24.4 · Vue 3.5 · Vite 8 · Pinia 4 · vue-router 4.6 · gorilla/websocket v1.5.3 · chi v5
+> **Tech Decision**：`docs/tech-decisions/014-multi-node-agent-management.md`
 > **操作流程**：`docs/interaction-flows/014-multi-node-agent-management.md`
-> **BDD**：`docs/bdds/014-multi-node-agent-management.feature`（69 個 Scenario）
-> **測試計畫**：`docs/test-plans/014-multi-node-agent-management測試計畫.md`（260 個測試案例）
+> **BDD**：`docs/bdds/014-multi-node-agent-management.feature`（48 Scenario + 3 Outline，展開後 51 案例 S01–S51）
+> **測試計畫**：`docs/test-plans/014-multi-node-agent-management測試計畫.md`
+> **UI/UX 設計**：
+>   - `docs/uiux/014-multi-node-view-redesign.md` — 節點切換模式（總覽頁 + 單機視圖）✅ 已定案
+>   - `docs/uiux/014-node-management-design.md` — Node Management 頁面（列表 + CRUD Modal）
 > **狀態**：設計完成，待開發
+>
+> **📋 修訂（2025-08-25）**：UIUX 決策採「純節點切換」模式（`docs/uiux/014-multi-node-view-redesign.md`），**跨節點服務搜尋已移出本功能範圍**，移入未來 backlog。本文中所有搜尋相關內容（`search.go`、§1.6.3、`HandleSearch`、`NodeSearchResults.vue`、node store 的 `search/clearSearch`、API 合約 search 列、資料流③、邊界條件搜尋列、開發順序相關步驟）皆標記 ⛔ REMOVED，不納入實作範圍；BDD 對應 Scenario 已降為 `@deferred`。
 
 ---
 
 ## 概述
 
-讓一台主控面板（Manager）透過統一 Dashboard 監控並操作多台 Linux 機器（Agent）的 systemd 服務，包含節點註冊、健康狀態一覽、節點切換操作、跨節點服務搜尋與離線偵測 — 不需在每台機器分別開啟管理介面，即可在同一操作介面掌握整個基礎設施的服務狀態。核心包含：
+讓一台主控面板（Manager）透過 WebSocket 長連線管理多台 Linux 機器上的輕量 Agent，實現 Aggregate Dashboard、單節點切換操作、跨節點搜尋與心跳離線偵測。核心包含：
 
-1. **Node Registry（`internal/nodes/registry.go`）**：`/var/lib/linux-service-manager/nodes.json` 持久化（temp + rename atomic write，仿 token store）、CRUD、名稱唯一性、50 節點上限
-2. **Heartbeat 接收 + Supervisor 狀態機（`internal/nodes/heartbeat.go` / `supervisor.go`）**：`POST /api/v1/agent/heartbeat` 驗 token → 更新 last_heartbeat + 服務統計；5s ticker 依 `deriveStatus` 純函式判定 🟢🟡🔴⚫ 四態 + 版本警告 + 啟動寬限期，狀態變更才推播
-3. **AgentClient（`internal/nodes/client.go`）**：HTTPS 短連線 + 連線池（應用層無狀態、傳輸層 keep-alive）、TLS/指紋 pinning/mTLS、Bearer token 注入、NodeOfflineError / NodeTimeoutError 錯誤分類、4MB 回應上限
-4. **逐 route 顯式 API Proxy（`internal/handler/node_proxy_handler.go`）**：每個 `/api/v1/nodes/{id}/...` route 一個 handler，per-route 逾時（操作 15s / info 10s / health 5s）+ 錯誤映射（404 / 502 / 504）+ audit（含 node_id/node_name）
-5. **跨節點搜尋 fan-out（`internal/handler/search_handler.go`）**：僅查線上節點、goroutine + semaphore(10)、總 context 10s、`failed_nodes` 部分結果先回
-6. **Agent binary（`internal/agent/` + `src/cmd/agent/main.go`）**：同 module 第二 entry point、無前端 embed、/health + `/api/v1/services/*` + `/api/v1/system/info` + token middleware + 10s 心跳 client（±2s jitter + exponential backoff）、yaml.v2 讀取 `agent.yaml`
-7. **前端三視圖 + nodes store**：`/` AggregateDashboardView（統計列 + Node Cards + 跨節點搜尋）、`/nodes` NodeManagementView（列表 + NodeFormModal + 下載 Agent）、`/dashboard?node=` 既有 DashboardView 改造為 node-aware；`stores/nodes.ts` + `NodeSwitcher.vue` + useWebSocket 4 事件即時推送
-
-> **技術裁決重點（以 Tech Decision 9 項決策為準，與 BDD / Interaction Flow 不一致處一律依此）**：
-> - **通訊協定**：Manager ↔ Agent 為 **HTTPS REST** 短連線 + 10s 心跳 POST（決策 1/2）；**無獨立 register 端點** — 「註冊」= Manager 啟動健康檢查 + Agent 第一次心跳 POST 由 registry 比對（D-1）
-> - **Aggregate 路由**：登入預設 **`/`** = AggregateDashboardView；`/dashboard?node={id}` = 既有 DashboardView（node-aware）；BDD 的「/dashboard 為 Aggregate」為早期草案（D-2）
-> - **狀態機四態**：`age<10s → online`、`≥10s<30s → degraded`、`≥30s<300s → offline`、`≥300s → long_offline`；`last_heartbeat` 空 → offline；版本 < `AgentMinVersion` → **warning 優先**（不阻斷）（D-3）
-> - **認證**：TLS + Token 強制；註冊時 token 與 tls_fingerprint **至少填其一**（皆空 → 400）；指紋 pinning 為第一公民；mTLS 為每節點可選強化（D-4）
-> - **逾時分級**：操作 15s / info 10s / 搜尋總 10s / test-connection 5s；離線 → 502 `{"error":"node offline"}`、逾時 → 504、Agent 4xx/5xx 原樣轉寫（D-5）
-> - **summary 零網路請求**：聚合各節點最後心跳附帶的 `ServiceStats`，不代理、不 fan-out（D-7）
-> - **心跳路由在 Auth 群組外**：`POST /api/v1/agent/heartbeat` 以節點 token 自證（D-8）
-> - **同節點同服務並行限制**：Manager 不強制（無狀態 proxy），前端 per-node per-service in-flight 標記實作（D-9）
-> - **WS 事件四型**：`node_status` / `node_online` / `node_offline` / `node_removed`（決策 3；BDD 草案的 `node_added` 以 `node_online` 呈現、`node_heartbeat` 以 `node_status` 承載 last_heartbeat/version）
+1. **noderegistry**：節點註冊表 CRUD、唯一性/50 台上限檢查、`nodes.json` atomic write 持久化（runtime state 不落盤）
+2. **nodemonitor**：心跳狀態機（online → offline → long_offline）、30s/300s 閾值、啟動寬限期、可注入 fake clock
+3. **nodeproxy**：WS RPC 轉發（request-id ↔ pending map）、逾時策略（操作 15s／查詢 10s）、singleflight 並行限制、跨節點搜尋 errgroup 彙總
+4. **agentclient + cmd/agent**：Agent 側 WS outbound 撥號、指數退避重連、register/heartbeat 循環、精簡 JSON API
+5. **handler/nodes routes**：`/api/v1/nodes/*` REST 端點 + `/api/v1/agent/ws` Agent 升級端點
+6. **前端 node store 與元件**：`stores/node.ts`、NodeCard、NodeSwitcher、NodeFormModal、NodeManagementView；DashboardView 以 `?node={id}` query 分流 Aggregate / 單節點兩種視圖
 
 ---
 
@@ -38,670 +32,567 @@
 
 ### 1.1 依賴新增
 
-**零新 module**。`gopkg.in/yaml.v2` 已存在於 go.sum（swag 間接依賴），本功能將 Agent 設定檔解析（`agent.yaml`）啟用為 **direct dependency**：
-
 ```bash
-cd src && go get gopkg.in/yaml.v2@v2.4.0   # indirect → direct；go.sum 已有，零新下載
+# 無新依賴：gorilla/websocket、chi、godbus/dbus 均已在 go.mod
+# Agent 設定檔解析使用標準庫 encoding/json（agent.json）或 gopkg.in/yaml.v3（擇一，建議 json 免新依賴）
 ```
-
-其餘全部使用 Go 標準庫（`net/http`、`crypto/rand`、`crypto/sha256`、`crypto/tls`、`encoding/json`、`sync`、`time`、`os`）+ 既有 chi/v5（`github.com/go-chi/chi/v5`）。**不引進 gRPC / protobuf / SQLite**。
 
 ### 1.2 檔案改動總覽
 
 ```
 src/
-├── main.go                                   ← 修改：nodes 模組初始化、心跳路由（Auth 群組外）、13 條節點路由、agent binary embed
+├── main.go                              ← 刪除：遷移至 cmd/manager/main.go
 ├── cmd/
+│   ├── manager/
+│   │   └── main.go                      ← 新增：Manager 入口（原 main.go 遷移 + nodes routes 掛載 + 啟動時重連所有節點）
 │   └── agent/
-│       └── main.go                           ← 新增：Agent binary entry point（~100 行組裝；go build ./cmd/agent）
+│       └── main.go                      ← 新增：Agent 入口（讀設定檔、起 agentclient + agentapi）
 ├── internal/
-│   ├── nodes/                                ← 新增模組（Manager 端節點管理）
-│   │   ├── registry.go                       ← 新增：nodes.json Load/atomic save/CRUD/唯一性/50 上限/VerifyToken
-│   │   ├── registry_test.go                  ← 新增（SYS-01~14）
-│   │   ├── heartbeat.go                      ← 新增：POST /api/v1/agent/heartbeat 接收端（token 驗證 → 更新 last_heartbeat + stats）
-│   │   ├── heartbeat_test.go                 ← 新增（SYS-15~19）
-│   │   ├── supervisor.go                     ← 新增：5s ticker 狀態機（10s/30s/300s/寬限期/版本檢查）+ hub 推播
-│   │   ├── supervisor_test.go                ← 新增（SYS-20~33）
-│   │   ├── client.go                         ← 新增：AgentClient（TLS/指紋 pin/mTLS/token header/Do(ctx,...)/錯誤分類）
-│   │   ├── client_test.go                    ← 新增（SYS-34~43）
-│   │   └── manager.go                        ← 新增：Manager 門面（registry+supervisor+AgentClient 組合，供 handler 注入，見 1.9）
-│   ├── agent/                                ← 新增模組（Agent 端）
-│   │   ├── config.go                         ← 新增：agent.yaml 載入（yaml.v2 direct dependency）
-│   │   ├── config_test.go                    ← 新增（SYS-44~45）
-│   │   ├── server.go                         ← 新增：chi router（/health + /api/v1/services/* + /api/v1/system/info + token middleware）
-│   │   ├── server_test.go                    ← 新增（SYS-46~55）
-│   │   ├── heartbeat.go                      ← 新增：10s ticker（±2s jitter）+ exponential backoff 心跳 client
-│   │   └── heartbeat_test.go                 ← 新增（SYS-56~58）
-│   ├── handler/
-│   │   ├── handler.go                        ← 修改：Handler struct 新增 Nodes 欄位（沿用 Notify 注入先例）
-│   │   ├── node_handler.go                   ← 新增：節點層 handler（CRUD/test-connection/summary/download）
-│   │   ├── node_handler_test.go              ← 新增（HDL-01~18）
-│   │   ├── node_proxy_handler.go             ← 新增：4 類代理 handler（services/ops/logs/info，共用 AgentClient + audit）
-│   │   ├── node_proxy_handler_test.go        ← 新增（HDL-19~27）
-│   │   ├── search_handler.go                 ← 新增：跨節點搜尋（fan-out + semaphore + failed_nodes）
-│   │   └── search_handler_test.go            ← 新增（HDL-28~33）+ 401 驗證（HDL-34~36）
-│   └── audit/
-│       └── audit.go                          ← 修改：Entry 新增 NodeID/NodeName（omitempty，向後相容）+ 節點操作 Action 常數
+│   ├── noderegistry/
+│   │   ├── registry.go                  ← 新增：節點 CRUD + nodes.json atomic write
+│   │   └── registry_test.go             ← 新增：唯一性/上限/持久化測試（SYS-REG-*）
+│   ├── nodemonitor/
+│   │   ├── monitor.go                   ← 新增：心跳狀態機 + 掃描 goroutine + 寬限期
+│   │   └── monitor_test.go              ← 新增：fake clock 狀態機測試（SYS-MON-*）
+│   ├── nodeproxy/
+│   │   ├── hub.go                       ← 新增：Agent WS 連線 hub（/api/v1/agent/ws 接入端）
+│   │   ├── rpc.go                       ← 新增：WS RPC pending map / 逾時 / singleflight
+│   │   ├── search.go                    ← 新增：跨節點搜尋 errgroup 彙總
+│   │   ├── tls.go                       ← 新增：TLS 指紋 pinning（VerifyPeerCertificate）
+│   │   └── rpc_test.go                  ← 新增：SYS-PF-* / SYS-SRCH-* 測試
+│   ├── agentproto/
+│   │   └── proto.go                     ← 新增：Manager↔Agent 共用 wire protocol 型別
+│   ├── agentclient/
+│   │   ├── client.go                    ← 新增：Agent 側撥號/退避重連/register/heartbeat/rpc dispatch
+│   │   └── client_test.go               ← 新增：SYS-AC-* 測試
+│   ├── agentapi/
+│   │   └── api.go                       ← 新增：Agent 本機精簡 JSON API（/health + /api/v1/services*）
+│   └── handler/
+│       ├── nodes_handler.go             ← 新增：/api/v1/nodes/* 全部 endpoint
+│       └── nodes_handler_test.go        ← 新增：HDL-NODE-* / HDL-NP-* 測試
+├── internal/systemd/                    ← 重用：Agent 直接 import
+├── internal/audit/                      ← 修改：AuditEntry 增加 node_id / node_name 欄位
+└── internal/websocket/hub.go            ← 修改：廣播 node.* 事件給前端
+
+deploy/
+├── linux-service-agent.service          ← 新增：Agent systemd unit
+└── agent.example.json                   ← 新增：Agent 設定檔範例
+
+Makefile                                 ← 修改：build-manager / build-agent（linux/amd64 + arm64）targets
 ```
 
-不改動：`internal/systemd`（Agent 端重用 `ServiceManager` interface，零改動）、`internal/websocket/hub.go`（僅新增 `Message` 資料欄位 LastHeartbeat/AgentVersion，hub 邏輯零改動）、`internal/monitor`、`internal/notify`、`internal/token`、`internal/auth`、`internal/middleware`、反向代理。
+### 1.3 internal/agentproto — Wire Protocol
 
-### 1.3 Node Registry（`internal/nodes/registry.go`，決策 4）
-
-**職責**：節點設定的載入與持久化，仿 `internal/token.Store` pattern — 啟動時全量載入記憶體（每次事件零 IO 讀取）→ `Save()` 以 temp + fsync + rename atomic write（0600）。全方法 `sync.RWMutex` 保護。
-
-**Node 資料模型**（決策 4，API 回應不回傳完整 token）：
+Manager 與 Agent 共用的 WS 訊息封包（對應 Tech Decision 決策 1）：
 
 ```go
-// Package nodes implements multi-node agent management (registry, heartbeat,
-// supervisor state machine and the Agent HTTP client) for the Manager side.
-package nodes
+// Package agentproto 定義 Manager ↔ Agent WebSocket 長連線上的訊息合約。
+package agentproto
 
-// ServiceStats 是心跳附帶的服務統計（Aggregate 摘要資料來源，決策 3）。
-type ServiceStats struct {
-	Total  int `json:"total"`
-	Active int `json:"active"`
-	Failed int `json:"failed"`
-}
-
-// Status 是節點狀態字串（決策 3 狀態機輸出）。
-type Status string
+// MessageType 為 WS 訊息類型。
+type MessageType string
 
 const (
-	StatusOnline      Status = "online"       // 🟢 age < 10s
-	StatusDegraded    Status = "degraded"     // 🟡 10s ≤ age < 30s
-	StatusOffline     Status = "offline"      // 🔴 30s ≤ age < 300s
-	StatusLongOffline Status = "long_offline" // ⚫ age ≥ 300s
-	StatusWarning     Status = "warning"      // 🟡 版本不相容（優先判定，不阻斷）
+	TypeRegister      MessageType = "register"       // Agent → Manager
+	TypeRegisterAck   MessageType = "register_ack"   // Manager → Agent
+	TypeHeartbeat     MessageType = "heartbeat"      // Agent → Manager
+	TypeRPCRequest    MessageType = "rpc_request"    // Manager → Agent
+	TypeRPCResponse   MessageType = "rpc_response"   // Agent → Manager
 )
 
-// MaxNodes 是單 Manager 節點數上限（BDD @node-limit）。
+// Envelope 為所有訊息的統一外框。
+type Envelope struct {
+	Type      MessageType `json:"type"`
+	RequestID string      `json:"request_id,omitempty"` // RPC 配對用；register/heartbeat 亦帶以利追蹤
+	Method    string      `json:"method,omitempty"`     // 僅 rpc_request："services.list"、"services.start"…
+	OK        bool        `json:"ok,omitempty"`         // register_ack / rpc_response
+	Payload   json.RawMessage `json:"payload,omitempty"`
+}
+
+// RegisterPayload — Agent 註冊資訊。
+type RegisterPayload struct {
+	NodeName string `json:"node_name"`
+	Hostname string `json:"hostname"`
+	Version  string `json:"version"` // semver，Manager 比對 min_version
+	OS       string `json:"os"`      // e.g. "Ubuntu 22.04"
+}
+
+// RegisterAckPayload — 註冊回應。
+type RegisterAckPayload struct {
+	MinVersion string `json:"min_version"` // e.g. "1.2"
+	Compatible bool   `json:"compatible"`  // false → Manager 顯示 🟡 警告
+}
+
+// HeartbeatPayload — 心跳附帶服務統計摘要（Aggregate Dashboard 資料來源，規則 B8）。
+type HeartbeatPayload struct {
+	ServicesTotal   int `json:"services_total"`
+	ServicesRunning int `json:"services_running"`
+	ServicesFailed  int `json:"services_failed"`
+	CPUPercent      float64 `json:"cpu_percent,omitempty"`     // P2：銜接 #13
+	MemoryPercent   float64 `json:"memory_percent,omitempty"`  // P2
+}
+
+// RPC 方法常數（params/response 對應既有 /api/v1/services* 合約）。
+const (
+	MethodListServices = "services.list"
+	MethodStart        = "services.start"
+	MethodStop         = "services.stop"
+	MethodRestart      = "services.restart"
+	MethodEnable       = "services.enable"
+	MethodDisable      = "services.disable"
+	MethodLogs         = "services.logs"
+	MethodSystemInfo   = "system.info"
+)
+```
+
+### 1.4 internal/noderegistry — 節點註冊表
+
+職責：節點設定的 CRUD、名稱唯一性、50 台上限、`nodes.json` 持久化（atomic write via temp+rename，權限 0600）。並發模型：單一 `sync.RWMutex` 保護 map；寫入 debounce 不需要（CRUD 頻率低），但 **runtime state 一律不落盤**（規則 B8/SYS-REG-10）。
+
+```go
+// Package noderegistry 管理 Agent 節點的設定與持久化。
+package noderegistry
+
+import (
+	"errors"
+	"sync"
+	"time"
+)
+
+// 錯誤語意對應 HTTP 狀態碼（見第 3 節 API 合約）。
+var (
+	ErrDuplicateName = errors.New("node name already exists") // → 409
+	ErrMaxNodes      = errors.New("maximum of 50 nodes")      // → 400（規則 B1）
+	ErrNotFound      = errors.New("node not found")           // → 404
+	ErrInvalidJSON   = errors.New("corrupted nodes.json")     // LoadRegistry 回傳，Manager 報錯退出
+)
+
+// MaxNodes 為單一 Manager 實例支援的最大節點數（規則 B1）。
 const MaxNodes = 50
 
-// Node 是一筆節點設定（決策 4 資料模型）。
+// Node 為節點完整狀態 = 持久化設定 + runtime 即時狀態。
 type Node struct {
-	ID             string      `json:"id"`                          // UUID（crypto/rand）
-	Name           string      `json:"name"`                        // 唯一（註冊時檢查重複 → 409）
-	Address        string      `json:"address"`                     // host:port
-	TLSFingerprint string      `json:"tls_fingerprint,omitempty"`   // SHA-256 指紋（選填，mTLS/自簽 pin）
-	Token          string      `json:"token"`                       // 共享 secret lsm_node_…；API 回應回 masked
-	Notes          string      `json:"notes,omitempty"`
-	Status         Status      `json:"status"`                      // 由 supervisor 更新
-	LastHeartbeat  string      `json:"last_heartbeat,omitempty"`    // RFC3339 UTC
-	AgentVersion   string      `json:"agent_version,omitempty"`
-	Hostname       string      `json:"hostname,omitempty"`
-	OS             string      `json:"os,omitempty"`
-	ServiceStats   ServiceStats `json:"service_stats"`              // 心跳附帶
-	CreatedAt      string      `json:"created_at"`                  // RFC3339 UTC
-	UpdatedAt      string      `json:"updated_at"`
+	// ── 持久化欄位（落盤至 nodes.json）──
+	ID             string `json:"id"`                        // uuid 或自增字串
+	Name           string `json:"name"`                      // 唯一
+	Address        string `json:"address"`                   // host:port，test-connection 直連 GET /health 用
+	TLSFingerprint string `json:"tls_fingerprint,omitempty"` // SHA-256 hex；空 = 僅加密不驗證（決策 3）
+	Token          string `json:"token"`                     // Agent 端驗證 Manager 身分用（檔案 0600）
+	Note           string `json:"note,omitempty"`
+
+	// ── runtime state（不落盤，重啟後由 Agent 重連刷新）──
+	Status          string        `json:"-"` // "online"|"warning"|"offline"|"long_offline"，初始 ""
+	Hostname        string        `json:"-"`
+	AgentVersion    string        `json:"-"`
+	VersionCompat   bool          `json:"-"` // false → 🟡
+	VersionMessage  string        `json:"-"`
+	LastHeartbeat   time.Time     `json:"-"`
+	LastOnlineAt    time.Time     `json:"-"`
+	OfflineSince    time.Time     `json:"-"`
+	OnlineSince     time.Time     `json:"-"`
+	HeartbeatStats  HeartbeatStats `json:"-"` // 最後一次心跳附帶的服務統計
 }
 
-// Registry 管理 nodes.json 的載入/atomic save/CRUD，全以 RWMutex 保護（仿 token.Store）。
+// HeartbeatStats 為心跳附帶的服務統計摘要。
+type HeartbeatStats struct {
+	Total   int     `json:"total"`
+	Running int     `json:"running"`
+	Failed  int     `json:"failed"`
+	CPU     float64 `json:"cpu,omitempty"`
+	Memory  float64 `json:"mem,omitempty"`
+}
+
+// AddRequest / UpdateRequest 為 handler 層傳入的受控欄位子集。
+type AddRequest struct {
+	Name, Address, TLSFingerprint, Token, Note string
+}
+type UpdateRequest struct {
+	Name, Address, TLSFingerprint, Token, Note *string // nil = 不變更
+}
+
+// Registry 為並發安全的節點註冊表。
 type Registry struct {
-	mu       sync.RWMutex
-	filePath string
-	nodes    map[string]*Node // key = ID
-	byName   map[string]string // name → ID（唯一性查詢）
+	mu    sync.RWMutex
+	path  string        // /var/lib/linux-service-manager/nodes.json
+	nodes map[string]*Node
+	now   func() time.Time // 可注入 clock（SYS-REG 測試）
 }
 
-// NewRegistry 建立 Registry（不載入；呼叫端需先 Load）。
-func NewRegistry(filePath string) *Registry { /* TODO */ }
+// LoadRegistry 自 path 載入 nodes.json；檔案不存在視為空 registry；
+// 內容為非法 JSON 時回傳 ErrInvalidJSON（呼叫端報錯退出，不靜默重建）。
+func LoadRegistry(path string) (*Registry, error)
 
-// Load 讀取 nodes.json；檔案不存在 → 空 map（不 crash，仿 token.Store.Load）。
-func (r *Registry) Load() error { /* TODO */ }
+// Add 新增節點；檢查名稱唯一性（ErrDuplicateName）與上限（ErrMaxNodes）；成功後觸發 persist()。
+func (r *Registry) Add(req AddRequest) (*Node, error)
 
-// save 以 temp + fsync + os.Rename atomic write 寫入（0600，仿 token.Store.save）。
-func (r *Registry) save() error { /* TODO */ }
+// Update 更新節點設定（僅持久化欄位）；成功後觸發 persist()。
+func (r *Registry) Update(id string, req UpdateRequest) (*Node, error)
 
-// List 回傳所有節點（副本）。
-func (r *Registry) List() []*Node { /* TODO */ }
+// Remove 移除節點並 persist()。
+func (r *Registry) Remove(id string) error
 
-// Get 依 ID 取得節點；不存在回 nil。
-func (r *Registry) Get(id string) *Node { /* TODO */ }
+// Get / List 讀取節點（含 runtime state 快照）。
+func (r *Registry) Get(id string) (*Node, bool)
+func (r *Registry) List() []Node
 
-// GetByName 依 Name 取得節點（心跳比對用）；不存在回 nil。
-func (r *Registry) GetByName(name string) *Node { /* TODO */ }
+// Count 回傳目前節點數（50 台上限檢查用）。
+func (r *Registry) Count() int
 
-// Count 回傳節點總數（50 上限檢查用）。
-func (r *Registry) Count() int { /* TODO */ }
+// SetRuntimeXXX 由 nodemonitor / nodeproxy 呼叫更新 runtime 欄位，不觸發落盤。
+func (r *Registry) SetRuntimeStatus(id, status string)
+func (r *Registry) ApplyHeartbeat(id string, stats HeartbeatStats, at time.Time)
 
-// Create 建立節點：產生 UUID（crypto/rand）、token（lsm_node_ + 長隨機）、created_at/updated_at（RFC3339 UTC）。
-// 名稱重複 → ErrDuplicateName；Count() ≥ MaxNodes → ErrNodeLimit。成功後 save()。
-func (r *Registry) Create(n *Node) (*Node, error) { /* TODO */ }
-
-// Update 更新節點設定：token 留空表示不變更（決策 5 風險緩解）、updated_at 刷新。成功後 save()。
-func (r *Registry) Update(id string, patch *Node) (*Node, error) { /* TODO */ }
-
-// Delete 移除節點；關聯 Audit Log 保留（audit 模組獨立，不隨節點刪除）。
-func (r *Registry) Delete(id string) error { /* TODO */ }
-
-// SetHeartbeat 更新心跳資訊：last_heartbeat=now、service_stats、agent_version/hostname/os。
-// Status 不在此處修改（由 supervisor 下輪判定，決策 3）；不觸發 save（熱路徑零 IO）。
-func (r *Registry) SetHeartbeat(nodeName string, hb Heartbeat) { /* TODO */ }
-
-// SetStatus 更新狀態（supervisor 呼叫）；狀態變更才 save。
-func (r *Registry) SetStatus(id string, st Status) { /* TODO */ }
-
-// VerifyToken 比對 node_name + Bearer token（心跳 middleware 用）。
-func (r *Registry) VerifyToken(nodeName, token string) bool { /* TODO */ }
-
-// MaskToken 將 token 遮罩為 "lsm_node_****xxxx"（API 回應用，決策 5 風險緩解）。
-func MaskToken(token string) string { /* TODO */ }
+// persist 以 atomic write 寫入 nodes.json：先寫 path+".tmp"（0600）再 os.Rename。
+func (r *Registry) persist() error // TODO: handle write/rename error（log + 保留舊檔）
 ```
 
-**並發模型**：全方法 RWMutex；supervisor ticker 經 `List()` 取得副本後判定，狀態寫入走 `SetStatus`；heartbeat handler 走 `SetHeartbeat` — 兩條寫入路徑共用同一把鎖（`go test -race` 驗證，SYS-13）。
+### 1.5 internal/nodemonitor — 心跳狀態機
 
-### 1.4 心跳接收端（`internal/nodes/heartbeat.go`，決策 3/5）
-
-**職責**：`POST /api/v1/agent/heartbeat` 的 handler 邏輯：解析 body → `VerifyToken(node_name, bearer)` → `SetHeartbeat` → 回 `{"ok":true,"accepted":true}`。**不在此處推播狀態**（狀態由 supervisor 下輪 5s 內判定，防通知風暴）。
+職責：維護節點 `online → offline → long_offline` 狀態轉換、5s ticker 掃描、Manager 啟動寬限期、狀態變更事件發布（推送前端）。**所有閾值可注入**（測試計畫 §6.1 加速環境變數），clock 以 func 注入支援 fake clock 單元測試。
 
 ```go
-// Heartbeat 是 Agent → Manager 的心跳 payload（決策 3）。
-type Heartbeat struct {
-	NodeName       string      `json:"node_name"`
-	AgentVersion   string      `json:"agent_version"`
-	Hostname       string      `json:"hostname"`
-	OS             string      `json:"os"`
-	UptimeSeconds  int64       `json:"uptime_seconds"`
-	Services       ServiceStats `json:"services"` // {total, active, failed} — Aggregate 摘要免代理查詢
-	Timestamp      string      `json:"timestamp"` // RFC3339 UTC
-}
-
-// HeartbeatHandler 是心跳接收端（持有 registry 引用；由 1.9.1 的 HandleAgentHeartbeat 橋接委派）。
-type HeartbeatHandler struct {
-	registry *Registry
-}
-
-// Handle 是 POST /api/v1/agent/heartbeat 的處理邏輯（在 Auth 群組外，token 自證）：
-//  1. 解析 JSON body → 非法 → 400（不更新）
-//  2. bearerToken(r) 與 hb.NodeName 交 Registry.VerifyToken 驗證 → 不符 → 401
-//     （Agent 記錄錯誤並依 backoff 重試，決策 5；BDD @multi-manager 第二 Manager 被拒）
-//  3. Registry.SetHeartbeat(hb.NodeName, hb) — last_heartbeat=now + stats + version（Status 由 supervisor 判定）
-//  4. writeJSON(w, 200, {"ok":true,"accepted":true})
-func (h *HeartbeatHandler) Handle(w http.ResponseWriter, r *http.Request) { /* TODO */ }
-
-// bearerToken 自 Authorization: Bearer <token> 抽取。
-func bearerToken(r *http.Request) string { /* TODO */ }
-```
-
-### 1.5 Supervisor 狀態機（`internal/nodes/supervisor.go`，決策 3）
-
-**職責**：單一 `Supervisor` goroutine 以 5s ticker 掃描所有節點，依 `deriveStatus`（純函式）判定狀態；狀態變更 → registry 更新 + `hub.BroadcastMessage` 推播。**啟動寬限期**（bootTime + 30s 內不推播 node_offline）、**版本相容檢查**（< `AgentMinVersion` → warning）、`OnNodeStateChange` 回呼為 P2 webhook 擴充點（本階段不接入）。
-
-```go
-// AgentMinVersion 是 Manager 支援的最低 Agent 版本（編譯期常數，決策 3）。
-const AgentMinVersion = "1.2.0"
-
-// Supervisor 是心跳狀態機的掃描 goroutine 管理員。
-type Supervisor struct {
-	registry *Registry
-	hub      *websocket.Hub
-	bootTime time.Time          // 啟動寬限期基準
-	done     chan struct{}
-	wg       sync.WaitGroup
-	// OnNodeStateChange 為 P2 擴充點（013 notify 模組整合）；本階段保持 nil。
-	OnNodeStateChange func(nodeID string, state Status)
-}
-
-// NewSupervisor 建立 Supervisor。
-func NewSupervisor(reg *Registry, hub *websocket.Hub) *Supervisor { /* TODO */ }
-
-// Run 以 5s ticker 啟動掃描；Shutdown 時經 done 停止（併入 main 的 graceful shutdown）。
-func (s *Supervisor) Run(ctx context.Context) { /* TODO */ }
-
-// tick 掃描所有節點：deriveStatus → 變更則 SetStatus + 推播。
-// 離線推播受啟動寬限期保護：now < bootTime+30s 時狀態照算但不廣播 node_offline（決策 3/10）。
-func (s *Supervisor) tick() { /* TODO */ }
-
-// deriveStatus 是純函式狀態判定（決策 3 狀態機；核心單元測試點，SYS-20~26）：
-//
-//	if version != "" && semverLess(version, AgentMinVersion) { return warning }  // 🟡 版本警告優先（不阻斷心跳與操作）
-//	if lastHB == "" { return offline }                                           // 從未收到心跳
-//	age := now.Sub(parse(lastHB))
-//	switch {
-//	case age < 10*time.Second:  return online        // 🟢
-//	case age < 30*time.Second:  return degraded      // 🟡 心跳稍有延遲但未逾時
-//	case age < 300*time.Second: return offline       // 🔴 連續 3 次漏拍
-//	default:                    return long_offline  // ⚫ 超過寬限期（Card 移至底部/摺疊）
-//	}
-func deriveStatus(prev, lastHB string, now, boot time.Time, version string) Status { /* TODO */ }
-
-// semverLess 以語意化版本字串比較（"1.0.0" < "1.2.0"）。
-func semverLess(a, b string) bool { /* TODO */ }
-
-// broadcast 依狀態變更方向選擇訊息 type（決策 3 / SYS-32）：
-//
-//	離線方向（degraded/offline/long_offline）→ node_offline（寬限期內抑制）
-//	恢復方向（回到 online）                      → node_online（前端 Toast「已恢復連線」）
-//	其餘狀態變更 / 心跳資訊更新                 → node_status（含 last_heartbeat/agent_version）
-func (s *Supervisor) broadcast(n *Node, next Status, now time.Time) { /* TODO */ }
-```
-
-**狀態變更訊息語意**（決策 3 / 前端 F-NS-05~08）：
-- `node_offline`：節點由可達（online/degraded/warning）轉為不可達（offline/long_offline）→ 前端 Toast「{name} 已離線」+ 狀態更新
-- `node_online`：節點恢復 online → Toast「{name} 已恢復連線」+ 狀態更新（寬限期內恢復不需管理員介入）
-- `node_status`：狀態變更或心跳資訊更新（last_heartbeat/agent_version/service_stats）→ store 更新（不 Toast）
-- `node_removed`：節點被移除 → store 移除該節點（前端無需重整頁面）
-
-### 1.6 AgentClient（`internal/nodes/client.go`，決策 2/5/6）
-
-**職責**：Manager → Agent 的唯一 HTTP 通道。**短連線是應用層語意、傳輸層仍持久** — 共用單一 `http.Client`（Transport 連線池 keep-alive 隱含 TCP 重用）。TLS 設定：預設不信任系統 CA、以節點 `TLSFingerprint` 直接 pin leaf cert SHA-256（自簽憑證第一公民）；mTLS 節點另送 client cert。`Authorization: Bearer {n.Token}` 自動注入。錯誤分類：network → `NodeOfflineError`、ctx deadline → `NodeTimeoutError`。
-
-```go
-// AgentClient 是 Manager 代理至 Agent 的 HTTP client（決策 6 共用抽象）。
-type AgentClient struct {
-	client *http.Client // Transport 含 tls.Config（指紋 pin / client cert）；Timeout 由呼叫方 context 決定
-	// http.Transport 連線池 keep-alive 隱含 TCP 重用 — 「短連線」僅為應用層語意（決策 2）
-}
-
-// NewAgentClient 建立 AgentClient（無節點層 TLS 設定；每個 request 依節點設定覆寫）。
-func NewAgentClient() *AgentClient { /* TODO */ }
-
-// Do 執行代理請求：組 https://{n.Address}{path} → 注入 Bearer token → 依 n 的 TLS 設定
-// （TLSFingerprint pin / ClientCert）建立 Transport → client.Do(req.WithContext(ctx))。
-// 錯誤分類：連線/網路錯誤 → NodeOfflineError（handler 映射 502）；ctx deadline → NodeTimeoutError（handler 映射 504）。
-// 回應 body 以 io.LimitReader 4MB 上限讀取（防慢速/巨量回應掛起，決策 6）。
-func (c *AgentClient) Do(ctx context.Context, n *Node, method, path string, body any) (int, []byte, error) { /* TODO */ }
-
-// NodeOfflineError 表示 Agent 不可達（connection refused / TLS 失敗 / DNS...）。
-type NodeOfflineError struct {
-	Node string // node name
-	Err  error
-}
-func (e *NodeOfflineError) Error() string { return fmt.Sprintf("node %s offline: %v", e.Node, e.Err) }
-func (e *NodeOfflineError) Unwrap() error { return e.Err }
-
-// NodeTimeoutError 表示代理請求逾時（操作 15s / info 10s / health 5s）。
-type NodeTimeoutError struct {
-	Node string
-	Path string
-}
-func (e *NodeTimeoutError) Error() string { return fmt.Sprintf("node %s request timeout: %s", e.Node, e.Path) }
-
-// tlsConfigFor 依節點設定組 tls.Config：
-//   - TLSFingerprint 非空 → InsecureSkipVerify + VerifyPeerCertificate 比對 SHA-256 指紋
-//     （不信任系統 CA、直接 pin，決策 5；自簽憑證情境）
-//   - 完整 mTLS（決策 5 方案 B）→ Certificates 送 client cert
-func tlsConfigFor(n *Node) *tls.Config { /* TODO */ }
-
-// sha256Fingerprint 計算憑證 SHA-256 指紋（hex）。
-func sha256Fingerprint(cert *x509.Certificate) string { /* TODO */ }
-```
-
-### 1.7 Agent 端模組（`internal/agent/`，決策 1/2/5/7）
-
-**職責**：精簡版 JSON API server + 心跳 client。**只共享 `internal/systemd`（interface 零改動）**；不重用 `internal/handler`（與 hub/audit/token/notify/templates 深度耦合），以 chi + `writeJSON` 風格自實作 ~7 個 handler。
-
-#### 1.7.1 config.go — agent.yaml 載入（yaml.v2 direct dependency）
-
-```go
-// Package agent implements the lightweight Agent binary (no embedded frontend):
-// a JSON API server for systemd operations plus a heartbeat client to the Manager.
-package agent
-
-// Config 對應 /etc/linux-service-manager/agent.yaml（決策 7 設定檔）。
-type Config struct {
-	ManagerAddr      string `yaml:"manager_addr"`      // manager.example.com:8443（心跳目標；必填）
-	AuthToken        string `yaml:"auth_token"`        // lsm_node_…（與 Manager registry 同步；必填）
-	NodeName         string `yaml:"node_name"`         // 唯一識別名（與 Manager 比對；必填）
-	HeartbeatInterval string `yaml:"heartbeat_interval"` // 預設 "10s"
-	ListenAddr       string `yaml:"listen_addr"`       // ":8443"（Agent 自身 HTTPS server）
-	TLSCert          string `yaml:"tls_cert"`          // /etc/linux-service-manager/agent.crt
-	TLSKey           string `yaml:"tls_key"`           // /etc/linux-service-manager/agent.key
-	ClientCert       string `yaml:"client_cert"`       // 選填：mTLS 時 Manager 驗證用
-}
-
-// LoadConfig 讀取 yaml 檔並驗證必填欄位（manager_addr / auth_token / node_name 缺一 → 明確錯誤，啟動即失敗）。
-func LoadConfig(path string) (*Config, error) { /* yaml.Unmarshal + 驗證 */ }
-```
-
-#### 1.7.2 server.go — Agent API server
-
-```go
-// Server 組裝 Agent 的 chi router（決策 7 Agent 端點）。
-type Server struct {
-	cfg     *Config
-	systemd systemd.ServiceManager // 既有 interface，零改動（可注入 mock）
-	version string                 // 編譯期注入（-ldflags 或 const）
-	hostname string
-}
-
-// NewServer 建立 Agent server。
-func NewServer(cfg *Config, sm systemd.ServiceManager) *Server { /* TODO */ }
-
-// Routes 回傳 chi Router：
-//
-//	GET  /health                      → 200 {version, hostname, os, uptime}；**不驗證 token**（test-connection 用，決策 7）
-//	r.Group(tokenMiddleware)：        → 全部驗證 Authorization: Bearer == cfg.AuthToken；不符 → 401（決策 5）
-//	  GET  /api/v1/services           → 服務列表（與單機 Manager JSON API 同構 schema）；?q= substring 過濾（決策 9）
-//	  POST /api/v1/services/{name}/start|stop|restart|enable|disable → 操作 + 回傳更新後狀態
-//	  GET  /api/v1/services/{name}/logs?lines= → 純文字 journal
-//	  GET  /api/v1/system/info        → {os, kernel, uptime, cpu, mem, disk}（proxy 的 info 目標，決策 6）
-func (s *Server) Routes() chi.Router { /* TODO */ }
-
-// tokenMiddleware 驗證 Authorization: Bearer == cfg.AuthToken；不符 → 401。
-// mTLS 啟用時（cfg.ClientCert + RequireAndVerifyClientCert）於 TLS 層驗證 Manager 憑證（決策 5 方案 B）。
-func (s *Server) tokenMiddleware(next http.Handler) http.Handler { /* TODO */ }
-
-// RequireTLS 強制 HTTPS：明文 HTTP 連線回 426 Upgrade Required（決策 1）。
-func RequireTLS(next http.Handler) http.Handler { /* TODO */ }
-```
-
-#### 1.7.3 heartbeat.go — 心跳 client（10s ticker + jitter + backoff）
-
-```go
-// HeartbeatClient 是 Agent → Manager 的心跳發送器（決策 2/3）。
-type HeartbeatClient struct {
-	cfg      *Config
-	interval time.Duration // 解析 cfg.HeartbeatInterval（預設 10s）
-	client   *http.Client  // Timeout 5s；Transport 連線池 keep-alive
-	version  string
-	hostname string
-	os       string
-}
-
-// NewHeartbeatClient 建立心跳 client。
-func NewHeartbeatClient(cfg *Config, version string) *HeartbeatClient { /* TODO */ }
-
-// Run 以 ticker 執行心跳循環（每 tick 前 sleep ±2s 隨機 jitter，避免 50 節點對齊拍擊 Manager，決策 2/10）：
-//  1. 組 Heartbeat payload {node_name, agent_version, hostname, os, uptime_seconds, services{total,active,failed}}
-//     — 服務統計由本機 systemd.ListServices() 掃描取得
-//  2. POST https://{manager_addr}/api/v1/agent/heartbeat（Bearer cfg.AuthToken）
-//  3. 失敗（網路/5xx）→ 依 exponential backoff（1s → 2s → 4s → … 上限 30s）延遲下一個 tick；不 panic
-//  4. 401（token 不符，如被第二個 Manager 環境誤配）→ 記錄錯誤並持續重試（決策 5；BDD @multi-manager）
-func (c *HeartbeatClient) Run(ctx context.Context) { /* TODO */ }
-
-// heartbeatOnce 發送單次心跳；成功回 nil。
-func (c *HeartbeatClient) heartbeatOnce(ctx context.Context) error { /* TODO */ }
-```
-
-### 1.8 Agent entry point（`src/cmd/agent/main.go`，決策 7）
-
-**職責**：同 module 第二個 `package main`（`go build ./cmd/agent`）。**不 import** audit/notify/token/websocket/templates — binary 自然精簡（無前端 embed）。
-
-```go
-// Command agent 是精簡版 Linux Service Manager Agent binary。
-// 建置：go build ./cmd/agent（CI 平行建置 agent-linux-amd64 / agent-linux-arm64，決策 7）
-package main
+// Package nodemonitor 實作節點心跳監控狀態機（規則 B2、異常 R6）。
+package nodemonitor
 
 import (
 	"context"
-	"log"
-	"net/http"
+	"time"
 
-	"linux-service-manager/internal/agent"
-	"linux-service-manager/internal/systemd"
+	"linux-service-manager/internal/noderegistry"
 )
 
-const version = "1.2.0" // 與 Manager 的 AgentMinVersion 同步（決策 3）
+// 節點狀態常數（registry.Node.Status 使用）。
+const (
+	StatusOnline      = "online"       // 🟢
+	StatusWarning     = "warning"      // 🟡 版本不相容（連線正常）
+	StatusOffline     = "offline"      // 🔴 WS 斷線或 30s 無心跳
+	StatusLongOffline = "long_offline" // ⚫ 300s 無心跳
+)
 
-func main() {
-	cfg, err := agent.LoadConfig("/etc/linux-service-manager/agent.yaml")
-	if err != nil {
-		log.Fatalf("agent: %v", err) // 缺必填欄位啟動即失敗（SYS-45）
-	}
-
-	sm := &systemd.DefaultManager{} // 既有 ServiceManager 實作，零改動（專案既有用法，無 New() 建構子）
-
-	srv := agent.NewServer(cfg, sm)
-	httpServer := &http.Server{
-		Addr:    cfg.ListenAddr,
-		Handler: agent.RequireTLS(srv.Routes()), // 明文回 426（決策 1）
-		TLSConfig: /* 依 cfg：TLSCert/TLSKey + 選填 mTLS（ClientAuth=RequireAndVerifyClientCert + ClientCAs） */,
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	hb := agent.NewHeartbeatClient(cfg, version)
-	go hb.Run(ctx) // 10s ticker ±2s jitter + backoff
-
-	log.Printf("agent v%s listening on %s (heartbeat → %s)", version, cfg.ListenAddr, cfg.ManagerAddr)
-	log.Fatal(httpServer.ListenAndServeTLS("", "")) // 憑證於 TLSConfig 設定
+// StatusEvent 為發布給前端 hub 的事件（→ node.status_changed）。
+type StatusEvent struct {
+	NodeID   string `json:"id"`
+	NodeName string `json:"name"`
+	Status   string `json:"status"`
+	Message  string `json:"message,omitempty"` // 版本警告文案等
 }
-```
 
-### 1.9 Handler 擴充（`internal/handler/`，決策 5/6/9）
-
-`Handler` struct 新增欄位（沿用 Notify 注入先例）：
-
-```go
-// handler.go（修改）
-type Handler struct {
-	// …既有欄位…
-	Notify *notify.Notifier // webhook 通知模組
-	Nodes  *nodes.Manager   // 多機節點管理模組（registry + supervisor + AgentClient 的門面；由 main.go/測試指派）
-}
-```
-
-**Manager 門面（`internal/nodes/manager.go` 一併提供，供 handler 注入）**：
-
-```go
-// Config 是 nodes 模組初始化參數（main.go 組裝，見 1.11）。
+// Config 所有時間參數皆可注入（生產預設值如下；測試以環境變數覆寫）。
 type Config struct {
-	RegistryPath    string         // /var/lib/linux-service-manager/nodes.json
-	Hub             *websocket.Hub // supervisor 推播用（決策 3）
-	AgentMinVersion string         // 最低相容 Agent 版本（如 "1.2.0"）
+	OfflineThreshold    time.Duration // 30s  (= 3 × 心跳間隔 10s)
+	LongOfflineThreshold time.Duration // 300s
+	ScanTick            time.Duration // 5s
+	StartupGrace        time.Duration // 30s：Manager 啟動後此期間不觸發離線事件（R6）
+	Now                 func() time.Time // 預設 time.Now；測試注入 fake clock
 }
 
-// Manager 是 nodes 模組對外門面：registry / supervisor / AgentClient 組合。
-type Manager struct {
-	Registry   *Registry
-	Supervisor *Supervisor
-	Client     *AgentClient
+// Monitor 為心跳狀態機。publish 由 main 注入（內部呼叫 websocket.Hub 廣播）。
+type Monitor struct {
+	reg     *noderegistry.Registry
+	publish func(StatusEvent)
+	cfg     Config
+	started time.Time // 啟動寬限期基準點
 }
 
-// New 建立 Manager（Load registry → 建立 supervisor/agent client）。
-func New(cfg Config) (*Manager, error) { /* TODO */ }
+// New 建立 Monitor；Run 必須以 goroutine 啟動。
+func New(reg *noderegistry.Registry, publish func(StatusEvent), cfg Config) *Monitor
+
+// Run 每 cfg.ScanTick 掃描一次：
+//   - 啟動寬限期內直接 return（SYS-MON-10/11）
+//   - lastHeartbeat 距今 ≥ OfflineThreshold 且狀態為 online → offline，發布一次事件
+//   - OfflineSince 距今 ≥ LongOfflineThreshold 且狀態為 offline → long_offline，發布一次事件
+//   - 狀態未變化的掃描不重複發布（SYS-MON-09）
+func (m *Monitor) Run(ctx context.Context)
+
+// OnHeartbeat 由 nodeproxy hub 收到 heartbeat 訊息時呼叫：
+// 更新 lastHeartbeat 與服務統計；若原狀態非 online → 回 online 併發布恢復事件。
+func (m *Monitor) OnHeartbeat(nodeID string, stats noderegistry.HeartbeatStats)
+
+// OnConnect 由 nodeproxy hub 收到 register 時呼叫：
+// 記錄 hostname/version、比對 min_version 標記 warning、狀態 → online（任意非 online 皆恢復，SYS-MON-07/08）。
+func (m *Monitor) OnConnect(nodeID string, p agentproto.RegisterPayload, minVersion string)
+
+// OnDisconnect 由 nodeproxy hub 於 WS 關閉時呼叫：立即標示 offline（決策 2 雙軌制）。
+func (m *Monitor) OnDisconnect(nodeID string)
 ```
 
-#### 1.9.1 node_handler.go — 節點層 handler（9 個，含心跳接收橋接）
+### 1.6 internal/nodeproxy — WS Hub、RPC 轉發、TLS Pinning、搜尋
+
+職責：(1) 維護 nodeID → Agent WS 連線的 hub；(2) 提供 `Call()` 以 request-id ↔ pending map 做 WS RPC；(3) 逾時策略：操作 15s／查詢 10s；(4) per (node, service, action) singleflight → 409；(5) 跨節點搜尋 errgroup 總逾時 10s partial results；(6) TLS 指紋 pinning。
+
+#### 1.6.1 Agent 連線 Hub（`hub.go`）
 
 ```go
-// HandleAgentHeartbeat — POST /api/v1/agent/heartbeat（Auth 群組外，D-8）
-// 橋接 1.4 的 HeartbeatHandler：解析 payload → VerifyToken → SetHeartbeat →
-// 200 {"ok":true,"accepted":true}；token 不符 401、非法 JSON 400。
-func (h *Handler) HandleAgentHeartbeat(w http.ResponseWriter, r *http.Request) { /* TODO: 委派 internal/nodes 心跳接收邏輯（1.4） */ }
+// Package nodeproxy 管理 Manager ↔ Agent 的 WS 連線與 RPC 轉發（決策 6）。
+package nodeproxy
 
-// HandleListNodes — GET /api/v1/nodes
-// 200 {data: [Node]}：Token 回 masked（MaskToken）；Status/LastHeartbeat/ServiceStats 完整。
-func (h *Handler) HandleListNodes(w http.ResponseWriter, r *http.Request) { /* TODO */ }
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"sync"
+	"time"
 
-// HandleGetNode — GET /api/v1/nodes/{id}
-// 200 {data: Node}；不存在 → 404 {"error":"node not found"}。
-func (h *Handler) HandleGetNode(w http.ResponseWriter, r *http.Request) { /* TODO */ }
+	"linux-service-manager/internal/agentproto"
+)
 
-// HandleCreateNode — POST /api/v1/nodes
-// 驗證（validateNodePayload）：name/address 必填、address 格式 host:port、token 與 tls_fingerprint 至少填其一
-// （皆空 → 400，決策 5）；名稱重複 → 409（BDD @duplicate）；Count()≥50 → 400/409（BDD @node-limit）。
-// 註冊後對位址發一次健康檢查（GET /health，5s）：可達 → Status=online（初始，BDD「立即上線」）
-// + 第一筆 last_heartbeat=now（supervisor 後續仍依心跳重新判定，防初始狀態漂移）；
-// 不可達 → 節點仍儲存、Status=offline（BDD「位址不可達仍儲存但標示離線」）。
-// 200/201 {data: Node} + audit ActionNodeCreate。
-func (h *Handler) HandleCreateNode(w http.ResponseWriter, r *http.Request) { /* TODO */ }
+// ErrNodeOffline / ErrInProgress / ErrTimeout 分別對應 503 / 409 / 504 語意。
+var (
+	ErrNodeOffline = errors.New("node_offline")
+	ErrInProgress  = errors.New("operation_in_progress")
+	ErrTimeout     = errors.New("rpc_timeout")
+)
 
-// HandleUpdateNode — PUT /api/v1/nodes/{id}
-// 同驗證規則；token 留空 → 保留原值（編輯不回傳 token，決策 5）；404 不存在；
-// 200 {data: Node} + audit ActionNodeUpdate。
-func (h *Handler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) { /* TODO */ }
+// Timeout presets（可由環境變數覆寫，測試計畫 §6.1）。
+const (
+	DefaultActionTimeout = 15 * time.Second // MANAGER_RPC_TIMEOUT_ACTION
+	DefaultQueryTimeout  = 10 * time.Second // MANAGER_RPC_TIMEOUT_QUERY
+	DefaultReadDeadline  = 35 * time.Second // MANAGER_WS_READ_DEADLINE（半開連線兜底）
+)
 
-// HandleDeleteNode — DELETE /api/v1/nodes/{id}
-// 200 {message:"節點已移除"}；404；關聯 Audit Log 保留（BDD @data）+ audit ActionNodeDelete。
-func (h *Handler) HandleDeleteNode(w http.ResponseWriter, r *http.Request) { /* TODO */ }
+// Hub 持有所有已連線 Agent。
+type Hub struct {
+	mu    sync.RWMutex
+	conns map[string]*agentConn // key: nodeID
 
-// HandleTestConnection — POST /api/v1/nodes/test-connection
-// body {address, tls_fingerprint, token}（決策 6：Agent GET /health，5s 逾時，帶入表單位址/憑證即時驗證）。
-// 成功 → 200 {version, hostname, os, uptime}（前端顯示「連線成功 — Agent v1.2.3 @ web-server-01 (Ubuntu 22.04)」）；
-// connection refused / TLS 驗證失敗 → 502（body 含具體原因）；逾時 → 504。
-// + audit ActionNodeTestConnection。
-func (h *Handler) HandleTestConnection(w http.ResponseWriter, r *http.Request) { /* TODO */ }
+	pendingMu sync.Mutex
+	pending   map[string]chan agentproto.Envelope // request_id → response chan
 
-// HandleNodesSummary — GET /api/v1/nodes/summary
-// **零網路請求**（決策 3/9）：O(50) 記憶體掃描聚合各節點最後心跳的 ServiceStats。
-// 200 {"data": {total_nodes, online, degraded, offline, long_offline, warning, total_services, active_services, failed_services}}
-// （與 3.2 #8 九欄位合約一致；前端 getNodesSummary 解包 data.data）。
-// 統計語意：online 嚴格計 status==online；degraded/warning 獨立欄位；前端「線上台數」= online、「離線台數」= offline+long_offline。
-func (h *Handler) HandleNodesSummary(w http.ResponseWriter, r *http.Request) { /* TODO */ }
+	inflightMu sync.Mutex
+	inflight   map[inflightKey]struct{} // singleflight（規則 B4）
 
-// HandleAgentDownload — GET /api/v1/agents/download?arch=amd64|arm64
-// 串流回傳 go:embed 的 Agent binary（application/octet-stream + Content-Disposition agent-linux-<arch>）；
-// arch 不支援 → 400/404。
-func (h *Handler) HandleAgentDownload(w http.ResponseWriter, r *http.Request) { /* TODO */ }
+	// 回呼，由 main 注入
+	OnRegister   func(nodeID string, p agentproto.RegisterPayload)
+	OnHeartbeat  func(nodeID string, stats noderegistry.HeartbeatStats)
+	OnDisconnect func(nodeID string)
 
-// NodePayload 是節點建立/更新的 request body（決策 4/5；與前端 types/node.ts 同構）。
-// 驗證：name/address 必填、address 為 host:port；token 與 tls_fingerprint 至少填其一（皆空 → 400）；
-// PUT 時 token 留空表示不變更（決策 5 風險緩解）。
-type NodePayload struct {
-	Name           string `json:"name"`
-	Address        string `json:"address"`
-	TLSFingerprint string `json:"tls_fingerprint"`
-	Token          string `json:"token"`
-	Notes          string `json:"notes"`
+	upgrader websocket.Upgrader
+	tlsCfg   *tls.Config
 }
 
-// validateNodePayload 驗證 NodePayload（name/address 必填、address host:port、token 或 fingerprint 至少其一）。
-func validateNodePayload(p *NodePayload) string { /* TODO */ }
+type inflightKey struct{ NodeID, Service, Action string }
+
+// ServeWS 為 GET /api/v1/agent/ws handler：
+//  1. 強制 TLS（明文 ws:// 拒絕升級，SYS-TLS-05）
+//  2. 驗證 query `?token=`（反向認證：Agent 以設定檔 token 驗證 Manager，S37/R7）
+//  3. Upgrade 後第一則訊息必為 register；比對 node_name 對應 registry 節點
+//  4. 同一 node_name 已有連線 → 拒絕第二條（模擬「第二個 Manager」被 Agent 端拒絕的鏡像保護）
+//  5. 進入 read loop：dispatch heartbeat → OnHeartbeat、rpc_response → pending chan；
+//     SetReadDeadline(DefaultReadDeadline) + PongHandler 兜底半開連線
+//  6. 連線關閉 → 清空該節點所有 pending（SYS-PF-09）→ OnDisconnect
+func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request)
+
+// Send 向指定節點送出 envelope；離線回 ErrNodeOffline。
+func (h *Hub) Send(nodeID string, env agentproto.Envelope) error
 ```
 
-#### 1.9.2 node_proxy_handler.go — 代理 handler（4 類）
+#### 1.6.2 RPC 轉發與 Singleflight（`rpc.go`）
 
 ```go
-// proxyNode 共用流程：registry lookup（404）→ 離線檢查（502）→ 組 Agent URL → AgentClient.Do(ctx, …)
-// → 錯誤映射（NodeOfflineError→502 {"error":"node offline"} / NodeTimeoutError→504）→ 回應轉寫
-// （status/body 原樣，Agent 4xx/5xx 不吞錯，決策 6）→ audit（含 node_id/node_name）。
-// per-route context timeout：操作/logs 15s、info 10s（決策 6）。
-func (h *Handler) proxyNode(w http.ResponseWriter, r *http.Request, agentPath string, timeout time.Duration, auditAction audit.Action) { /* TODO */ }
+// Call 執行一次 WS RPC：產生 uuid request_id → 註冊 pending chan → 送出 rpc_request
+// → 等待 rpc_response 或 ctx/timeout 到期。
+//   - 節點離線：不送訊息立即回 ErrNodeOffline（SYS-PF-04）
+//   - 同 (node, service, action) 已有 in-flight 操作：回 ErrInProgress（→ 409，SYS-PF-05）
+//   - 不同節點、同節點不同服務：不受影響（SYS-PF-06/07）
+//   - timeout 到期：清理 pending map，回 ErrTimeout（SYS-PF-02/03）
+func (h *Hub) Call(ctx context.Context, nodeID, method string, params, out any, timeout time.Duration) error
 
-// HandleNodeServices — GET /api/v1/nodes/{id}/services → 代理 GET /api/v1/services（15s）
-// 轉寫 Agent 原樣 schema（與單機 Dashboard 相同佈局，前端零適配）。
-func (h *Handler) HandleNodeServices(w http.ResponseWriter, r *http.Request) { /* TODO */ }
-
-// HandleNodeServiceStart — POST /api/v1/nodes/{id}/services/{name}/start（…/stop|restart|enable|disable 同型）
-// 代理同 path（15s）；audit action=start/stop/restart/enable/disable + node_id + node_name。
-func (h *Handler) HandleNodeServiceStart(w http.ResponseWriter, r *http.Request) { /* TODO */ }
-func (h *Handler) HandleNodeServiceStop(w http.ResponseWriter, r *http.Request)    { /* TODO */ }
-func (h *Handler) HandleNodeServiceRestart(w http.ResponseWriter, r *http.Request) { /* TODO */ }
-func (h *Handler) HandleNodeServiceEnable(w http.ResponseWriter, r *http.Request)  { /* TODO */ }
-func (h *Handler) HandleNodeServiceDisable(w http.ResponseWriter, r *http.Request) { /* TODO */ }
-
-// HandleNodeServiceLogs — GET /api/v1/nodes/{id}/services/{name}/logs?lines= → 代理同 path（15s）
-// 純文字轉寫（text/plain）。
-func (h *Handler) HandleNodeServiceLogs(w http.ResponseWriter, r *http.Request) { /* TODO */ }
-
-// HandleNodeInfo — GET /api/v1/nodes/{id}/info → 代理 GET /api/v1/system/info（10s）
-// 200 轉寫 {os, kernel, uptime, cpu, mem, disk}。
-func (h *Handler) HandleNodeInfo(w http.ResponseWriter, r *http.Request) { /* TODO */ }
+// 便利方法：逾時 preset 包裝
+func (h *Hub) CallAction(ctx context.Context, nodeID, method, service string) error // 15s
+func (h *Hub) CallQuery(ctx context.Context, nodeID, method string, params, out any) error // 10s
 ```
 
-#### 1.9.3 search_handler.go — 跨節點搜尋 fan-out（決策 9）
+#### 1.6.3 跨節點搜尋（`search.go`）
+
+> ⛔ REMOVED（2025-08-25）：隨跨節點搜尋移出功能範圍，本節不實作；保留骨架供日後重新啟用參考。
 
 ```go
-// maxSearchConcurrency 是 fan-out 並行上限（semaphore，決策 9）。
-const maxSearchConcurrency = 10
-
-// searchTimeout 是跨節點搜尋總預算（context，BDD @edge-case @timeout）。
-const searchTimeout = 10 * time.Second
-
-// SearchResultItem 是單一匹配結果。
-type SearchResultItem struct {
+// SearchResultHit 為單筆搜尋結果（S24）。
+type SearchResultHit struct {
 	NodeID   string `json:"node_id"`
 	NodeName string `json:"node_name"`
 	Service  string `json:"service"`
-	Active   string `json:"active"`
-	Sub      string `json:"sub"`
+	Status   string `json:"status"`
 }
 
-// FailedNode 是查詢失敗的節點（部分失敗語意，決策 9）。
-type FailedNode struct {
-	NodeID   string `json:"node_id"`
-	NodeName string `json:"node_name"`
-	Reason   string `json:"reason"` // offline / timeout / error
+// UnreachableNode 為無法查詢的節點（S33/R4：不阻塞其他結果）。
+type UnreachableNode struct {
+	NodeID      string `json:"node_id"`
+	NodeName    string `json:"node_name"`
+	Unreachable bool   `json:"unreachable"` // true
+	Reason      string `json:"reason"`      // "offline" | "timeout"
 }
 
-// HandleSearchServices — GET /api/v1/nodes/services/search?q=
-// 流程（決策 9）：
-//  1. q 空白 → 400（缺少查詢字串）
-//  2. 僅取 status ∈ {online, degraded, warning} 的節點（離線節點不查詢、直接列 failed_nodes reason=offline）
-//  3. goroutine fan-out：每節點一 goroutine、semaphore 上限 10、總 context 10s
-//     — 節點內匹配由 Agent 端做（GET /api/v1/services?q= substring 過濾），Manager 只彙總
-//  4. 結果經 channel 收集；單節點失敗（offline/timeout）不阻塞其他節點（部分結果先回）
-//  5. 200 {results:[...], failed_nodes:[...]}
-func (h *Handler) HandleSearchServices(w http.ResponseWriter, r *http.Request) { /* TODO */ }
+// SearchResponse 為 GET /api/v1/nodes/services/search 的回應本體。
+type SearchResponse struct {
+	Results    []SearchResultHit `json:"results"`
+	Unreachable []UnreachableNode `json:"unreachable"`
+}
+
+// SearchServices 向所有線上節點並行查詢：
+// errgroup + ctx 總逾時 DefaultQueryTimeout(10s)；
+// 各 goroutine 收齊即回（先到的結果先進 results）；
+// 離線節點直接列入 Unreachable，慢節點逾時列入 Unreachable(reason=timeout)；
+// context cancel 傳播至所有 goroutine，無洩漏（SYS-SRCH-05）。
+func (h *Hub) SearchServices(ctx context.Context, q string) SearchResponse
 ```
 
-### 1.10 audit 擴充（決策 4 整合）
+#### 1.6.4 TLS 指紋 Pinning（`tls.go`）
 
 ```go
-// audit.go（修改）— Entry 新增節點來源欄位（omitempty，向後相容，決策風險緩解）：
-type Entry struct {
-	Timestamp string `json:"timestamp"`
-	Username  string `json:"username"`
-	SourceIP  string `json:"source_ip"`
-	Action    Action `json:"action"`
-	Target    string `json:"target"`
-	Result    Result `json:"result"`
-	Detail    string `json:"detail"`
-	// 014 新增：跨節點操作記錄節點來源；單機紀錄無此欄位 → 讀取/匯出向後相容
-	NodeID   string `json:"node_id,omitempty"`
-	NodeName string `json:"node_name,omitempty"`
-}
+// DialTLS 建立 Agent 位址的 TLS 連線（test-connection 直連 /health 用，決策 3）：
+//   - tls.Config{InsecureSkipVerify: true} + VerifyPeerCertificate 自行比對
+//     SHA-256(SPKI/Cert.Raw) 與 fingerprint 參數
+//   - fingerprint 為空 → 僅加密不驗證（SYS-TLS-03）
+//   - 不符 → 錯誤含 "certificate fingerprint mismatch"（SYS-TLS-02）
+//   - NotAfter < now → 錯誤分類 "certificate expired"（SYS-TLS-04）
+func DialTLS(ctx context.Context, addr, fingerprint string) (*http.Client, error)
 
-const (
-	ActionNodeCreate          Action = "node_create"
-	ActionNodeUpdate          Action = "node_update"
-	ActionNodeDelete          Action = "node_delete"
-	ActionNodeTestConnection  Action = "node_test_connection"
-)
-
-var actionDisplayLabels = map[Action]string{
-	// …既有項目…
-	ActionNodeCreate:         "新增節點",
-	ActionNodeUpdate:         "更新節點",
-	ActionNodeDelete:         "移除節點",
-	ActionNodeTestConnection: "測試節點連線",
-}
-// validActions 同步加入 4 個新 Action
+// FingerprintOf 計算憑證 SHA-256 指紋（hex，冒號分隔顯示格式由前端處理）。
+func FingerprintOf(certDER []byte) string
 ```
 
-### 1.11 main.go 整合（決策 3/6/7）
+### 1.7 internal/agentclient — Agent 側 WS 客戶端
+
+職貝：outbound-only 撥號至 Manager `/api/v1/agent/ws`、exponential backoff 重連、register → register_ack → heartbeat ticker → rpc_request dispatch（呼叫共用 `internal/systemd` 模組執行）。
 
 ```go
-// 初始化（hub.Run 前）
-nodeMod, err := nodes.New(nodes.Config{
-	RegistryPath:  "/var/lib/linux-service-manager/nodes.json",
-	Hub:           hub,
-	AgentMinVersion: "1.2.0",
+// Package agentclient 實作 Agent 對 Manager 的 WS 長連線客戶端（決策 1/4）。
+package agentclient
+
+// Config 由 cmd/agent 自設定檔載入。
+type Config struct {
+	ManagerAddr       string        // manager.example.com:8443
+	Token             string        // auth_token：放於 WS upgrade URL query，Manager 驗證
+	NodeName          string        // node_name
+	HeartbeatInterval time.Duration // 預設 10s；AGENT_HEARTBEAT_INTERVAL 可覆寫
+	TLSFingerprint    string        // Agent 端驗證 Manager 憑證指紋（可選）
+	ReadDeadline      time.Duration // 預設 35s（SYS-AC-04 半開連線兜底）
+}
+
+// ServiceController 抽象 systemd 操作（由 internal/systemd 實作，方便 mock）。
+type ServiceController interface {
+	List() ([]Service, error)
+	Start(name string) error // Stop / Restart / Enable / Disable 同形
+	Logs(name string, opts LogQuery) (string, error)
+	SystemInfo() (SystemInfo, error)
+}
+
+// Client 為 Agent 主循環。
+type Client struct {
+	cfg Config
+	svc ServiceController
+}
+
+// New 建立 Client。
+func New(cfg Config, svc ServiceController) *Client
+
+// Run 為阻塞主循環：
+//  1. dial wss://{ManagerAddr}/api/v1/agent/ws?token={Token}（TLS + 可選指紋 pinning）
+//  2. 連上後立即發送 register（node_name/hostname/version/os，SYS-AC-01）
+//  3. 等 register_ack；compatible=false → log 警告並持續運行（🟡 由 Manager 顯示，SYS-AC-05）
+//  4. heartbeat ticker（cfg.HeartbeatInterval）發送服務統計（SYS-AC-02）
+//  5. read loop dispatch rpc_request → ServiceController 對應方法 → 回 rpc_response
+//     （心跳訊息走獨立高優先 send queue，避免被大量日誌塞住——風險緩解）
+//  6. 斷線 → exponential backoff 重撥（1s 起 ×2，上限 60s；Manager 恢復後自動連上，SYS-AC-03/04）
+func (c *Client) Run(ctx context.Context) error
+```
+
+### 1.8 internal/agentapi — Agent 精簡 JSON API
+
+職責：提供與 Manager `/api/v1/services*` 相同合約的本機 JSON API（**無前端、無 audit UI**），滿足「Agent 離線時本地操作仍可直接存取 Agent」（驗收清單—Agent 端）。Token header 驗證來自直連請求。
+
+```go
+// Package agentapi 組裝 Agent 本機 HTTP API。
+package agentapi
+
+// NewRouter 組裝 chi router：
+//
+//	r.Get("/health", handleHealth)              // 回 {version, hostname, os}（test-connection 目標）
+//	r.Route("/api/v1", func(r chi.Router) {
+//	    r.Use(TokenAuth(cfg.Token))             // Bearer token 驗證
+//	    r.Get("/services", ...)
+//	    r.Post("/services/{name}/start|stop|restart|enable|disable", ...)  // 與 Manager 同合約
+//	    r.Get("/services/{name}/logs", ...)
+//	    r.Get("/info", ...)
+//	})
+//
+// 不 import templates/embed —— binary 保持 < 8MB（決策 4）。
+func NewRouter(svc agentclient.ServiceController, version string) http.Handler
+```
+
+### 1.9 handler/nodes_handler.go — REST Routes
+
+```go
+// Package handler — nodes_handler.go
+// NodesHandler 處理 /api/v1/nodes/* 全部端點（Interaction Flow 第 7 節驗收清單）。
+type NodesHandler struct {
+	reg       *noderegistry.Registry
+	agentHub  *nodeproxy.Hub   // Agent WS hub（RPC 轉發）
+	mon       *nodemonitor.Monitor
+	pushHub   *websocket.Hub   // 前端推播 hub（既有）
+	audit     *audit.Logger
+	binaryDir string           // Agent binary 存放目錄
+}
+
+// HandleCreateNode   POST   /api/v1/nodes                          （201/400/409，S13/S38/S40/S41）
+// HandleListNodes    GET    /api/v1/nodes                          （Background/S01）
+// HandleGetNode      GET    /api/v1/nodes/{id}                     （詳情面板 S22/S28）
+// HandleUpdateNode   PUT    /api/v1/nodes/{id}                     （編輯設定）
+// HandleDeleteNode   DELETE /api/v1/nodes/{id}                     （S23；成功後廣播 node.registry_changed）
+// HandleReconnect    POST   /api/v1/nodes/{id}/reconnect           （「重新連線」按鈕，S22）
+// HandleTestConnection POST /api/v1/nodes/test-connection          （S11/S12/S34；DialTLS 直連 GET https://{addr}/health）
+// HandleSearch       GET    /api/v1/nodes/services/search?q=       （S24–S27/S33；hub.SearchServices）
+// HandleSummary      GET    /api/v1/nodes/summary                  （S01 匯總統計列；來源＝各節點最後心跳統計）
+// HandleNodeServices GET    /api/v1/nodes/{id}/services            （代理 services.list，S03/S45）
+// HandleNodeAction   POST   /api/v1/nodes/{id}/services/{name}/{action}
+//                           action ∈ start|stop|restart|enable|disable
+//                           （S06；15s 逾時；409 in-progress；audit 記錄 node_id/node_name，B10）
+// HandleNodeLogs     GET    /api/v1/nodes/{id}/services/{name}/logs （S07；代理查詢）
+// HandleNodeInfo     GET    /api/v1/nodes/{id}/info                （S28；代理 system.info）
+// HandleAgentBinary  GET    /api/v1/nodes/agent-binary?arch=amd64|arm64 （S16；Content-Disposition 附檔名）
+
+// HandleAgentWS GET /api/v1/agent/ws — 委派 nodeproxy.Hub.ServeWS（見 1.6.1）。
+```
+
+全部 route 掛在既有 session auth middleware 之後（HDL-NODE-08 未登入 → 401）。`cmd/manager/main.go` 註冊：
+
+```go
+nh := &handler.NodesHandler{Reg: reg, AgentHub: agentHub, Mon: mon, PushHub: wsHub, Audit: auditLog, BinaryDir: binDir}
+r.Route("/api/v1/nodes", func(r chi.Router) {
+	r.Use(authMiddleware)
+	r.Post("/", nh.HandleCreateNode)
+	r.Post("/test-connection", nh.HandleTestConnection)
+	r.Get("/summary", nh.HandleSummary) // ⛔ 不實作 /services/search（2025-08-25 REMOVED）
+	r.Get("/agent-binary", nh.HandleAgentBinary)
+	r.Get("/{id}", nh.HandleGetNode)
+	r.Put("/{id}", nh.HandleUpdateNode)
+	r.Delete("/{id}", nh.HandleDeleteNode)
+	r.Post("/{id}/reconnect", nh.HandleReconnect)
+	r.Get("/{id}/services", nh.HandleNodeServices)
+	r.Post("/{id}/services/{name}/{action}", nh.HandleNodeAction)
+	r.Get("/{id}/services/{name}/logs", nh.HandleNodeLogs)
+	r.Get("/{id}/info", nh.HandleNodeInfo)
 })
-if err != nil {
-	log.Fatalf("failed to load node registry: %v", err)
+r.Get("/api/v1/agent/ws", agentHub.ServeWS) // 不走 session auth（Agent 以 token 驗證）
+```
+
+Manager 啟動流程（cmd/manager/main.go）：LoadRegistry → 若 nodes.json 損毀報錯退出（SYS-REG-11）→ 起 Monitor.Run → **逐一對 registry 節點嘗試重連/等待 inbound**（outbound 模式下由 Agent 重連；啟動寬限期 30s 內 Monitor 不發離線事件，S36/R6）。
+
+### 1.10 audit / websocket hub 擴充
+
+```go
+// internal/audit/audit.go — AuditEntry 新增欄位（規則 B10）：
+type AuditEntry struct {
+	// …既有欄位…
+	NodeID   string `json:"node_id,omitempty"`   // 本機操作留空
+	NodeName string `json:"node_name,omitempty"` // e.g. "web-server-01"
 }
-go nodeMod.Supervisor.Run(ctx) // 5s ticker 狀態機
-h.Nodes = nodeMod
 
-// 路由 — 心跳在 AuthMiddlewareComposite 群組外（以節點 token 自證，D-8）：
-r.Post("/api/v1/agent/heartbeat", h.HandleAgentHeartbeat)
-
-// 群組內（AuthMiddlewareComposite）— ⚠️ chi 路由註冊順序：靜態段（summary/search/test-connection）須先於 {id} 參數段：
-r.Get("/api/v1/nodes", h.HandleListNodes)
-r.Post("/api/v1/nodes", h.HandleCreateNode)
-r.Get("/api/v1/nodes/summary", h.HandleNodesSummary)                    // 先於 /nodes/{id}
-r.Get("/api/v1/nodes/services/search", h.HandleSearchServices)          // 先於 /nodes/{id}
-r.Post("/api/v1/nodes/test-connection", h.HandleTestConnection)
-r.Get("/api/v1/nodes/{id}", h.HandleGetNode)
-r.Put("/api/v1/nodes/{id}", h.HandleUpdateNode)
-r.Delete("/api/v1/nodes/{id}", h.HandleDeleteNode)
-r.Get("/api/v1/nodes/{id}/services", h.HandleNodeServices)
-r.Post("/api/v1/nodes/{id}/services/{name}/start", h.HandleNodeServiceStart)
-r.Post("/api/v1/nodes/{id}/services/{name}/stop", h.HandleNodeServiceStop)
-r.Post("/api/v1/nodes/{id}/services/{name}/restart", h.HandleNodeServiceRestart)
-r.Post("/api/v1/nodes/{id}/services/{name}/enable", h.HandleNodeServiceEnable)
-r.Post("/api/v1/nodes/{id}/services/{name}/disable", h.HandleNodeServiceDisable)
-r.Get("/api/v1/nodes/{id}/services/{name}/logs", h.HandleNodeServiceLogs)
-r.Get("/api/v1/nodes/{id}/info", h.HandleNodeInfo)
-r.Get("/api/v1/agents/download", h.HandleAgentDownload)
-
-// Agent binary embed（決策 7：CI 建置後嵌入 Manager binary）
-//go:embed agents/agent-linux-amd64 agents/agent-linux-arm64
-var agentBinaries embed.FS // 或放 /var/lib/linux-service-manager/agents/ 由 download handler 讀取
+// internal/websocket/hub.go — 廣播訊息新增兩種 type（既有 Message.Type 欄位擴充）：
+//   node.status_changed  : { id, name, status, message }        （S18/S20/S39/S50）
+//   node.registry_changed: { action: "added"|"removed", node }  （S13/S23/S51）
+// 廣播時機：Monitor.publish 與 NodesHandler CRUD 成功後呼叫 hub.Broadcast。
 ```
 
 ---
@@ -712,1377 +603,872 @@ var agentBinaries embed.FS // 或放 /var/lib/linux-service-manager/agents/ 由 
 
 ```
 frontend/src/
-├── types/
-│   └── node.ts                            ← 新增：Node / NodeStatus / NodeSummary / ServiceStats / 搜尋結果型別
 ├── api/
-│   └── client.ts                          ← 修改：13 個節點 API 函式 + service functions 支援 nodeId 前綴
-├── stores/
-│   └── nodes.ts                           ← 新增：nodes / activeNodeId / summary + WS 事件應用
+│   └── client.ts                        ← 修改：新增 nodes API 函式群
 ├── composables/
-│   └── useWebSocket.ts                    ← 修改：NodeStatusMessage 等 4 型 + WsMessage union 成員
+│   └── useWebSocket.ts                  ← 修改：新增 node.* 訊息型別與處理
+├── stores/
+│   └── node.ts                          ← 新增：節點 store（列表/摘要/當前節點/搜尋）
+├── types/
+│   └── node.ts                          ← 新增：ManagedNode / NodeStatus 型別
 ├── components/
-│   ├── NodeCard.vue                       ← 新增：Aggregate 網格卡片（4 色狀態燈 / 服務統計 / 最後心跳 / 詳情）
-│   ├── NodeSwitcher.vue                   ← 新增：Header 節點下拉（狀態燈 + 「所有節點」）
-│   ├── NodeFormModal.vue                  ← 新增：新增/編輯節點表單（測試連線 / 註冊 / 取消）
-│   ├── NodeDetailPanel.vue                ← 新增：節點詳情側面板（線上資訊 / 離線診斷 / 版本警告）
-│   └── AppHeader.vue                      ← 修改：「Node Management」導覽連結
+│   ├── NodeCard.vue                     ← 新增：節點卡片（狀態燈/摘要/相對時間/版本警告 Tooltip）
+│   ├── NodeSummaryBar.vue               ← 新增：頂部匯總統計列（複用 StatsBar 樣式模式）
+│   ├── NodeSwitcher.vue                 ← 新增：Header 節點下拉選單 + 「所有節點」返回鈕
+│   ├── NodeFormModal.vue                ← 新增：新增/編輯節點 Modal（含測試連線）
+│   ├── NodeDetailPanel.vue              ← 新增：節點詳情側面板（含離線資訊面板模式）
+│   └── NodeSearchResults.vue            ← 新增：跨節點搜尋結果列表
 ├── views/
-│   ├── AggregateDashboardView.vue         ← 新增：/（StatsBar + NodeCard 網格 + 跨節點搜尋 + 空狀態）
-│   ├── NodeManagementView.vue             ← 新增：/nodes（列表表格 + NodeFormModal + ConfirmModal + 下載 Agent）
-│   └── DashboardView.vue                  ← 修改：node-aware（?node 前綴 / 離線禁用 + Banner / ?service 初始展開）
-├── router/
-│   └── index.ts                           ← 修改：/ 改掛 Aggregate、新增 /nodes
-└── composables/
-    └── useI18n.ts                         ← 修改：nav.nodes + 節點頁翻譯（zh-TW/en）
+│   ├── DashboardView.vue                ← 修改：依 ?node= query 分流 Aggregate / 單節點視圖
+│   └── NodeManagementView.vue           ← 新增：/nodes 管理頁面
+└── router/index.ts                      ← 修改：新增 /nodes 路由
 ```
-
-零新依賴（axios / vue / pinia 既有）。
 
 ### 2.2 types/node.ts
 
 ```typescript
-// frontend/src/types/node.ts
-export type NodeStatus = 'online' | 'degraded' | 'offline' | 'long_offline' | 'warning'
+export type NodeStatus = 'online' | 'warning' | 'offline' | 'long_offline'
 
-export interface ServiceStats {
-  total: number
-  active: number
-  failed: number
-}
-
-export interface Node {
+export interface ManagedNode {
   id: string
   name: string
+  hostname: string
   address: string
-  tls_fingerprint?: string
-  token?: string            // API 回傳 masked（lsm_node_****xxxx）；編輯時留空表示不變更
-  notes?: string
   status: NodeStatus
-  last_heartbeat?: string   // RFC3339 UTC
-  agent_version?: string
-  hostname?: string
-  os?: string
-  service_stats: ServiceStats
-  created_at: string
-  updated_at: string
+  version: string
+  versionCompatible: boolean
+  versionMessage: string
+  lastHeartbeat: string | null      // ISO timestamp
+  lastOnlineAt: string | null
+  onlineSince: string | null
+  servicesTotal: number
+  servicesRunning: number
+  servicesFailed: number
+  cpuPercent?: number
+  memoryPercent?: number
+  note?: string
 }
 
 export interface NodeSummary {
-  total_nodes: number
-  online: number
-  degraded: number
-  offline: number
-  long_offline: number
-  warning: number
-  total_services: number
-  active_services: number
-  failed_services: number
+  totalNodes: number; online: number; offline: number
+  servicesTotal: number; running: number; failed: number
 }
 
-export interface NodePayload {
-  name: string
-  address: string
-  tls_fingerprint: string
-  token: string
-  notes: string
+export interface NodeSearchResult {
+  node_id: string; node_name: string; service: string; status: string
 }
-
-export interface TestConnectionRequest {
-  address: string
-  tls_fingerprint?: string
-  token?: string
-}
-
-export interface TestConnectionResult {
-  version: string
-  hostname: string
-  os: string
-  uptime: number
-}
-
-export interface SearchResultItem {
-  node_id: string
-  node_name: string
-  service: string
-  active: string
-  sub: string
-}
-
-export interface FailedNode {
-  node_id: string
-  node_name: string
-  reason: string
-}
-
-export interface SearchResponse {
-  results: SearchResultItem[]
-  failed_nodes: FailedNode[]
-}
-
-export interface NodeSystemInfo {
-  os: string
-  kernel: string
-  uptime: number
-  cpu: string
-  mem: string
-  disk: string
+export interface NodeSearchResponse {
+  results: NodeSearchResult[]
+  unreachable: Array<{ node_id: string; node_name: string; unreachable: boolean; reason: string }>
 }
 ```
 
-### 2.3 api/client.ts 擴充
+### 2.3 api/client.ts 新增函式
 
 ```typescript
-// frontend/src/api/client.ts（追加；axios instance baseURL '/api/v1'）
-import type { Node, NodeSummary, NodePayload, TestConnectionRequest, TestConnectionResult, SearchResponse, NodeSystemInfo } from '../types/node'
-
-/** 節點層 API（決策 8：service functions 接受 optional nodeId 前綴 — nodeId 存在時走 /nodes/{id}/… 代理） */
-export async function listNodes(): Promise<Node[]> {
-  const { data } = await api.get<{ data: Node[] }>('/nodes')
-  return data.data
-}
-
-export async function createNode(payload: NodePayload): Promise<Node> {
-  const { data } = await api.post<{ data: Node }>('/nodes', payload)
-  return data.data
-}
-
-export async function updateNode(id: string, payload: NodePayload): Promise<Node> {
-  const { data } = await api.put<{ data: Node }>(`/nodes/${id}`, payload)
-  return data.data
-}
-
-export async function deleteNode(id: string): Promise<void> {
-  await api.delete(`/nodes/${id}`)
-}
-
-export async function testConnection(req: TestConnectionRequest): Promise<TestConnectionResult> {
-  const { data } = await api.post<TestConnectionResult>('/nodes/test-connection', req)
-  return data
-}
-
-export async function getNodesSummary(): Promise<NodeSummary> {
-  const { data } = await api.get<{ data: NodeSummary }>('/nodes/summary')
-  return data.data
-}
-
-export async function searchServices(q: string): Promise<SearchResponse> {
-  const { data } = await api.get<SearchResponse>('/nodes/services/search', { params: { q } })
-  return data
-}
-
-/** node-aware 服務函式：nodeId 存在 → 代理前綴；否則維持單機路徑（向後相容） */
-export async function getNodeServices(nodeId: string): Promise<Service[]> {
-  const { data } = await api.get<Service[]>(`/nodes/${nodeId}/services`)
-  return data
-}
-
-export async function nodeServiceAction(nodeId: string, name: string, action: 'start' | 'stop' | 'restart' | 'enable' | 'disable'): Promise<MessageResponse> {
-  const { data } = await api.post<MessageResponse>(`/nodes/${nodeId}/services/${encodeURIComponent(name)}/${action}`)
-  return data
-}
-
-export async function getNodeLogs(nodeId: string, name: string, lines?: number): Promise<string> {
-  const { data } = await api.get<string>(`/nodes/${nodeId}/services/${encodeURIComponent(name)}/logs`, { params: { lines } })
-  return data
-}
-
-export async function getNodeInfo(nodeId: string): Promise<NodeSystemInfo> {
-  const { data } = await api.get<NodeSystemInfo>(`/nodes/${nodeId}/info`)
-  return data
-}
-
-export async function downloadAgent(arch: 'amd64' | 'arm64'): Promise<Blob> {
-  const { data } = await api.get<Blob>(`/agents/download`, { params: { arch }, responseType: 'blob' })
-  return data
-}
-
-// 既有 listServices() 擴充 nodeId 前綴（決策 8：單節點視圖走代理）：
-// export async function listServices(nodeId?: string): Promise<Service[]> {
-//   const path = nodeId ? `/nodes/${nodeId}/services` : '/services'
-//   const { data } = await api.get<Service[]>(path)
-//   return data
-// }
+// 節點 API（對應第 3 節合約）
+export const fetchNodes = () => http.get<ManagedNode[]>('/api/v1/nodes')
+export const fetchNode = (id: string) => http.get<ManagedNode>(`/api/v1/nodes/${id}`)
+export const fetchNodeSummary = () => http.get<NodeSummary>('/api/v1/nodes/summary')
+export const createNode = (body: NodeFormInput) => http.post('/api/v1/nodes', body)
+export const updateNode = (id: string, body: Partial<NodeFormInput>) => http.put(`/api/v1/nodes/${id}`, body)
+export const deleteNode = (id: string) => http.delete(`/api/v1/nodes/${id}`)
+export const reconnectNode = (id: string) => http.post(`/api/v1/nodes/${id}/reconnect`)
+export const testConnection = (body: TestConnectionInput) =>
+  http.post<TestConnectionResult>('/api/v1/nodes/test-connection', body)
+export const searchNodeServices = (q: string) =>
+  http.get<NodeSearchResponse>('/api/v1/nodes/services/search', { params: { q } })
+// 單節點服務操作：改寫既有 service API 函式，接受可選 nodeId → 改打 /nodes/{id}/services/*
+export const nodeServiceUrl = (nodeId: string, path: string) => `/api/v1/nodes/${nodeId}/services/${path}`
+export const agentBinaryUrl = (arch: 'amd64' | 'arm64') => `/api/v1/nodes/agent-binary?arch=${arch}`
 ```
 
-### 2.4 stores/nodes.ts（Pinia，決策 8）
+### 2.4 stores/node.ts（Pinia setup store）
 
 ```typescript
-// frontend/src/stores/nodes.ts
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
-import type { Node, NodeStatus, NodeSummary } from '../types/node'
-import * as api from '../api/client'
-import { useToast } from '../composables/useToast'
+import { ref, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import type { ManagedNode, NodeSummary, NodeSearchResponse } from '../types/node'
 
-export const useNodesStore = defineStore('nodes', () => {
+export const useNodeStore = defineStore('node', () => {
   // ── state ──
-  const nodes = ref<Node[]>([])
-  const activeNodeId = ref<string | null>(null)   // null = Aggregate 模式
+  const nodes = ref<ManagedNode[]>([])
   const summary = ref<NodeSummary | null>(null)
   const loading = ref(false)
-  const error = ref<string | null>(null)
-  const inFlight = ref<Record<string, boolean>>({}) // key = `${nodeId}:${serviceName}:${action}`（同節點同服務並行限制，決策 9/D-9）
+  const searchResults = ref<NodeSearchResponse | null>(null)
+  const searching = ref(false)
 
   // ── getters ──
-  const onlineNodes = computed(() => nodes.value.filter(n => n.status === 'online'))
-  const byId = (id: string) => nodes.value.find(n => n.id === id)
-  const activeNode = computed(() => activeNodeId.value ? byId(activeNodeId.value) : null)
-  const isNodeActionDisabled = (nodeId: string, name: string, action: string) =>
-    !['online', 'degraded', 'warning'].includes(byId(nodeId)?.status ?? '') || !!inFlight.value[`${nodeId}:${name}:${action}`]
-    // 語意與 2.12 canOperate 一致（online/degraded/warning 可操作，5.1；僅 offline/long_offline 禁用）
+  // currentNode 由 route query ?node= 驅動（URL 即狀態，決策 7；F-ST-05）
+  const currentNodeId = computed(() => {
+    const r = useRouterProxy()
+    return r.query.node ? String(r.query.node) : null
+  })
+  const currentNode = computed(() =>
+    currentNodeId.value ? nodes.value.find(n => n.id === currentNodeId.value) ?? null : null)
+  const totalNodes = computed(() => nodes.value.length)
+  const onlineCount = computed(() => nodes.value.filter(n => n.status === 'online').length)
+  const offlineCount = computed(() =>
+    nodes.value.filter(n => n.status === 'offline' || n.status === 'long_offline').length)
 
   // ── actions ──
-  async function fetchNodes(): Promise<void> {
-    loading.value = true
-    try {
-      nodes.value = await api.listNodes()   // 失敗時不覆蓋既有資料
-    } catch (e: any) {
-      error.value = e?.response?.data?.error || e.message
-    } finally {
-      loading.value = false
-    }
-  }
+  async function fetchNodes() { /* GET /api/v1/nodes → nodes */ }
+  async function fetchSummary() { /* GET /api/v1/nodes/summary → summary */ }
 
-  async function fetchSummary(): Promise<void> {
-    summary.value = await api.getNodesSummary()
-  }
-
-  function setActiveNode(id: string | null): void {
-    activeNodeId.value = id
-  }
-
-  /** WS 事件應用（決策 3 / F-NS-05~08）：依 type 更新單一節點或移除 */
-  function applyNodeEvent(msg: {
-    type: 'node_status' | 'node_online' | 'node_offline' | 'node_removed'
-    id: string; name?: string; active?: NodeStatus; last_heartbeat?: string; agent_version?: string; timestamp?: string
-  }): void {
-    const { showToast } = useToast()
-    if (msg.type === 'node_removed') {
-      nodes.value = nodes.value.filter(n => n.id !== msg.id)
-      return
-    }
-    const n = byId(msg.id)
+  // WS 事件套用（不需重整頁面；F-ST-03/04）
+  function applyStatusChanged(p: { id: string; name: string; status: NodeStatus; message?: string }) {
+    const n = nodes.value.find(x => x.id === p.id)
     if (!n) return
-    if (msg.active) n.status = msg.active
-    if (msg.last_heartbeat) n.last_heartbeat = msg.last_heartbeat
-    if (msg.agent_version) n.agent_version = msg.agent_version
-    if (msg.type === 'node_online') showToast(`${msg.name} 已恢復連線`, 'success')      // BDD 寬限期恢復
-    if (msg.type === 'node_offline') showToast(`${msg.name} 已離線`, 'warning')          // BDD 30s 無心跳
+    n.status = p.status
+    if (p.message) n.versionMessage = p.message
+    recomputeSummaryFromNodes() // 統計列同步 -1/+1（S18）
+  }
+  function applyRegistryChanged(p: { action: 'added' | 'removed'; node: ManagedNode }) {
+    if (p.action === 'added' && !nodes.value.some(n => n.id === p.node.id)) nodes.value.push(p.node)
+    if (p.action === 'removed') nodes.value = nodes.value.filter(n => n.id !== p.node.id)
   }
 
-  /** 操作 in-flight 標記（同節點同服務禁用第二個並行操作，BDD @concurrency；不同節點可並行 — key 含 nodeId） */
-  function markInFlight(nodeId: string, name: string, action: string, inflight: boolean): void {
-    const key = `${nodeId}:${name}:${action}`
-    if (inflight) inFlight.value[key] = true
-    else delete inFlight.value[key]
-  }
+  // 跨節點搜尋（debounce 由元件層處理 300ms）
+  async function search(q: string) { /* searchNodeServices(q) → searchResults；空 results → 空狀態 */ }
+  function clearSearch() { searchResults.value = null }
 
-  return {
-    nodes, activeNodeId, summary, loading, error, inFlight,
-    onlineNodes, byId, activeNode, isNodeActionDisabled,
-    fetchNodes, fetchSummary, setActiveNode, applyNodeEvent, markInFlight,
-  }
+  // CRUD（成功後 Toast 由元件層顯示）
+  async function addNode(body: NodeFormInput) { /* 409 → throw DuplicateNameError */ }
+  async function removeNode(id: string) { /* DELETE；成功後 applyRegistryChanged 由 WS 事件補齊 */ }
+  async function reconnect(id: string) { /* POST reconnect */ }
+
+  return { nodes, summary, loading, searchResults, searching,
+           currentNodeId, currentNode, totalNodes, onlineCount, offlineCount,
+           fetchNodes, fetchSummary, applyStatusChanged, applyRegistryChanged,
+           search, clearSearch, addNode, removeNode, reconnect }
 })
 ```
 
-### 2.5 useWebSocket.ts 擴充（決策 3）
+### 2.5 useWebSocket.ts 擴充
 
 ```typescript
-// frontend/src/composables/useWebSocket.ts（追加 type + union 成員）
-import type { NodeStatus } from '../types/node'
-
-export interface NodeStatusMessage {
-  type: 'node_status' | 'node_online' | 'node_offline' | 'node_removed'
-  id: string
-  name?: string
-  active?: NodeStatus
-  last_heartbeat?: string
-  agent_version?: string
-  timestamp?: string
+// 新增訊息型別
+export interface NodeStatusChangedMessage {
+  type: 'node_status_changed'; id: string; name: string; status: NodeStatus; message?: string
+}
+export interface NodeRegistryChangedMessage {
+  type: 'node_registry_changed'; action: 'added' | 'removed'; node: ManagedNode
 }
 
-export type WsMessage =
-  | StatusChangeMessage | OnBootChangeMessage | ServiceAddedMessage | ServiceRemovedMessage
-  | SnapshotMessage | SessionExpiredMessage | NotifyChannelDisabledMessage | NodeStatusMessage
+// 在既有 onmessage switch 增加 case：
+//   node_status_changed  → nodeStore.applyStatusChanged(msg)
+//                          Toast：「{name} 已離線」/「{name} 已恢復連線」（僅 offline⇄online 轉換時，S18/S20）
+//   node_registry_changed → nodeStore.applyRegistryChanged(msg)
+// 既有斷線自動重連邏輯重用（S51 F-WS-03）
 ```
 
-> **4 事件清單（依 Tech Decision 決策 3）**：`node_status`（狀態/心跳資訊更新，承載 last_heartbeat + agent_version）、`node_online`（恢復上線 → Toast）、`node_offline`（離線 → Toast，受 Manager 啟動寬限期保護）、`node_removed`（節點移除）。BDD 草案的 `node_added` / `node_heartbeat` 分別由 `node_online` 與 `node_status` 覆蓋。
-> **實作註記**：`websocket.Message` struct 新增 `LastHeartbeat string json:"last_heartbeat,omitempty"` 與 `AgentVersion string json:"agent_version,omitempty"` 兩個純資料欄位（hub 邏輯零改動，仿 013 新增 ID/Reason 先例）。
-
-### 2.6 AggregateDashboardView.vue（`/`，決策 8）
-
-**職責**：登入預設視圖。`onMounted` **並行** `fetchNodes()` + `fetchSummary()`（BDD @entry）；頂部統計列（總節點數/線上/離線 + 總服務數/執行中/失敗）；NodeCard 網格（⚫ 長期離線移至底部）；搜尋框 debounce 300ms → `searchServices`；空狀態引導至 Node Management；WS handlers 註冊（onMounted）/ 移除（onUnmounted）。
-
-```vue
-<script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { useNodesStore } from '../stores/nodes'
-import { searchServices } from '../api/client'
-import { useWebSocket } from '../composables/useWebSocket'
-import { useI18n } from '../composables/useI18n'
-import NodeCard from '../components/NodeCard.vue'
-import NodeDetailPanel from '../components/NodeDetailPanel.vue'
-import type { SearchResponse } from '../types/node'
-
-const nodesStore = useNodesStore()
-const router = useRouter()
-const ws = useWebSocket()
-const { t } = useI18n()
-
-const searchQ = ref('')
-const searchResult = ref<SearchResponse | null>(null)
-const searchOpen = ref(false)
-const searching = ref(false)
-const detailNodeId = ref<string | null>(null)
-
-let debounceTimer: ReturnType<typeof setTimeout> | null = null
-
-/** 依狀態排序：online/degraded/warning 在前、offline 次之、long_offline ⚫ 移至底部/摺疊（BDD @offline） */
-const sortedNodes = computed(() => [...nodesStore.nodes].sort((a, b) => rank(a.status) - rank(b.status)))
-
-function rank(s: string): number {
-  if (s === 'long_offline') return 2
-  if (s === 'offline') return 1
-  return 0
-}
-
-/** 跨節點搜尋 debounce 300ms（BDD @search）：停止輸入 300ms 後才發送；快速連續輸入只發一次 */
-function onSearchInput(): void {
-  if (debounceTimer) clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(async () => {
-    const q = searchQ.value.trim()
-    if (!q) { searchResult.value = null; searchOpen.value = false; return }
-    searching.value = true
-    searchResult.value = await searchServices(q)   // failed_nodes 尾部標示「N 個節點無法查詢（離線/逾時）」（BDD @partial-failure）
-    searchOpen.value = true
-    searching.value = false
-  }, 300)
-}
-
-function onCardClick(nodeId: string, status: string): void {
-  if (status === 'online' || status === 'degraded' || status === 'warning') {
-    router.push({ path: '/dashboard', query: { node: nodeId } })   // BDD @switch
-  } else {
-    detailNodeId.value = nodeId                                     // 離線 → 離線資訊面板（BDD @node-detail）
-  }
-}
-
-function onSearchResultClick(item: { node_id: string; service: string }): void {
-  router.push({ path: '/dashboard', query: { node: item.node_id, service: item.service } }) // ?service= 初始展開（決策 8）
-}
-
-onMounted(() => {
-  nodesStore.fetchNodes()
-  nodesStore.fetchSummary()                    // 並行請求（BDD @entry）
-  ws.on('node_status', nodesStore.applyNodeEvent)
-  ws.on('node_online', nodesStore.applyNodeEvent)
-  ws.on('node_offline', nodesStore.applyNodeEvent)
-  ws.on('node_removed', nodesStore.applyNodeEvent)
-})
-</script>
-
-<template>
-  <div class="aggregate-dashboard">
-    <!-- 統計列（BDD @aggregate）：總節點數 / 線上台數 / 離線台數 + 總服務數 / 執行中 / 失敗 -->
-    <div class="stats-bar" data-testid="aggregate-stats">
-      <span>🌐 {{ t('nodes.total') }}: {{ summary?.total_nodes ?? '—' }}</span>
-      <span>🟢 {{ t('nodes.online') }}: {{ summary?.online ?? '—' }}</span>
-      <span>🔴 {{ t('nodes.offline') }}: {{ (summary?.offline ?? 0) + (summary?.long_offline ?? 0) }}</span>
-      <span>📦 {{ t('nodes.totalServices') }}: {{ summary?.total_services ?? '—' }}</span>
-      <span>▶ {{ t('nodes.activeServices') }}: {{ summary?.active_services ?? '—' }}</span>
-      <span>✖ {{ t('nodes.failedServices') }}: {{ summary?.failed_services ?? '—' }}</span>
-    </div>
-
-    <!-- 跨節點搜尋（debounce 300ms；結果列表 / 無匹配 / failed_nodes 標示） -->
-    <div class="search-bar">
-      <input v-model="searchQ" :placeholder="t('nodes.searchPlaceholder')" data-testid="node-search" @input="onSearchInput" />
-      <button v-if="searchOpen" class="btn btn-sm" @click="searchOpen = false; searchResult = null">✕</button>
-    </div>
-    <div v-if="searchOpen" class="search-results" data-testid="search-results">
-      <p v-if="!searchResult?.results.length">{{ t('nodes.searchEmpty') }}</p>
-      <button v-for="r in searchResult?.results" :key="r.node_id + r.service" class="search-item" @click="onSearchResultClick(r)">
-        {{ r.node_name }} / {{ r.service }} — {{ r.active }}
-      </button>
-      <p v-if="searchResult?.failed_nodes.length" class="failed-note">
-        {{ searchResult.failed_nodes.length }} {{ t('nodes.failedNodes') }}（{{ searchResult.failed_nodes.map(f => f.node_name).join(', ') }}）
-      </p>
-    </div>
-
-    <div v-if="nodesStore.loading" class="loading-spinner" aria-busy="true" />
-    <EmptyState v-else-if="nodesStore.nodes.length === 0" message="尚無已註冊節點，請先新增節點" :show-button="false">
-      <router-link class="btn btn-primary" to="/nodes">{{ t('nav.nodes') }}</router-link>
-    </EmptyState>
-    <div v-else class="node-card-grid">
-      <NodeCard v-for="n in sortedNodes" :key="n.id" :node="n" @click="onCardClick(n.id, n.status)" @detail="detailNodeId = n.id" />
-    </div>
-
-    <NodeDetailPanel v-if="detailNodeId" :node-id="detailNodeId" @close="detailNodeId = null" />
-  </div>
-</template>
-```
-
-### 2.7 NodeCard.vue
-
-**職責**：單一節點卡片 — 名稱、Hostname、狀態指示燈（🟢🟡🔴⚫）、服務統計（M/N 執行中）、最後心跳相對時間（「X 秒前」）、「詳情」按鈕；離線服務統計灰顯；線上可點擊切換、離線點擊顯示離線面板。
+### 2.6 NodeCard.vue
 
 ```vue
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { Node, NodeStatus } from '../types/node'
+import type { ManagedNode } from '../types/node'
 
-const props = defineProps<{ node: Node }>()
-const emit = defineEmits<{ click: [id: string, status: string]; detail: [id: string] }>()
+const props = defineProps<{ node: ManagedNode }>()
+const emit = defineEmits<{
+  select: [nodeId: string]      // 點擊 Card → /dashboard?node={id}（S03）
+  detail: [nodeId: string]      // 「詳情」按鈕 → NodeDetailPanel（S28）
+}>()
 
-/** 狀態燈映射（BDD @aggregate 節點 A/B/C/D）：online 🟢 / degraded 🟡 / offline 🔴 / long_offline ⚫ / warning 🟡 */
-const statusDot = computed(() => ({
-  online: '🟢', degraded: '🟡', offline: '🔴', long_offline: '⚫', warning: '🟡',
-}[props.node.status] ?? '⚪'))
-
-/** 最後心跳相對時間（「最後心跳：5 秒前」；無心跳 → 「從未收到心跳」） */
-const lastHeartbeatText = computed(() => {
-  if (!props.node.last_heartbeat) return '從未收到心跳'
-  const sec = Math.max(0, Math.floor((Date.now() - new Date(props.node.last_heartbeat).getTime()) / 1000))
-  return `最後心跳：${sec} 秒前`
-})
-
-const offline = computed(() => props.node.status === 'offline' || props.node.status === 'long_offline')
+// 狀態指示燈：🟢 online / 🟡 warning / 🔴 offline / ⚫ long_offline（F-NC-01~03/06）
+const dotClass = computed(() => `node-dot--${props.node.status}`)
+// 「最後心跳：X 秒前」相對時間（F-NC-04）；離線時服務統計加灰顯 class
+const relTime = computed(() => formatRelativeTime(props.node.lastHeartbeat))
 </script>
 
 <template>
-  <div
-    class="node-card"
-    :class="{ 'node-offline': offline, 'node-long-offline': node.status === 'long_offline' }"
-    data-testid="node-card"
-    @click="emit('click', node.id, node.status)"
-  >
-    <div class="node-card-head">
-      <span class="status-dot" :title="node.status">{{ statusDot }}</span>
-      <h3 class="node-name">{{ node.name }}</h3>
-      <span v-if="node.status === 'warning'" class="version-warning" title="Agent 版本過舊，建議升級">
-        ⚠ {{ node.agent_version }}（建議升級至 v1.2+）
-      </span>
-      <button class="btn btn-sm" data-testid="node-detail" @click.stop="emit('detail', node.id)">詳情</button>
-    </div>
-    <p class="node-hostname">{{ node.hostname || node.address }}</p>
-    <!-- 離線：服務統計灰顯（BDD @offline） -->
-    <div class="node-stats" :class="{ dimmed: offline }">
-      {{ node.service_stats.active }}/{{ node.service_stats.total }} 執行中
-    </div>
-    <p class="node-heartbeat">{{ lastHeartbeatText }}</p>
+  <div class="node-card" :class="[dotClass, { 'node-card--collapsed': node.status === 'long_offline' }]"
+       data-testid="node-card" @click="node.status === 'online' || node.status === 'warning'
+         ? emit('select', node.id) : emit('detail', node.id)">
+    <!-- 離線/長期離線 Card 點擊 → 離線資訊面板（S22） -->
+    <span class="node-dot" aria-hidden="true"></span>
+    <h3 class="node-card__name">{{ node.name }}</h3>
+    <span class="node-card__hostname">{{ node.hostname }}</span>
+    <span v-if="!node.versionCompatible" class="node-card__warn" :title="node.versionMessage">🟡</span>
+    <dl class="node-card__stats" :class="{ 'is-muted': isOffline }">
+      <dt>服務</dt><dd>{{ node.servicesRunning }}/{{ node.servicesTotal }} 執行中</dd>
+      <dt>最後心跳</dt><dd>{{ relTime }}</dd>
+      <!-- P2：CPU/Memory 簡要指標 -->
+    </dl>
+    <button class="btn btn--ghost" @click.stop="emit('detail', node.id)">詳情</button>
   </div>
 </template>
 ```
 
-### 2.8 NodeSwitcher.vue（Header 節點切換，決策 8）
-
-**職責**：Header 下拉 — 顯示目前節點名稱（或「所有節點」）；展開列出所有節點（名稱 + 狀態燈 🟢🟡🔴⚫ + 目前節點反白）；選取 → `setActiveNode` + `router.push /dashboard?node={id}`；「所有節點」→ `setActiveNode(null)` + `/`。
+### 2.7 NodeSwitcher.vue 與 NodeSummaryBar.vue
 
 ```vue
+<!-- NodeSwitcher.vue：Header 內節點下拉（S03–S05） -->
 <script setup lang="ts">
-import { ref } from 'vue'
+import { useNodeStore } from '../stores/node'
 import { useRouter } from 'vue-router'
-import { useNodesStore } from '../stores/nodes'
-
-const nodesStore = useNodesStore()
-const router = useRouter()
-const open = ref(false)
-
-const statusDot = (s: string) => ({ online: '🟢', degraded: '🟡', offline: '🔴', long_offline: '⚫', warning: '🟡' }[s] ?? '⚪')
-
-function select(id: string | null): void {
-  nodesStore.setActiveNode(id)
-  open.value = false
-  router.push(id ? { path: '/dashboard', query: { node: id } } : { path: '/' }) // 「所有節點」返回 Aggregate（BDD @switch）
+const store = useNodeStore(); const router = useRouter()
+function selectNode(id: string | null) {
+  // null = 「所有節點」→ /dashboard；否則 /dashboard?node={id}（F-NS-03/04）
+  router.push(id ? { path: '/dashboard', query: { node: id } } : '/dashboard')
 }
+function onChange(e: Event) { selectNode((e.target as HTMLSelectElement).value || null) }
 </script>
-
 <template>
   <div class="node-switcher">
-    <button class="nav-item" data-testid="node-switcher" @click="open = !open">
-      {{ nodesStore.activeNode?.name || '所有節點' }} ▾
-    </button>
-    <div v-if="open" class="node-dropdown">
-      <button class="node-option" :class="{ active: !nodesStore.activeNodeId }" @click="select(null)">所有節點</button>
-      <button
-        v-for="n in nodesStore.nodes" :key="n.id" class="node-option"
-        :class="{ active: nodesStore.activeNodeId === n.id }" data-testid="node-option"
-        @click="select(n.id)"
-      >
-        {{ statusDot(n.status) }} {{ n.name }}
-      </button>
-    </div>
+    <template v-if="store.currentNode">
+      <span class="node-switcher__label">目前節點：{{ store.currentNode.name }}</span>
+      <select class="node-switcher__select" :value="store.currentNodeId" @change="onChange">
+        <option v-for="n in store.nodes" :key="n.id" :value="n.id">
+          {{ dotFor(n.status) }} {{ n.name }}
+        </option>
+      </select>
+      <button class="btn btn--ghost" @click="selectNode(null)">所有節點</button>
+    </template>
   </div>
 </template>
+
+<!-- NodeSummaryBar.vue：總節點數/線上/離線 + 總服務數/執行中/失敗（S01），
+     props: summary: NodeSummary；結構複用 StatsBar.vue 樣式 -->
 ```
 
-### 2.9 NodeFormModal.vue（新增 / 編輯，決策 5/8）
+### 2.8 NodeFormModal.vue（新增/編輯節點）
 
-**職責**：表單欄位（名稱必填、位址 host:port 必填、TLS 指紋選填、Token 選填、備註選填）；底部「測試連線 / 註冊 / 取消」；前端驗證（必填標紅，**不發送請求**）；測試連線成功綠色提示（含 Agent 版本/hostname/OS）、失敗紅色提示可重試；註冊成功關閉 + Toast、名稱重複 409 保持開啟、位址不可達仍註冊標離線；編輯模式預填、Token 留空顯示「留空表示不變更」。
+> **UI/UX 規格**：`docs/uiux/014-node-management-design.md` §4.1–4.3
+> **互動 Mockup**：`docs/uiux/014-node-management-design.html`
 
 ```vue
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
-import type { Node, NodePayload } from '../types/node'
-import { createNode, updateNode, testConnection } from '../api/client'
+import { testConnection, createNode } from '../api/client'
 import { useToast } from '../composables/useToast'
 
-const props = defineProps<{ node: Node | null }>()  // null = 新增
-const emit = defineEmits<{ close: []; saved: [] }>()
+const props = defineProps<{
+  mode: 'create' | 'edit'
+  initialData?: ManagedNode  // edit 模式時的預填值
+}>()
+const emit = defineEmits<{ close: []; created: [node: ManagedNode]; updated: [node: ManagedNode] }>()
+const toast = useToast()
 
-const { showToast } = useToast()
+// 表單欄位（對應 UI/UX §4.1 欄位定義）
 const form = reactive({
-  name: props.node?.name ?? '',
-  address: props.node?.address ?? '',
-  tls_fingerprint: props.node?.tls_fingerprint ?? '',
-  token: '',
-  notes: props.node?.notes ?? '',
+  name: '',           // 必填
+  address: '',        // 必填，host:port 格式
+  tlsFingerprint: '', // 選填，mTLS 時使用
+  token: '',          // 選填，驗證用
+  note: ''            // 選填
 })
-const errors = ref<Record<string, string>>({})
+const errors = reactive<Record<string, string>>({})   // 必填缺失紅色提示（S40）
 const testing = ref(false)
-const testResult = ref<{ ok: boolean; message: string } | null>(null)
-const saving = ref(false)
+const testResult = ref<null | { ok: boolean; message: string; version?: string; hostname?: string; os?: string }>(null)
 
-/** 必填欄位驗證（BDD @validation）：名稱與位址空白 → 紅色標示且不發送 POST /api/v1/nodes */
-function validate(): boolean {
-  errors.value = {}
-  if (!form.name.trim()) errors.value.name = '節點名稱為必填'
-  if (!form.address.trim()) errors.value.address = 'Agent 位址為必填'
-  return Object.keys(errors.value).length === 0
+// edit 模式：預填表單（唯讀欄位：Node ID）
+if (props.mode === 'edit' && props.initialData) {
+  Object.assign(form, {
+    name: props.initialData.name,
+    address: props.initialData.address,
+    tlsFingerprint: props.initialData.tlsFingerprint || '',
+    token: '',  // Token 不回顯，需重新輸入
+    note: props.initialData.note || ''
+  })
 }
 
-/** 測試連線（BDD @node-mgmt @smoke）：POST /nodes/test-connection → 成功綠色提示 / 失敗紅色提示（Modal 保持開啟） */
-async function handleTest(): Promise<void> {
-  if (!form.address.trim()) { errors.value.address = '請先填寫 Agent 位址'; return }
+async function onTestConnection() {
   testing.value = true
   testResult.value = null
   try {
-    const r = await testConnection({ address: form.address, tls_fingerprint: form.tls_fingerprint, token: form.token })
-    testResult.value = { ok: true, message: `連線成功 — Agent v${r.version} @ ${r.hostname} (${r.os})` }
+    const { data } = await testConnection({
+      address: form.address,
+      tls_fingerprint: form.tlsFingerprint || undefined,
+      token: form.token || undefined
+    })
+    testResult.value = data.ok
+      ? { ok: true, message: `連線成功 — Agent ${data.version} @ ${data.hostname} (${data.os})`,
+          version: data.version, hostname: data.hostname, os: data.os }
+      : { ok: false, message: `無法連線：${data.error}` }
   } catch (e: any) {
-    testResult.value = { ok: false, message: `無法連線：${e?.response?.data?.error || e.message}` }
+    testResult.value = { ok: false, message: `連線失敗：${e.message}` }
   } finally {
     testing.value = false
   }
 }
 
-/** 註冊 / 儲存（BDD @happy-path / @duplicate / @error-handling / @node-mgmt 編輯）：
- * 新增成功 → Toast「節點 X 已註冊並上線」；註冊後節點離線 → Toast「節點 X 已註冊但無法連線」（由後端在註冊時健康檢查判定）；
- * 編輯儲存 → Toast「節點設定已更新」（BDD 編輯 Scenario / F-NM-04 / E2E-33）；409 名稱重複 → Toast 且 Modal 保持開啟。 */
-async function handleSave(): Promise<void> {
-  if (!validate()) return
-  saving.value = true
-  const payload: NodePayload = { ...form }
+async function onSubmit() {
+  // 欄位驗證（S40）
+  errors.name = form.name ? '' : '必填'
+  errors.address = form.address ? '' : '必填'
+  if (errors.name || errors.address) return
+
   try {
-    if (props.node) {
-      await updateNode(props.node.id, payload)   // 編輯：PUT，token 留空表示不變更（決策 5）
-      showToast('節點設定已更新', 'success')
+    if (props.mode === 'create') {
+      const { data } = await createNode(form)
+      toast.show(data.status === 'online'
+        ? `節點 ${data.name} 已註冊並上線`
+        : `節點 ${data.name} 已註冊但無法連線`)
+      emit('created', data)
     } else {
-      const saved = await createNode(payload)
-      if (saved.status === 'online') showToast(`節點 ${saved.name} 已註冊並上線`, 'success')
-      else showToast(`節點 ${saved.name} 已註冊但無法連線`, 'warning')
+      const { data } = await updateNode(props.initialData!.id, form)
+      toast.show(`節點 ${data.name} 已更新`)
+      emit('updated', data)
     }
-    emit('saved')
+    emit('close')
   } catch (e: any) {
-    const msg = e?.response?.data?.error || e.message
-    showToast(msg.includes('重複') ? '節點名稱重複，請使用不同名稱' : msg, 'error')
-  } finally {
-    saving.value = false
+    if (e.response?.status === 409) {
+      toast.show('節點名稱重複，請使用不同名稱') // 表單保留（S38）
+    } else {
+      toast.show(e.response?.data?.error ?? '操作失敗')
+    }
   }
 }
+
+function onCancel() { emit('close') } // 取消不建立任何記錄（S15）
 </script>
-
 <template>
-  <div class="modal-overlay">
-    <div class="lms-modal node-form-modal" role="dialog" aria-modal="true">
-      <h3>{{ props.node ? '編輯節點' : '新增節點' }}</h3>
-      <form @submit.prevent="handleSave">
-        <label>節點名稱 <span class="req">*</span></label>
-        <input v-model="form.name" :class="{ 'field-error': errors.name }" data-testid="node-name" />
-        <p v-if="errors.name" class="field-error-text">{{ errors.name }}</p>
-
-        <label>Agent 位址（host:port）<span class="req">*</span></label>
-        <input v-model="form.address" placeholder="10.0.0.5:8443" :class="{ 'field-error': errors.address }" data-testid="node-address" />
-        <p v-if="errors.address" class="field-error-text">{{ errors.address }}</p>
-
-        <label>TLS 憑證指紋（選填）</label>
-        <input v-model="form.tls_fingerprint" placeholder="SHA-256" />
-        <label>API Token（選填）</label>
-        <input v-model="form.token" type="password" :placeholder="props.node ? '留空表示不變更' : 'lsm_node_…'" />
-        <label>備註（選填）</label>
-        <input v-model="form.notes" />
-
-        <p v-if="testResult" class="test-result" :class="testResult.ok ? 'test-ok' : 'test-fail'">{{ testResult.message }}</p>
-
-        <div class="form-actions">
-          <button type="button" class="btn btn-secondary" @click="$emit('close')">取消</button>
-          <button type="button" class="btn btn-secondary" :disabled="testing" data-testid="test-connection" @click="handleTest">
-            <span v-if="testing" class="spinner" /> 測試連線
-          </button>
-          <button type="submit" class="btn btn-primary" :disabled="saving" data-testid="node-save">
-            <span v-if="saving" class="spinner" /> {{ props.node ? '儲存' : '註冊' }}
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
+  <!-- Modal 標題：新增節點 / 編輯節點 -->
+  <!-- Node ID（edit 模式唯讀顯示） -->
+  <!-- 欄位：節點名稱* / Agent 位址(host:port)* / TLS 憑證指紋 / API Token / 備註 -->
+  <!-- 測試連線結果區塊（class：node-form__result--ok / --error） -->
+  <!-- 按鈕：測試連線 / 註冊(或更新) / 取消 -->
 </template>
 ```
 
-### 2.10 NodeManagementView.vue（`/nodes`，決策 8）
+### 2.9 NodeManagementView.vue（路由 /nodes）
 
-**職責**：節點列表表格（名稱、位址、狀態、最後心跳、版本、操作）+「新增節點」「下載 Agent」按鈕 + 空狀態；編輯 → NodeFormModal（預填）；移除 → ConfirmModal（「確定要移除此節點？所有歷史資料將保留。」+ 確認/取消）；下載 Agent → 選架構（amd64/arm64）→ `downloadAgent` 存檔。
+> **UI/UX 規格**：`docs/uiux/014-node-management-design.md` §2–3
+> **互動 Mockup**：`docs/uiux/014-node-management-design.html`
 
 ```vue
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { useNodesStore } from '../stores/nodes'
-import { deleteNode, downloadAgent } from '../api/client'
+import { onMounted, ref, computed } from 'vue'
+import { useNodeStore } from '../stores/node'
 import NodeFormModal from '../components/NodeFormModal.vue'
-import ConfirmModal from '../components/ConfirmModal.vue'
+import ConfirmModal from '../components/ConfirmModal.vue' // 既有元件重用（S23）
 import { useToast } from '../composables/useToast'
-import { useI18n } from '../composables/useI18n'
 
-const nodesStore = useNodesStore()
-const { showToast } = useToast()
-const { t } = useI18n()
+const store = useNodeStore()
+const toast = useToast()
 
-const formOpen = ref(false)
-const editing = ref<Node | null>(null)
-const deleting = ref<Node | null>(null)
-const archMenuOpen = ref(false)
+// Modal 狀態
+const showCreateModal = ref(false)
+const editTarget = ref<ManagedNode | null>(null)
+const removeTarget = ref<ManagedNode | null>(null)
+const showRemoveConfirm = ref(false)
 
-onMounted(() => { nodesStore.fetchNodes() })
+// 搜尋篩選（debounce 300ms）
+const searchQuery = ref('')
+const filteredNodes = computed(() => {
+  if (!searchQuery.value) return store.nodes
+  const q = searchQuery.value.toLowerCase()
+  return store.nodes.filter(n =>
+    n.name.toLowerCase().includes(q) ||
+    n.address.toLowerCase().includes(q)
+  )
+})
 
-function openCreate(): void { editing.value = null; formOpen.value = true }
-function openEdit(n: Node): void { editing.value = n; formOpen.value = true }
-
-async function handleDeleted(): Promise<void> {
-  if (!deleting.value) return
-  await deleteNode(deleting.value.id)          // 移除後該節點自列表與 Aggregate 消失（BDD @happy-path）
-  showToast('節點已移除', 'success')
-  deleting.value = null
-  await nodesStore.fetchNodes()
+// 下載 Agent
+const showDownloadMenu = ref(false)
+function downloadAgent(arch: 'amd64' | 'arm64') {
+  window.location.href = agentBinaryUrl(arch)
+  showDownloadMenu.value = false
 }
 
-async function handleDownload(arch: 'amd64' | 'arm64'): Promise<void> {
-  const blob = await downloadAgent(arch)
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url; a.download = `agent-linux-${arch}`
-  a.click(); URL.revokeObjectURL(url)
-  archMenuOpen.value = false
+onMounted(() => store.fetchNodes())
+
+// 操作處理
+function handleEdit(node: ManagedNode) {
+  editTarget.value = node
+}
+function handleRemove(node: ManagedNode) {
+  removeTarget.value = node
+  showRemoveConfirm.value = true
+}
+async function confirmRemove() {
+  try {
+    await store.removeNode(removeTarget.value!.id)
+    toast.show('節點已移除')
+    showRemoveConfirm.value = false
+    removeTarget.value = null
+  } catch (e: any) {
+    toast.show('移除失敗：' + (e.message || '未知錯誤'))
+  }
+}
+function handleNodeCreated(node: ManagedNode) {
+  showCreateModal.value = false
+  // WS 事件會自動更新列表（node_registry_changed）
+}
+function handleNodeUpdated(node: ManagedNode) {
+  editTarget.value = null
+  // WS 事件會自動更新列表
 }
 </script>
-
 <template>
   <div class="node-management">
-    <div class="page-header">
-      <h2>🌐 {{ t('nav.nodes') }}</h2>
-      <div class="header-actions">
-        <div class="arch-menu">
-          <button class="btn btn-secondary" @click="archMenuOpen = !archMenuOpen">⬇ 下載 Agent</button>
-          <div v-if="archMenuOpen" class="arch-dropdown">
-            <button @click="handleDownload('amd64')">agent-linux-amd64</button>
-            <button @click="handleDownload('arm64')">agent-linux-arm64</button>
-          </div>
+    <!-- 工具列 -->
+    <div class="toolbar">
+      <button class="btn btn--primary" @click="showCreateModal = true">
+        <svg aria-hidden="true"><use href="#icon-plus" /></svg>
+        新增節點
+      </button>
+      
+      <!-- 下載 Agent 下拉選單 -->
+      <div class="dropdown">
+        <button class="btn btn--outline" @click="showDownloadMenu = !showDownloadMenu">
+          <svg aria-hidden="true"><use href="#icon-download" /></svg>
+          下載 Agent
+        </button>
+        <div v-if="showDownloadMenu" class="dropdown__menu">
+          <button @click="downloadAgent('amd64')">Linux amd64</button>
+          <button @click="downloadAgent('arm64')">Linux arm64</button>
         </div>
-        <button class="btn btn-primary" data-testid="add-node" @click="openCreate">＋ {{ t('nodes.addNode') }}</button>
       </div>
+
+      <!-- 搜尋框 -->
+      <input
+        v-model="searchQuery"
+        type="search"
+        placeholder="搜尋節點..."
+        class="search-input"
+        aria-label="搜尋節點"
+      />
     </div>
 
-    <EmptyState v-if="!nodesStore.loading && nodesStore.nodes.length === 0" message="尚無已註冊節點" :show-button="false">
-      <button class="btn btn-primary" @click="openCreate">{{ t('nodes.addNode') }}</button>
-    </EmptyState>
+    <!-- 節點列表表格 -->
+    <div class="node-table-wrapper">
+      <table class="node-table" role="grid">
+        <thead>
+          <tr>
+            <th scope="col">名稱</th>
+            <th scope="col">位址</th>
+            <th scope="col">狀態</th>
+            <th scope="col">最後心跳</th>
+            <th scope="col">版本</th>
+            <th scope="col">備註</th>
+            <th scope="col">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="node in filteredNodes" :key="node.id" class="node-row">
+            <td>
+              <span class="node-dot" :class="`node-dot--${node.status}`" aria-hidden="true"></span>
+              <router-link
+                v-if="node.status === 'online' || node.status === 'warning'"
+                :to="{ path: '/dashboard', query: { node: node.id } }"
+                class="node-name-link"
+              >{{ node.name }}</router-link>
+              <span v-else class="node-name">{{ node.name }}</span>
+            </td>
+            <td><code class="mono">{{ node.address }}</code></td>
+            <td>
+              <span class="badge" :class="`badge--${node.status}`">
+                {{ { online: '線上', warning: '延遲', offline: '離線', long_offline: '長期離線' }[node.status] }}
+              </span>
+            </td>
+            <td>{{ formatRelativeTime(node.lastHeartbeat) }}</td>
+            <td>{{ node.version || '—' }}</td>
+            <td class="note-cell" :title="node.note">{{ truncate(node.note, 30) }}</td>
+            <td class="actions-cell">
+              <button class="btn btn--ghost btn--sm" @click="handleEdit(node)">編輯</button>
+              <button class="btn btn--ghost btn--sm btn--danger" @click="handleRemove(node)">移除</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-    <table v-else class="node-table">
-      <thead><tr>
-        <th>{{ t('nodes.colName') }}</th><th>{{ t('nodes.colAddress') }}</th>
-        <th>{{ t('nodes.colStatus') }}</th><th>{{ t('nodes.colHeartbeat') }}</th>
-        <th>{{ t('nodes.colVersion') }}</th><th>{{ t('nodes.colActions') }}</th>
-      </tr></thead>
-      <tbody>
-        <tr v-for="n in nodesStore.nodes" :key="n.id" data-testid="node-row">
-          <td>{{ n.name }}</td>
-          <td>{{ n.address }}</td>
-          <td><span class="status-dot">{{ {online:'🟢',degraded:'🟡',offline:'🔴',long_offline:'⚫',warning:'🟡'}[n.status] }}</span> {{ n.status }}</td>
-          <td>{{ n.last_heartbeat ? new Date(n.last_heartbeat).toLocaleString() : '—' }}</td>
-          <td>{{ n.agent_version || '—' }}</td>
-          <td class="row-actions">
-            <button class="btn btn-sm" @click="openEdit(n)">✏️ 編輯</button>
-            <button class="btn btn-sm btn-danger" data-testid="remove-node" @click="deleting = n">🗑 移除</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+      <!-- 空狀態 -->
+      <EmptyState v-if="filteredNodes.length === 0 && !store.loading">
+        <template #icon>
+          <svg aria-hidden="true"><use href="#icon-server" /></svg>
+        </template>
+        <template #title>尚無已註冊節點</template>
+        <template #description>
+          請先在目標機器部署 Agent，然後點擊「新增節點」進行註冊。
+        </template>
+        <template #actions>
+          <button class="btn btn--outline" @click="downloadAgent('amd64')">下載 Agent</button>
+          <button class="btn btn--primary" @click="showCreateModal = true">新增節點</button>
+        </template>
+      </EmptyState>
+    </div>
 
-    <NodeFormModal v-if="formOpen" :node="editing" @close="formOpen = false" @saved="formOpen = false; nodesStore.fetchNodes()" />
+    <!-- 新增節點 Modal -->
+    <NodeFormModal
+      v-if="showCreateModal"
+      mode="create"
+      @close="showCreateModal = false"
+      @created="handleNodeCreated"
+    />
 
+    <!-- 編輯節點 Modal -->
+    <NodeFormModal
+      v-if="editTarget"
+      mode="edit"
+      :initial-data="editTarget"
+      @close="editTarget = null"
+      @updated="handleNodeUpdated"
+    />
+
+    <!-- 移除確認對話框 -->
     <ConfirmModal
-      v-if="deleting"
-      :show="true"
-      :title="t('nodes.deleteTitle')"
-      message="確定要移除此節點？所有歷史資料將保留。"
-      confirm-label="確認移除"
-      @confirm="handleDeleted"
-      @cancel="deleting = null"
+      v-if="showRemoveConfirm"
+      title="移除節點"
+      :message="`確定要移除「${removeTarget?.name}」？所有歷史資料將保留。`"
+      confirm-text="確認移除"
+      confirm-class="btn--danger"
+      @confirm="confirmRemove"
+      @cancel="showRemoveConfirm = false"
     />
   </div>
 </template>
 ```
 
-### 2.11 NodeDetailPanel.vue
-
-**職責**：節點詳情側面板 — 線上節點：GET `/api/v1/nodes/{id}/info` 顯示名稱/Hostname/Agent 版本/OS/上線時長/最後心跳 + 底部「重新連線 / 編輯設定 / 移除節點」；離線節點：離線診斷（最後上線時間、最後心跳、離線持續時間、操作建議「檢查 Agent 是否執行」+「重新連線 / 移除節點」）；warning 節點：版本警告 Tooltip。
+### 2.10 DashboardView.vue 視圖分流與單節點整合
 
 ```vue
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useNodesStore } from '../stores/nodes'
-import { getNodeInfo } from '../api/client'
-import type { NodeSystemInfo } from '../types/node'
+// Aggregate / 單節點分流（決策 7 方案 A）：query ?node= 有值 → 單節點模式
+const route = useRoute(); const router = useRouter()
+const nodeStore = useNodeStore(); const serviceStore = useServiceStore()
 
-const props = defineProps<{ nodeId: string }>()
-const emit = defineEmits<{ close: [] }>()
+const nodeId = computed(() => (route.query.node as string) ?? null)
+const expandService = computed(() => (route.query.expand as string) ?? null) // 搜尋跳轉展開（S25）
 
-const nodesStore = useNodesStore()
-const node = computed(() => nodesStore.byId(props.nodeId))
-const info = ref<NodeSystemInfo | null>(null)
+watch(nodeId, async (id) => {
+  if (!id) return
+  await loadNodeServices(id) // GET /api/v1/nodes/{id}/services → serviceStore.setServices
+}, { immediate: true })
 
-/** 上線時長（uptime_seconds → Xd Xh Xm）／離線持續時間（now - last_heartbeat） */
-const uptimeText = computed(() => { /* TODO */ })
-const offlineDuration = computed(() => { /* TODO */ })
-
-onMounted(async () => {
-  if (node.value?.status === 'online') {
-    try { info.value = await getNodeInfo(props.nodeId) } catch { /* 離線時 info 不可得，顯示最後心跳資訊 */ }
-  }
-})
+// 生命週期：unmount 時清除 WS 訂閱（F-DB-03）
+// 單節點模式：
+//  - Header 插入 <NodeSwitcher />
+//  - 當前節點 offline → 黃色 Banner「節點已離線，操作不可用」+ 操作按鈕全 disabled（S19/F-OFF-01）
+//  - 收到 status_changed online → Banner 消失、重新載入服務列表（S20/F-OFF-02）
+//  - 服務操作走 nodeServiceUrl(nodeId, ...)；loading spinner；15s 逾時 Toast（S06/S32）
+//  - 日誌檢視帶 nodeId（S07/F-LOG-01）
+// Aggregate 模式：
+//  - <NodeSummaryBar /> + Node Cards 網格（長期離線排序置底，S21）
+//  - 空狀態：<EmptyState>「尚無已註冊節點，請先新增節點」+ 前往 /nodes 引導（S02）
+//  - 搜尋框 debounce 300ms → nodeStore.search → <NodeSearchResults>（S24–S27/S33）
 </script>
-
-<template>
-  <div class="detail-overlay">
-    <aside class="detail-panel" data-testid="node-detail-panel">
-      <button class="close-btn" @click="$emit('close')">✕</button>
-      <h3>{{ node?.name }}</h3>
-      <dl>
-        <dt>Hostname</dt><dd>{{ node?.hostname || '—' }}</dd>
-        <dt>Agent 版本</dt><dd>{{ node?.agent_version || '—' }}</dd>
-        <dt>OS</dt><dd>{{ info?.os || node?.os || '—' }}</dd>
-        <dt>最後心跳</dt><dd>{{ node?.last_heartbeat || '—' }}</dd>
-        <template v-if="node?.status === 'online'">
-          <dt>上線時長</dt><dd>{{ uptimeText }}</dd>
-        </template>
-        <template v-else>
-          <dt>離線持續時間</dt><dd>{{ offlineDuration }}</dd>
-          <dt>操作建議</dt><dd>檢查 Agent 是否執行（systemctl status linux-service-agent）</dd>
-        </template>
-      </dl>
-      <p v-if="node?.status === 'warning'" class="version-warning">⚠ Agent 版本過舊 ({{ node.agent_version }})，建議升級至 v1.2+</p>
-      <div class="panel-actions">
-        <button class="btn btn-sm">重新連線</button>
-        <button v-if="node?.status === 'online'" class="btn btn-sm">編輯設定</button>
-        <button class="btn btn-sm btn-danger">移除節點</button>
-      </div>
-    </aside>
-  </div>
-</template>
 ```
 
-### 2.12 DashboardView.vue node-aware 改造（決策 8）
-
-**小改（佈局零變動）**：`onMounted` 讀 `route.query.node` → `nodesStore.setActiveNode`；`activeNodeId` 存在時服務列表 / 操作 / 日誌 API 全部走 `/api/v1/nodes/{id}/...` 前綴；節點狀態非 online → 操作按鈕禁用 + 頂部黃色 Banner「節點已離線，操作不可用」；`?service=` 初始展開該服務；無 `?node` 且無節點時維持原單機行為（向後相容）。
+### 2.11 NodeSearchResults.vue
 
 ```vue
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { useNodesStore } from '../stores/nodes'
-import { useServiceStore } from '../stores/service'
-import { getNodeServices, nodeServiceAction, getNodeLogs } from '../api/client'
-import { useToast } from '../composables/useToast'
-import NodeSwitcher from '../components/NodeSwitcher.vue'
-import type { Service } from '../types/service'
-
-const route = useRoute()
-const router = useRouter()
-const nodesStore = useNodesStore()
-const serviceStore = useServiceStore()
-const { showToast } = useToast()
-
-const nodeId = computed(() => route.query.node as string | undefined)
-const isNodeMode = computed(() => !!nodeId.value)
-const nodeOffline = computed(() => {
-  const n = nodeId.value ? nodesStore.byId(nodeId.value) : null
-  return !!n && !['online', 'degraded', 'warning'].includes(n.status)
-})
-
-/** 節點離線 → 操作按鈕全部禁用（BDD @offline @p1）＋ 頂部黃色 Banner「節點已離線，操作不可用」 */
-const canOperate = computed(() => !isNodeMode.value || !nodeOffline.value)
-
-/** 服務列表載入：node mode → GET /api/v1/nodes/{id}/services（Manager 代理 Agent）；否則本機 /services */
-async function loadServices(): Promise<void> {
-  const list = nodeId.value ? await getNodeServices(nodeId.value) : await serviceStore.services
-  serviceStore.setServices(list)
-}
-
-/** 操作：node mode → POST /api/v1/nodes/{id}/services/{name}/{action}
- * 逾時（15s）→ Toast「web-server-01 操作逾時：nginx.service restart」＋ 按鈕恢復可點擊（BDD @timeout）
- * in-flight 標記（同節點同服務並行限制，BDD @concurrency）＋ 成功/失敗 Toast（BDD @service） */
-async function runAction(svc: Service, action: 'start' | 'stop' | 'restart' | 'enable' | 'disable'): Promise<void> {
-  if (!canOperate.value || !nodeId.value) return
-  const key = `${nodeId.value}:${svc.name}:${action}`
-  if (nodesStore.inFlight[key]) return
-  nodesStore.markInFlight(nodeId.value, svc.name, action, true)
-  try {
-    const res = await nodeServiceAction(nodeId.value, svc.name, action)
-    showToast(`${nodesStore.activeNode?.name} ${svc.name} ${res.message || '操作成功'}`, 'success')
-    await loadServices()
-  } catch (e: any) {
-    if (e.code === 'ECONNABORTED' || e?.message?.includes('timeout')) {
-      showToast(`${nodesStore.activeNode?.name} 操作逾時：${svc.name} ${action}`, 'warning')
-    } else {
-      showToast(`${nodesStore.activeNode?.name} ${svc.name} 操作失敗：${e?.response?.data?.error || e.message}`, 'error')
-    }
-  } finally {
-    nodesStore.markInFlight(nodeId.value, svc.name, action, false)
-  }
-}
-
-/** ?service= 初始展開（點擊搜尋結果跳轉，決策 8）：expandService(svc.name) */
-watch(() => route.query.service, (svc) => { if (svc) /* TODO: 展開對應服務列 */ })
-
-onMounted(async () => {
-  if (nodeId.value) nodesStore.setActiveNode(nodeId.value)   // 讀取 ?node（BDD @switch）
-  await loadServices()
-})
+const props = defineProps<{ result: NodeSearchResponse }>()
+const emit = defineEmits<{ jump: [nodeId: string, service: string]; close: [] }>()
+// 每列：{node_name} / {service} / {status}；unreachable 節點旁顯示「無法查詢」（S33/F-SE-06）
+// click 列 → router.push(`/dashboard?node=${node_id}&expand=${service}`)（S25）
+// results 為空 → 「沒有找到匹配的服務」（S26）；close → 返回 Card 視圖（S27）
 </script>
-
-<template>
-  <div class="dashboard-page">
-    <!-- node-aware Header：NodeSwitcher + 「所有節點」返回（BDD @switch） -->
-    <div class="dashboard-header">
-      <NodeSwitcher />
-      <router-link v-if="isNodeMode" class="btn btn-sm" to="/">← 所有節點</router-link>
-    </div>
-
-    <!-- 離線 Banner（BDD @offline @p1） -->
-    <div v-if="nodeOffline" class="offline-banner" data-testid="offline-banner">節點已離線，操作不可用</div>
-
-    <!-- 既有服務表格（ServiceTable / ServiceRow 重用；操作按鈕 :disabled="!canOperate || in-flight"） -->
-    <!-- …既有 DashboardView 佈局… -->
-  </div>
-</template>
-```
-
-### 2.13 router / AppHeader / useI18n
-
-```typescript
-// frontend/src/router/index.ts（修改）
-import AggregateDashboardView from '../views/AggregateDashboardView.vue'
-const NodeManagementView = () => import('../views/NodeManagementView.vue')
-
-// routes 修改：
-// { path: '/', name: 'dashboard', component: DashboardView, meta: { auth: true } }  → 改掛 Aggregate：
-{ path: '/', name: 'aggregate', component: AggregateDashboardView, meta: { auth: true } },
-{ path: '/dashboard', name: 'dashboard', component: DashboardView, meta: { auth: true } },  // ?node= node-aware（決策 8：登入預設 / 為 Aggregate）
-{ path: '/nodes', name: 'nodes', component: NodeManagementView, meta: { auth: true } },
-```
-
-```vue
-<!-- frontend/src/components/AppHeader.vue（修改：主導航新增 Node Management 連結） -->
-<router-link to="/nodes" class="nav-item" :class="{ active: route.path === '/nodes' }" data-testid="nav-nodes">
-  🌐 {{ t('nav.nodes') }}
-</router-link>
-```
-
-```typescript
-// frontend/src/composables/useI18n.ts（修改：zh-TW + en 各新增）
-// zh-TW:
-'nav.nodes': 'Node Management',
-'nodes.total': '總節點數', 'nodes.online': '線上台數', 'nodes.offline': '離線台數',
-'nodes.totalServices': '總服務數', 'nodes.activeServices': '執行中', 'nodes.failedServices': '失敗',
-'nodes.addNode': '新增節點', 'nodes.searchPlaceholder': '搜尋服務…',
-'nodes.searchEmpty': '沒有找到匹配的服務', 'nodes.failedNodes': '個節點無法查詢（離線/逾時）',
-'nodes.colName': '名稱', 'nodes.colAddress': '位址', 'nodes.colStatus': '狀態',
-'nodes.colHeartbeat': '最後心跳', 'nodes.colVersion': '版本', 'nodes.colActions': '操作',
-'nodes.deleteTitle': '移除節點',
-// en 對應英文翻譯（略）
 ```
 
 ---
 
 ## 3. API 合約
 
-### 3.1 Node 資料模型
+### 3.1 REST Endpoints（涵蓋 Interaction Flow 第 7 節驗收清單全部項目）
 
-| 欄位 | 型別 | 說明 |
-|------|------|------|
-| `id` | string | UUID（crypto/rand），伺服器產生 |
-| `name` | string | 節點名稱，**唯一**（重複 → 409） |
-| `address` | string | Agent 位址 `host:port`（必填；格式非法 → 400） |
-| `tls_fingerprint` | string (omitempty) | Agent 憑證 SHA-256 指紋（選填；**與 token 至少填其一**） |
-| `token` | string | 共享 secret（`lsm_node_…`）；**API 回應 masked** `lsm_node_****xxxx`；PUT 留空 = 不變更 |
-| `notes` | string (omitempty) | 備註 |
-| `status` | string | `online` / `degraded` / `offline` / `long_offline` / `warning`（supervisor 維護） |
-| `last_heartbeat` | string (omitempty) | RFC3339 UTC |
-| `agent_version` / `hostname` / `os` | string (omitempty) | 心跳帶入 |
-| `service_stats` | object | `{total, active, failed}`（心跳附帶；Aggregate 摘要資料來源） |
-| `created_at` / `updated_at` | string | RFC3339 UTC |
+| 方法 | 路徑 | Request | Response | 錯誤碼 | 對應 BDD |
+|------|------|---------|----------|--------|---------|
+| POST | /api/v1/nodes | `{name*, address*, tls_fingerprint?, token?, note?}` | 201 `{id, name, address, status}` | 400 缺必填/達上限；409 名稱重複 | S13/S14/S38/S40/S41 |
+| GET | /api/v1/nodes | — | 200 `[{id,name,hostname,address,status,last_heartbeat,services_*,version,...}]` | 401 | S01 |
+| GET | /api/v1/nodes/{id} | — | 200 節點詳細欄位（含 last_online_at/offline_since/version_message） | 404 | S22/S28 |
+| PUT | /api/v1/nodes/{id} | `{name?, address?, tls_fingerprint?, token?, note?}` | 200 更新後節點 | 400/404 | 編輯設定 |
+| DELETE | /api/v1/nodes/{id} | — | 200 `{ok:true}`；廣播 `node.registry_changed` | 404 | S23 |
+| POST | /api/v1/nodes/{id}/reconnect | — | 200 `{ok:true}`（觸發重連程序） | 404 | S22「重新連線」 |
+| POST | /api/v1/nodes/test-connection | `{address*, tls_fingerprint?, token?}` | 200 `{ok:true, version, hostname, os}` **或** `{ok:false, error:"connection refused"\|"certificate expired"\|"fingerprint mismatch"}` | 400 位址格式非法 | S11/S12/S34 |
+| GET | /api/v1/nodes/summary | — | 200 `{total_nodes, online, offline, services_total, running, failed}`（來源＝各節點最後心跳統計） | 401 | S01 |
+| ⛔ REMOVED | ~~GET /api/v1/nodes/services/search?q=~~ | — | — | — | S24–S27/S33 @deferred |
+| GET | /api/v1/nodes/{id}/services | — | 200 Agent 服務列表（即時代理，不快取） | 503 `{"error":"node_offline"}` | S03/S45 |
+| POST | /api/v1/nodes/{id}/services/{name}/start\|stop\|restart\|enable\|disable | — | 200 `{ok:true}` | 503 node_offline；409 in_progress；504 timeout；Agent 失敗透傳原始 error | S06/S08/S09/S32 |
+| GET | /api/v1/nodes/{id}/services/{name}/logs | query 同單機 logs | 200 journalctl 內容透傳 | 503 | S07 |
+| GET | /api/v1/nodes/{id}/info | — | 200 `{os, kernel, uptime, version, hostname, cpu, memory, disk}` | 503 | S28 |
+| GET | /api/v1/nodes/agent-binary?arch=amd64\|arm64 | query `arch` | 200 binary stream，`Content-Disposition: attachment; filename="agent-linux-{arch}"` | 400 不支援架構；401 | S16a/b |
 
-> 通用限制：節點總數 ≤50（超過 → 400/409「已達節點數量上限」）；所有欄位 JSON 傳輸；驗證失敗回 `400 {"error":"..."}`（沿用既有錯誤格式）。
+通用：全部端點位於 session auth middleware 後（未登入 401，HDL-NODE-08/HDL-DL-04）；Audit Log：所有代理操作寫入 audit.jsonl 含 `node_id`/`node_name`（規則 B10）。
 
-### 3.2 REST Endpoint 合約
-
-| # | 方法 | 路徑 | Request | Response | 說明 |
-|---|------|------|---------|----------|------|
-| 1 | POST | `/api/v1/agent/heartbeat` | body `Heartbeat`（見 3.3） | `200 {"ok":true,"accepted":true}`；`400`（非法 JSON）；`401`（node_name+token 不符） | **Auth 群組外**，以節點 Bearer token 自證；更新 last_heartbeat + stats（狀態由 supervisor 判定） |
-| 2 | GET | `/api/v1/nodes` | — | `200 {"data":[Node]}` | 列出所有節點；**Token masked** |
-| 3 | POST | `/api/v1/nodes` | body `NodePayload`（name/address 必填、tls_fingerprint/token 選填但至少其一） | `200/201 {"data": Node}`；`400`（必填/格式/token 指紋皆空）；`409`（名稱重複）；`400/409`（50 上限） | 註冊節點；註冊時健康檢查（可達 → 上線；不可達 → 仍儲存標離線）；audit `node_create` |
-| 4 | GET | `/api/v1/nodes/{id}` | — | `200 {"data": Node}`；`404 {"error":"node not found"}` | 單一節點 |
-| 5 | PUT | `/api/v1/nodes/{id}` | body `NodePayload`（token 留空 = 保留原值） | `200 {"data": Node}`；`400`；`404` | 更新節點設定；audit `node_update` |
-| 6 | DELETE | `/api/v1/nodes/{id}` | — | `200 {"message":"節點已移除"}`；`404` | 移除節點；**歷史資料與 Audit Log 保留**；audit `node_delete` |
-| 7 | POST | `/api/v1/nodes/test-connection` | body `{address, tls_fingerprint, token}` | `200 {version, hostname, os, uptime}`；`502 {"error":"connection refused / TLS 憑證驗證失敗：certificate expired"}`；`504`（>5s） | 測試 Agent 可達性（GET /health，5s 逾時，帶入表單位址/憑證）；audit `node_test_connection` |
-| 8 | GET | `/api/v1/nodes/summary` | — | `200 {"data": {"total_nodes","online","degraded","offline","long_offline","warning","total_services","active_services","failed_services"}}` | **零網路請求**：聚合各節點最後心跳的 ServiceStats |
-| 9 | GET | `/api/v1/nodes/services/search` | query `q`（必填） | `200 {"results":[{"node_id","node_name","service","active","sub"}],"failed_nodes":[{"node_id","node_name","reason"}]}`；`400`（q 空白） | 跨節點搜尋：fan-out + semaphore(10) + 總 context 10s；僅查線上節點；部分失敗先回 |
-| 10 | GET | `/api/v1/nodes/{id}/services` | — | `200`（Agent 原樣 schema）；`404`（節點不存在）；`502 {"error":"node offline"}`；`504` | 代理 `GET /api/v1/services`（15s） |
-| 11 | POST | `/api/v1/nodes/{id}/services/{name}/start\|stop\|restart\|enable\|disable` | — | 代理 Agent 同 path（15s）；`404`/`502`/`504`；Agent 4xx/5xx 原樣轉寫 | 代理操作；audit action + **node_id + node_name** |
-| 12 | GET | `/api/v1/nodes/{id}/services/{name}/logs` | query `lines` | `200 text/plain`；`404`/`502`/`504` | 代理日誌（15s） |
-| 13 | GET | `/api/v1/nodes/{id}/info` | — | `200`（OS/kernel/uptime/資源概覽）；`404`/`502`/`504` | 代理 `GET /api/v1/system/info`（**10s**） |
-| 14 | GET | `/api/v1/agents/download` | query `arch`（amd64/arm64） | `200 application/octet-stream`（Content-Disposition `agent-linux-<arch>`）；`400/404`（arch 不支援） | 下載 Agent binary（go:embed，無前端） |
-
-> **代理錯誤映射（決策 6/D-5）**：節點不存在 → `404`；Agent 離線/連線失敗/TLS 失敗 → `502 {"error":"node offline"}`（test-connection 帶具體原因）；逾時（操作 15s / info 10s / health 5s）→ `504`；Agent 回 4xx/5xx → **原樣轉寫**（body 為 Agent 的 `{"error":...}`，不吞錯）。
-> **401 保護（BDD Outline ×9 + 決策 6 補充）**：endpoint #2~#14 全部位於 `AuthMiddlewareComposite`（session 或 Bearer token）— 未登入回 `401 Unauthorized`；**#1 心跳例外**（群組外，以節點 token 自證；無 token → 401）。
-> **chi 路由順序**：`/nodes/summary`、`/nodes/services/search`、`/nodes/test-connection` 須在 `/nodes/{id}` 之前註冊。
-
-### 3.3 心跳 payload schema（決策 3）
-
-```json
-{
-  "node_name": "web-server-01",
-  "agent_version": "1.2.0",
-  "hostname": "web-server-01",
-  "os": "Ubuntu 22.04",
-  "uptime_seconds": 360000,
-  "services": { "total": 42, "active": 38, "failed": 1 },
-  "timestamp": "2026-08-13T08:00:00Z"
-}
-```
-
-- Agent 每 10s 發送一次（ticker ±2s jitter，決策 2/10）
-- Manager 驗證 `Authorization: Bearer` == registry 該 node_name 的 token（不符 → 401）
-- `services` 統計為 Aggregate Dashboard 摘要列與 Node Card 服務統計的**唯一來源**（免代理查詢，決策 3/9）
-
-### 3.4 WebSocket 訊息合約（決策 3）
+### 3.2 Manager ↔ Agent WS 訊息合約（`GET /api/v1/agent/ws?token=`）
 
 | 訊息類型 | 方向 | 欄位 | 說明 |
 |---------|------|------|------|
-| `node_status` | Server → Client | `type`, `id`, `name`, `active`(status), `last_heartbeat`, `agent_version`, `timestamp` | 節點狀態變更或心跳資訊更新（不 Toast；更新 nodes store） |
-| `node_online` | Server → Client | `type`, `id`, `name`, `active="online"`, `timestamp` | 節點恢復上線（含寬限期內恢復）→ 前端 Toast「{name} 已恢復連線」 |
-| `node_offline` | Server → Client | `type`, `id`, `name`, `active`, `timestamp` | 節點離線（30s 無心跳）→ Toast「{name} 已離線」；**Manager 啟動後 30s 寬限期內不推播** |
-| `node_removed` | Server → Client | `type`, `id`, `name` | 節點被移除 → store 移除該節點（無需重整頁面） |
+| register | Agent → Manager | `request_id`, payload `{node_name, hostname, version, os}` | 連線後首則訊息（S17） |
+| register_ack | Manager → Agent | `request_id`, `ok`, payload `{min_version, compatible}` | compatible=false → 🟡（S39） |
+| heartbeat | Agent → Manager | `request_id`, payload `{services_total, services_running, services_failed, cpu?, mem?}` | 每 10s（可設定）；附帶統計為 summary 資料來源 |
+| rpc_request | Manager → Agent | `request_id`, `method`, payload(params) | method 見 agentproto 常數；逾時操作 15s／查詢 10s |
+| rpc_response | Agent → Manager | `request_id`, `ok`, payload(result\|error) | Manager 以 request_id 配對 pending |
 
-> 實作註記：`websocket.Message` struct 新增 `LastHeartbeat string json:"last_heartbeat,omitempty"` 與 `AgentVersion string json:"agent_version,omitempty"` 欄位（純資料欄位新增，hub 邏輯零改動）；supervisor 以既有 `hub.BroadcastMessage` 推送（決策 3）。
+連線層約定：強制 TLS；Agent 以 URL query `token` 反向驗證 Manager（S37/R7）；`SetReadDeadline(35s)` + PongHandler 兜底半開連線；同一 node_name 第二條連線被拒（R7 鏡像保護）。
+
+### 3.3 Manager → 前端瀏覽器 WS 事件（既有 `/api/v1/ws` hub 擴充）
+
+| 訊息類型 | 方向 | 欄位 | 說明 |
+|---------|------|------|------|
+| node_status_changed | Server → Browser | `{id, name, status, message?}` | 上線/離線/長期離線/警告即時推送（S18/S20/S39/S50） |
+| node_registry_changed | Server → Browser | `{action:"added"\|"removed", node}` | 節點增刪免重整（S13/S23/S51） |
 
 ---
 
 ## 4. 資料流
 
-### 4.1 Agent → Manager 心跳（決策 1/2/3）
+**① 代理操作（同步，步驟 3 / S06）**
 
-```mermaid
-flowchart LR
-    AG["Agent（cmd/agent binary）<br/>heartbeat client：10s ticker（±2s jitter）<br/>+ exponential backoff"] -->|"POST https://manager:8443/api/v1/agent/heartbeat<br/>Bearer lsm_node_xxx + payload（3.3）"| HB["Manager heartbeat handler<br/>VerifyToken(node_name, token) → 401 拒絕"]
-    HB -->|"SetHeartbeat：last_heartbeat=now + service_stats<br/>+ version/hostname/os（熱路徑零 IO）"| REG["Registry（記憶體 + nodes.json）"]
-    REG -->|"5s ticker 掃描"| SUP["Supervisor<br/>deriveStatus（10s/30s/300s + 版本檢查）"]
-    SUP -->|"狀態變更才推播"| HUB["WebSocket Hub<br/>node_status / node_online / node_offline / node_removed"]
-    HUB -->|"BroadcastMessage"| UI["前端 useWebSocket handlers<br/>→ stores/nodes.ts + Toast"]
+```
+Browser ──POST /api/v1/nodes/{id}/services/nginx.service/restart──▶ Manager handler
+  → audit.log(action=restart, node_id) 先行記錄
+  → nodeproxy.Call(method="services.restart", timeout=15s) ──rpc_request──▶ Agent WS
+  → Agent 呼叫 internal/systemd.Restart ──rpc_response(ok/error)──▶ Manager
+  → Handler 映射回應（200 / 503 / 409 / 504 / 透傳錯誤）──▶ Browser（Toast + 列狀態更新）
 ```
 
-**步驟分解**：
-1. Agent 每 10s（±2s jitter 防 50 節點對齊）POST 心跳；失敗依 exponential backoff（1s→2s→4s→…上限 30s）延遲重試（決策 2/10，SYS-56/57）
-2. Manager 心跳 handler 驗證 node_name + Bearer token → 不符 401（Agent 記錄並重試；BDD @multi-manager 第二 Manager 被拒）；更新 last_heartbeat + stats（**Status 不在此處修改**）
-3. Supervisor 5s ticker 掃描所有節點，`deriveStatus` 判定四態；狀態變更才 `SetStatus` + 推播（防通知風暴，決策 3）
-4. 前端 4 個 WS handler 更新 nodes store（狀態/時間/版本）並依 type 顯示 Toast
+**② 心跳與匯總（非同步持續，S17/S18）**
 
-### 4.2 服務操作代理（決策 6）
-
-```mermaid
-flowchart LR
-    UI2["前端單節點視圖<br/>/dashboard?node={id}"] -->|"POST /api/v1/nodes/{id}/services/nginx.service/restart"| PH["Manager proxy handler<br/>registry lookup（404）→ 離線檢查（502）"]
-    PH -->|"ctx 15s + Bearer token"| CL["AgentClient.Do<br/>https://{node.Address}/api/v1/services/nginx.service/restart"]
-    CL -->|"HTTPS（TLS / 指紋 pin / mTLS）"| AG2["Agent server<br/>token middleware（401）→ systemd.ServiceManager"]
-    AG2 -->|"回傳更新後狀態"| CL
-    PH -->|"audit：action + node_id + node_name"| AU["internal/audit（JSONL）"]
-    PH -->|"200 轉寫 Agent 原樣 schema"| UI2
+```
+Agent (每 10s) ──heartbeat{服務統計}──▶ nodeproxy.Hub ──▶ nodemonitor.OnHeartbeat
+  → registry.ApplyHeartbeat（記憶體，不落盤）
+  → 狀態變化時 publish(status_event) ──▶ 前端 hub 廣播 node_status_changed
+Browser Aggregate 模式 GET /nodes/summary → 由各節點最後心跳統計組成（不做本地服務快取）
 ```
 
-- 同節點同服務並行限制：前端 per-node per-service **in-flight 標記**（`stores/nodes.ts` `inFlight`）— 操作進行中按鈕 disabled（決策 9/D-9）；不同節點天然並行
-- 逾時（15s）→ 504 → Toast「web-server-01 操作逾時：nginx.service restart」+ 按鈕恢復可點擊（BDD @timeout）
+**③ 跨節點搜尋（平行聚合，步驟 7 / S24/S33）**
 
-### 4.3 跨節點搜尋 fan-out（決策 9）
-
-```mermaid
-flowchart LR
-    UI3["Aggregate Dashboard 搜尋框<br/>debounce 300ms"] -->|"GET /api/v1/nodes/services/search?q=nginx"| SH["Manager search handler"]
-    SH -->|"僅 status ∈ {online,degraded,warning} 的節點"| FL["fan-out：每節點一 goroutine<br/>semaphore ≤ 10 + 總 context 10s"]
-    FL -->|"並行 GET /api/v1/services?q=nginx（substring 過濾，Agent 端做）"| AG3["Agent × N"]
-    AG3 -->|"結果 / 失敗 reason"| CH["channel 收集（部分結果先回）"]
-    CH -->|"results + failed_nodes"| UI3
+```
+Browser(debounce 300ms) ──GET /nodes/services/search?q=nginx──▶ Manager
+  → errgroup 對所有 online 節點並行 CallQuery("services.search", 10s 總逾時)
+  → 可達節點結果彙入 results；離線/逾時節點列入 unreachable（不阻塞）
+  → 10s 到期或全部完成即回應 ──▶ Browser（NodeSearchResults 渲染）
 ```
 
-- 離線節點**不查詢**、直接列 `failed_nodes`（reason: offline）；逾時節點列 `failed_nodes`（reason: timeout）— 不阻塞其他節點（BDD @partial-failure）
-- 前端結果尾部顯示「N 個節點無法查詢（離線/逾時）」；點擊結果 → `/dashboard?node={id}&service={name}`（?service 初始展開）
+**④ 註冊與上線（步驟 4–6 / 流程 3.3）**
 
-### 4.4 WebSocket 即時推送（決策 3）
+```
+管理員 ──POST /nodes（或 test-connection 先行驗證）──▶ registry.Add（唯一性/上限/persist）
+  → Agent（已部署）outbound 撥號 ──register──▶ Hub 比對 node_name
+  → monitor.OnConnect → 狀態 online → node_status_changed 廣播 → UI 🟢
+  → 不可達：節點仍儲存、狀態 offline，Agent 日後撥上自動轉 online
+```
 
-- 節點狀態變更（上線/離線/長期離線/版本警告）與節點新增/移除皆由 Supervisor（或 handler）經 `hub.BroadcastMessage` 推送
-- 前端 4 個 handlers（`node_status` / `node_online` / `node_offline` / `node_removed`）更新 `stores/nodes.ts` + 全域 Toast — **不需手動重整頁面**（BDD @heartbeat @websocket）
-- WS 斷線由既有 `useWebSocket` 自動重連（maxRetryDelay 30s）恢復即時更新（BDD @integration @websocket）
+**⑤ 持久化**
+
+```
+registry CRUD ──atomic write(temp+rename, 0600)──▶ /var/lib/linux-service-manager/nodes.json
+last_heartbeat / status 等 runtime state ──▶ 僅記憶體（重啟後由 Agent 重連刷新）
+```
 
 ---
 
-## 5. 生命週期
+## 5. 生命週期（Agent 連線與心跳狀態機）
 
-### 5.1 心跳狀態機（決策 3，核心時間邊界）
+### 5.1 Agent 連線生命週期
 
-| 狀態 | 判定（`deriveStatus`） | 指示燈 | UI 行為 |
-|------|----------------------|--------|---------|
-| `online` | `age < 10s`（心跳間隔內） | 🟢 | 正常操作 |
-| `degraded` | `10s ≤ age < 30s`（心跳稍有延遲但未逾時） | 🟡 | 可操作；Card 顯示 🟡 |
-| `offline` | `30s ≤ age < 300s`（連續 ≥3 次漏拍） | 🔴 | 操作按鈕禁用 + 黃色 Banner「節點已離線，操作不可用」；Card 灰顯；Header 統計離線 +1 |
-| `long_offline` | `age ≥ 300s`（超過寬限期） | ⚫ | Card 移至底部/摺疊 |
-| `warning` | 版本 < `AgentMinVersion`（**優先判定**，心跳正常） | 🟡 | Tooltip「Agent 版本過舊 (v1.0)，建議升級至 v1.2+」；**不阻斷心跳與操作** |
+| 階段 | 觸發 | 動作 | 退出條件 |
+|------|------|------|---------|
+| 部署啟動 | systemctl start linux-service-agent | 讀設定檔（manager_addr/auth_token/node_name）→ 建 Client.Run | process 結束 |
+| 撥號 | Client.Run / 重連迴圈 | `wss://…/api/v1/agent/ws?token=` TLS handshake + 指紋 pinning | 連上或 backoff 重試 |
+| 重試退避 | 撥號失敗 | exponential backoff 1s×2 至上限 60s；Manager 恢復後自動連上 | 連線建立 |
+| 註冊 | WS 連上 | 發送 register → 等 register_ack；compatible=false 記錄警告續跑 | ack 到期 → 斷線重來 |
+| 運行 | ack ok | heartbeat ticker（10s）+ rpc dispatch + 高優先 send queue | WS 斷線 / ctx cancel |
+| 斷線偵測 | 對端斷開或 35s read deadline 到期 | 通知 Manager 端 OnDisconnect；Agent 進入重連迴圈 | — |
 
-- **寬限期恢復**：離線 <300s 內收到新心跳 → 自動回 `online`（`node_online` + Toast「已恢復連線」），無需管理員介入（BDD @offline / @network）
-- **防風暴**：supervisor 5s 批次掃描 + **狀態變更才推播**；心跳 jitter（±2s）避免節點對齊（決策 3/10，MAN-10）
-- 純函式 `deriveStatus` 為單元測試核心（SYS-20~26：時間邊界 10s/30s/300s、last_heartbeat 空 → offline、版本優先）
-
-### 5.2 Manager 啟動 / 重啟寬限期（決策 3/10）
-
-| 階段 | 行為 |
-|------|------|
-| Manager 啟動 | 依 node registry 載入節點（nodes.json 保留）→ 對每個節點發**非阻塞並行**健康檢查（GET /health，semaphore 10）嘗試建立第一筆 last_heartbeat（決策 2） |
-| 啟動後 0~30s（bootTime 寬限期） | supervisor 狀態**照算**，但 **不推播 node_offline**（避免 50 節點重啟風暴；BDD @restart「啟動後 30 秒內不觸發離線通知」） |
-| 啟動後 >30s | 正常推播；心跳回流後節點自動 🟢（「註冊」= 健康檢查 + 第一次心跳比對 node_name，無獨立 register 端點，D-1） |
-
-### 5.3 Agent 心跳循環與重連 backoff（決策 2/3）
-
-| 階段 | 行為 |
-|------|------|
-| Agent 啟動 | 讀取 agent.yaml → 啟動 HTTPS server（:8443，明文回 426）→ 啟動心跳 client（10s ticker ±2s jitter） |
-| 心跳發送 | POST `https://{manager_addr}/api/v1/agent/heartbeat`（Bearer auth_token） |
-| 失敗（網路/5xx） | **exponential backoff**（1s → 2s → 4s → … 上限 30s）延遲下一個 tick；不 panic（SYS-57） |
-| 401（token 不符） | 記錄錯誤並持續重試（決策 5；BDD @multi-manager — Agent 僅接受設定檔內 token，第二個 Manager 被拒） |
-| Agent 重啟 / 網路恢復 | 下一個心跳自然恢復 — **無重連狀態機**（短連線模型，決策 2）；Manager 寬限期內自動回 🟢 |
-| Manager 重啟 | Agent 心跳持續送出（失敗 → backoff 重試），Manager 回來後下一個心跳即恢復 |
-
-### 5.4 節點生命週期
+### 5.2 Manager 端節點心跳狀態機
 
 ```
-Create（registry 註冊 + 健康檢查）
-  → 可達：第一筆 last_heartbeat → supervisor 判定 online（🟢）
-  → 不可達：仍儲存、Status=offline（🔴，BDD「位址不可達仍儲存但標示離線」）
-  → 心跳停 30s → offline（🔴）→ 300s → long_offline（⚫）
-  → 心跳恢復（寬限期內）→ online（🟢，node_online + Toast）
-  → 版本 < AgentMinVersion → warning（🟡 優先，不阻斷）
-Update（PUT：token 留空不變更 / address 變更）
-Delete（移除註冊；歷史資料與 Audit Log 保留 → node_removed WS 推送）
+                 register / heartbeat（任意狀態）
+   ┌──────────────────────────────────────────────┐
+   ▼                                              │
+online ──WS斷線 或 ≥30s無心跳──▶ offline ──≥300s無心跳──▶ long_offline
+（🟢）                            （🔴）                  （⚫）
+   ▲                              │                      │
+   └────── 寬限期內/外，收到心跳皆恢復 ◀────────────────────┘
+            （恢復時發布 node_status_changed + Toast）
 ```
+
+| 狀態 | 進入條件 | 附帶行為 | 退出條件 |
+|------|---------|---------|---------|
+| online 🟢 | register/heartbeat 收到 | 正常操作可用 | WS 斷線（立即）或 ≥30s 無心跳 |
+| warning 🟡 | register_ack 相容性檢查失敗 | 操作仍可用；Tooltip 提示升級 | Agent 升級後重新註冊 |
+| offline 🔴 | WS 斷線或 ≥30s（3×心跳）無心跳 | 廣播事件、UI 禁用操作+Banner | 收到心跳 → online |
+| long_offline ⚫ | offline 持續 ≥300s | 卡片摺疊/置底；離線面板可開 | 收到心跳 → online |
+| 啟動寬限期 | Manager 剛啟動 30s 內 | Monitor 掃描跳過，不觸發任何離線事件（R6） | 30s 期滿恢復正常掃描 |
+
+逾時兜底：WS 層 `SetReadDeadline(35s)` + PongHandler 處理半開連線；RPC 層操作 15s／查詢 10s 逾時確保前端不會永久 loading。
 
 ---
 
 ## 6. 邊界條件處理
 
-### 6.1 BDD @edge-case 全表（9 個 Scenario 行，含 Outline 全部 Examples）
-
-| # | 邊界 | 來源（BDD） | 行為定義 |
-|---|------|------------|---------|
-| E-1 | **50 節點上限** | `@node-limit` | `Create` 前檢查 `Count() ≥ MaxNodes(50)` → 400/409「已達節點數量上限」；49 個時允許第 50 個（SYS-11/12, HDL-07, E2E-50, MAN-09） |
-| E-2 | **心跳三規則** | `@heartbeat` Outline ×3 | 10s 正常心跳 → last_heartbeat 更新；連續 3 次（30s）漏拍 → 🔴 offline；離線 ≥300s → ⚫ long_offline（SYS-20~24, INT-02, E2E-51） |
-| E-3 | **逾時依操作類型分級** | `@timeout` Outline ×2 | 單一服務操作 15s → 失敗 + Toast「操作逾時」；跨節點搜尋總 10s → 逾時後回傳已可達節點的部分結果 + failed_nodes（SYS-36, HDL-23/31, E2E-52） |
-| E-4 | **同節點同服務不並行** | `@concurrency` | Manager **不強制**（無狀態 proxy，決策 6/D-9）；前端 per-node per-service `inFlight` 標記 — 操作進行中同服務按鈕 disabled、系統拒絕第二個並行操作（F-DV-08, E2E-46） |
-| E-5 | **不同節點可並行** | `@concurrency` | in-flight key 含 nodeId — 不同節點操作天然並行互不影響（F-DV-09, INT-04, E2E-47, MAN-14） |
-| E-6 | **TLS 單向 / mTLS 雙向** | `@tls` Outline ×2 | TLS（單向）：Manager 驗證 Agent 憑證（RootCAs 或指紋 pin）；mTLS（雙向）：Agent 以 `RequireAndVerifyClientCert` + `ClientCAs` 驗證 Manager 憑證、Manager 送 client cert（SYS-38~41/55, INT-06, MAN-03） |
-| E-7 | **Agent 信任 Manager 代理授權** | `@auth` | Manager 以預設 Token 或 mTLS 憑證向 Agent 驗證；Agent **不直接驗證管理員身分**，信任 Manager 的代理授權（SYS-34/47, INT-01, MAN-12） |
-| E-8 | **服務狀態不本地快取** | `@consistency` | Manager 每次服務查詢**皆代理至 Agent**（即時回報為準）；Aggregate 摘要數據來自最後一次心跳附帶的 ServiceStats（決策 3/9，D-7）— 無全域服務索引（SYS-34/42/43, INT-01） |
-| E-9 | **不支援跨節點相依編排** | `@orchestration` | 不提供「先重啟 Node-A 的 DB 再重啟 Node-B 的 App」一次性編排；操作僅作用單一節點，管理員手動依序執行（F-DV-03, MAN-12） |
-
-### 6.2 其他邊界與降級（來自 IF 異常處理 + Tech Decision 風險表）
-
-| # | 情境 | 行為 |
-|---|------|------|
-| E-10 | **token 與 tls_fingerprint 皆空** | 註冊回 400（決策 5：至少填其一） |
-| E-11 | **版本不相容 🟡 警告優先** | 心跳帶 version < `AgentMinVersion` → `warning`（優先於 online 判定）；**不阻斷心跳與操作**；Tooltip 提示升級（決策 3，SYS-25/26, F-ND-03, E2E-49, MAN-07） |
-| E-12 | **Manager 啟動寬限期** | bootTime + 30s 內不推播 `node_offline`（狀態照算）；避免 50 節點重啟風暴（決策 3/10，SYS-28/29, INT-07, E2E-53, MAN-04） |
-| E-13 | **心跳 jitter ±2s** | Agent ticker 每拍前偏移 0~2s 隨機量，避免 50 節點對齊拍擊 Manager（決策 2/10，SYS-56, MAN-10） |
-| E-14 | **supervisor 批次防通知風暴** | 5s ticker 掃描 + 狀態變更才推播；心跳 handler 不推播（決策 3，SYS-30/31） |
-| E-15 | **Agent 明文 HTTP 回 426** | Agent 只接受 HTTPS；`http://` 連線 → `426 Upgrade Required`（決策 1，SYS-54） |
-| E-16 | **Agent 4xx/5xx 原樣轉寫 + 4MB 上限** | 代理不吞錯（原樣轉寫 Agent `{"error":...}`）；回應 body `io.LimitReader` 4MB 截斷（決策 6，SYS-37/42/43, HDL-24/27） |
-| E-17 | **多 Manager 衝突** | Agent 僅接受設定檔 `manager_addr` + token 的第一個 Manager；第二個 Manager 心跳被拒（401）→ 其節點顯示 🔴 離線（BDD @multi-manager，SYS-58, MAN-08） |
-| E-18 | **token / 憑證洩漏防護** | nodes.json 檔權限 **0600**；API 回應 token masked `lsm_node_****xxxx`；編輯留空不變更；mTLS 節點可完全依賴憑證認證（決策 5，SYS-14, MAN-11） |
-| E-19 | **心跳 token 不符** | Manager 心跳 middleware 比對 node_name + token → 不符 401（Agent 記錄並重試）（決策 5，SYS-16/17） |
-| E-20 | **註冊時位址不可達** | 節點仍儲存、標 🔴 離線；Toast「節點 X 已註冊但無法連線」（BDD @error-handling，F-NF-08, E2E-31） |
-| E-21 | **搜尋僅查線上節點 + failed_nodes** | 離線節點不查詢、列 `failed_nodes`（reason: offline）；部分失敗不阻塞（決策 9，HDL-29/30, F-AD-09, E2E-20, MAN-06） |
-| E-22 | **移除節點保留歷史** | Audit Log 與歷史資料獨立於 registry，DELETE 不刪除（BDD @data，SYS-07/59, INT-08, E2E-56） |
-| E-23 | **狀態未變不廣播** | 節點維持相同狀態 → 無任何推播（決策 3 防風暴，SYS-30） |
-| E-24 | **last_heartbeat 為空** | 從未收到心跳的節點 → `offline`（決策 3，SYS-24） |
-| E-25 | **startup 健康檢查並行** | Manager 重啟後 50 節點健康檢查**非阻塞並行**（semaphore 10），不阻塞啟動（決策 2 風險緩解，MAN-04） |
-| E-26 | **Agent 離線時本地操作** | Agent 與 Manager 斷連仍提供完整 JSON API（services/操作/日誌，僅無前端），本機操作可執行（BDD @agent @business-rules，MAN-12） |
+| 情境 | 來源 | 處理方式 |
+|------|------|---------|
+| 尚無任何註冊節點 | BDD S02 @edge-case | Aggregate Dashboard 顯示 EmptyState「尚無已註冊節點，請先新增節點」+ 前往 /nodes 引導連結 |
+| 測試連線失敗（connection refused） | S12 @edge-case | test-connection 回 `{ok:false,error}`；Modal 保持開啟可修改重試 |
+| 測試連線 TLS 憑證過期 / 指紋不符 | S34 @edge-case | DialTLS 錯誤分類 "certificate expired" / "fingerprint mismatch" 透傳至表單紅色提示 |
+| 註冊時 Agent 不可達 | S14 @edge-case | 節點照常儲存（201），status=offline，Toast「已註冊但無法連線」；Agent 撥上後自動轉 online |
+| 必填欄位缺失 | S40 @edge-case | 前端攔截紅色提示不發請求；後端 400 `{"error":"name and address are required"}` 雙保險 |
+| 節點名稱重複 | S38 @edge-case | 後端 409 ErrDuplicateName；前端 Toast「節點名稱重複，請使用不同名稱」，表單保留 |
+| 節點數達上限 50 台 | S41 / 規則 B1 | registry.Add 回 ErrMaxNodes → 400 `{"error":"maximum of 50 nodes"}` |
+| 同節點同服務並行操作 | S09 / 規則 B4 | nodeproxy singleflight：in-flight 期間同 key 回 409；不同節點/不同服務不受影響 |
+| 服務操作逾時 15s | S32 / 異常 R3 | rpc timeout → 504；前端 Toast「[Node] 操作逾時：{svc} {action}」，按鈕復原可重試 |
+| 跨節點搜尋部分節點失敗 | S33 / 異常 R4 | 離線/逾時節點列入 `unreachable` 標示「無法查詢」，其餘結果先回不阻塞（errgroup 10s 總逾時） |
+| 搜尋無匹配結果 | S26 @edge-case | 回 200 空 results；UI「沒有找到匹配的服務」 |
+| 關閉搜尋結果 | S27 @edge-case | 清除 searchResults 返回 Node Cards 網格 |
+| Agent 服務掛掉（心跳中斷） | S29 / 異常 R1 | WS 斷線立即 offline；UI 全套禁用反應；Agent 重啟重連後自動恢復 + Toast |
+| 網路中斷於寬限期內/外恢復 | S30/S31 / R2 | 寬限期內恢復 → 無縫回 online；超過 300s → 曾標 long_offline，重連後回 online 需管理員確認 |
+| Manager 重啟（所有 Agent 斷線） | S36 / 異常 R6 | nodes.json 設定保留；啟動寬限期 30s 內不觸發離線通知；Agent backoff 重連自動恢復 |
+| 同一 Agent 被第二個 Manager 連線 | S37 / 異常 R7 | Agent 端以 auth_token 驗證 Manager 身分，token 不符 → 401 拒絕升級；Manager 端同 node_name 第二條連線亦拒絕 |
+| Agent 版本不相容 | S39 / 異常 R9 | register 時比對 min_version；compatible=false → 節點 🟡 + Tooltip「Agent 版本過舊 (vX)，建議升級」；可下載新版 binary |
+| 已註冊節點憑證過期 | S35 / 異常 R5 | 連線失敗 → 節點 offline；更新憑證 + Manager 端 PUT 指紋後 reconnect 恢復 |
+| nodes.json 損毀 | SYS-REG-11（測試計畫） | LoadRegistry 回 ErrInvalidJSON，Manager 報錯退出（不靜默重建，避免吞掉 50 台設定） |
+| WS 半開連線誤判線上 | Tech Decision 風險表 | read deadline 35s + PongHandler；RPC 15s 逾時兜底 |
+| nodes.json 含 token 明碼 | Tech Decision 風險表 | 檔案權限 0600；部署文件標註；未來可改 secret ref |
+| 單一 WS 承載心跳+RPC 塞住 | Tech Decision 風險表 | 心跳走高優先 send queue；logs 大 payload 不走 rpc（日誌經代理 REST 查詢） |
 
 ---
 
 ## 7. CSS 關鍵樣式
 
-沿用既有 `assets/main.css` 設計 token（`btn` / `btn-primary` / `btn-secondary` / `btn-danger`、`empty-state`、`lms-modal`、`loading-spinner`、`field-error` 等既有 class）。新增樣式骨架：
-
-```css
-/* Aggregate Dashboard / Node Cards */
-.aggregate-dashboard { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
-.stats-bar { display: flex; flex-wrap: wrap; gap: 1rem; padding: .75rem 1rem; background: var(--surface-2, #f5f5f5); border-radius: 8px; margin-bottom: 1rem; font-weight: 600; }
-.node-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
-
-.node-card {
-  border: 1px solid var(--border-color, #ddd); border-radius: 10px; padding: 1rem;
-  background: var(--card-bg, #fff); cursor: pointer; transition: box-shadow .2s, opacity .2s;
-}
-.node-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,.12); }
-.node-card.node-offline { opacity: .6; }          /* 離線灰顯（BDD @offline：服務統計灰顯） */
-.node-card.node-long-offline { opacity: .45; }    /* 長期離線 ⚫ */
-.status-dot { font-size: 1.1rem; margin-right: .4rem; }
-.node-stats.dimmed { opacity: .5; }
-.node-heartbeat { font-size: .8rem; color: var(--muted, #888); }
-.version-warning { color: #b45309; font-size: .8rem; }  /* 🟡 版本警告 Tooltip */
-
-/* 離線 Banner（BDD @offline @p1） */
-.offline-banner {
-  background: #fef3c7; color: #92400e; border: 1px solid #f59e0b;
-  padding: .5rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-weight: 600;
-}
-
-/* NodeSwitcher 下拉（Header） */
-.node-switcher { position: relative; display: inline-block; }
-.node-dropdown {
-  position: absolute; top: 100%; left: 0; min-width: 220px; z-index: 100;
-  background: var(--surface, #fff); border: 1px solid var(--border, #ddd); border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0,0,0,.15); padding: .25rem 0;
-}
-.node-option { display: block; width: 100%; text-align: left; padding: .5rem 1rem; background: none; border: none; cursor: pointer; }
-.node-option:hover { background: var(--surface-2, #f2f2f2); }
-.node-option.active { background: var(--accent-light, #e3f2fd); font-weight: 700; color: var(--accent, #1976d2); }  /* 目前節點反白（BDD @switch） */
-
-/* NodeFormModal 測試連線結果（BDD @node-mgmt） */
-.test-result { padding: .5rem .75rem; border-radius: 6px; font-size: .9rem; }
-.test-ok { background: #e8f5e9; color: #2e7d32; }        /* 綠色「連線成功 — Agent v1.2.3 @ …」 */
-.test-fail { background: #fff0f0; color: #c62828; }      /* 紅色「無法連線：…」 */
-
-/* Node Management 表格 / 下載選單 */
-.node-table { width: 100%; border-collapse: collapse; background: var(--card-bg, #fff); }
-.node-table th, .node-table td { padding: .6rem .75rem; border-bottom: 1px solid var(--border, #eee); text-align: left; }
-.row-actions { display: flex; gap: .4rem; }
-.arch-dropdown { position: absolute; z-index: 100; background: var(--surface, #fff); border: 1px solid var(--border, #ddd); border-radius: 6px; }
-.arch-dropdown button { display: block; padding: .5rem 1rem; background: none; border: none; cursor: pointer; width: 100%; text-align: left; }
-
-/* 搜尋結果（跨節點） */
-.search-results { border: 1px solid var(--border, #ddd); border-radius: 8px; padding: .5rem; margin-bottom: 1rem; }
-.search-item { display: block; width: 100%; text-align: left; padding: .5rem .75rem; background: none; border: none; cursor: pointer; }
-.search-item:hover { background: var(--surface-2, #f2f2f2); }
-.failed-note { font-size: .8rem; color: #b45309; margin: .25rem .75rem; }  /* 「N 個節點無法查詢（離線/逾時）」 */
-
-/* NodeDetailPanel 側面板 */
-.detail-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 200; display: flex; justify-content: flex-end; }
-.detail-panel { width: 360px; max-width: 90vw; background: var(--surface, #fff); padding: 1.5rem; overflow-y: auto; }
-.detail-panel dl { display: grid; grid-template-columns: 100px 1fr; gap: .5rem; }
-.panel-actions { display: flex; gap: .5rem; margin-top: 1.5rem; }
-```
+| class | 樣式重點 |
+|-------|---------|
+| `.node-card` | 卡片網格項目：圓角、邊框、hover 提亮；`display:flex; flex-direction:column; gap` |
+| `.node-dot` / `.node-dot--online` | 8px 圓點 🟢 `background:#34c759` |
+| `.node-dot--warning` | 🟡 `background:#f0a030`；搭配 `.node-card__warn` Tooltip（`:hover::after` 顯示 versionMessage） |
+| `.node-dot--offline` | 🔴 `background:#e02020` |
+| `.node-dot--long_offline` | ⚫ `background:#666` |
+| `.node-card--collapsed` | 長期離線摺疊：`opacity:.55`；網格排序置底（JS 排序，非 CSS order hack） |
+| `.node-card__stats.is-muted` | 離線時服務統計灰顯 `color: var(--text-muted)` |
+| `.node-banner--offline` | 單節點離線黃色 Banner：`background:#fff3cd; border-left:4px solid #f0a030`，置於服務列表上方 |
+| `.node-switcher__select` | Header 下拉：含狀態指示燈 emoji 前前綴；寬度自適應節點名 |
+| `.node-form__field.has-error` | 必填缺失紅框 + `.node-form__error` 紅字提示 |
+| `.node-form__result--ok` | 測試連線成功綠色提示 `color:#2e7d32; background:#e8f5e9` |
+| `.node-form__result--error` | 測試連線失敗紅色提示 `color:#c62828; background:#fff0f0` |
+| `.node-summary-bar` | 頂部統計列：橫向 flex，數字大字級 + 標籤小字級（複用 StatsBar 模式） |
+| `.node-search-results` | 搜尋結果列表：列 hover 提亮、unreachable 列 `.is-unreachable` 加灰色斜體「無法查詢」標籤 |
 
 ---
 
 ## 8. 開發順序
 
-| 步驟 | 內容 | 依賴 | 對應測試 |
-|------|------|------|---------|
-| 1 | `internal/nodes/registry.go` — nodes.json Load/atomic save/CRUD/名稱唯一性/50 上限/VerifyToken/MaskToken | - | SYS-01~14 |
-| 2 | `internal/nodes/client.go` — AgentClient（TLS/指紋 pin/mTLS/token header/Do(ctx,...)/NodeOfflineError/NodeTimeoutError/4MB 上限） | - | SYS-34~43 |
-| 3 | `internal/agent/` server + `src/cmd/agent/main.go` — config.go（yaml.v2）、/health、/api/v1/services/*、/api/v1/system/info、token middleware、426 | - | SYS-44~55 |
-| 4 | `internal/nodes/heartbeat.go`（Manager 接收端 + token 驗證）+ `internal/agent/heartbeat.go`（10s ticker + jitter + backoff） | #1, #3 | SYS-15~19, SYS-56~58 |
-| 5 | `internal/nodes/supervisor.go` — deriveStatus 狀態機（10s/30s/300s/版本優先）+ 啟動寬限期 + hub 推播 + OnNodeStateChange 擴充點 | #1, #4 | SYS-20~33 |
-| 6 | `internal/audit/audit.go` 小改 — Entry + NodeID/NodeName（omitempty）+ 4 個節點操作 Action/labels | - | SYS-59~60 |
-| 7 | `internal/handler/node_handler.go` — 節點層 9 個 handler（CRUD/test-connection/summary/download）+ `handler.go` Nodes 欄位 | #1, #2, #6 | HDL-01~18 |
-| 8 | `internal/handler/node_proxy_handler.go` — 4 類代理 handler（services/ops/logs/info）+ per-route 逾時 + 錯誤映射 + audit node 欄位 | #2, #6, #7 | HDL-19~27 |
-| 9 | `internal/handler/search_handler.go` — fan-out + semaphore(10) + 10s context + failed_nodes | #2, #7 | HDL-28~33, HDL-34~36（401） |
-| 10 | `main.go` 整合 — nodes 初始化、心跳路由（Auth 群組外）、13 條節點路由（順序註記）、agent binary embed、`go.mod` yaml.v2 direct | #4, #5, #7, #8, #9 | INT-01~09 |
-| 11 | 後端單元/整合測試補齊（registry race、deriveStatus 邊界、AgentClient 指紋/逾時、proxy 錯誤映射、search 部分失敗、心跳全鏈路） | #1~#10 | SYS/HDL/INT |
-| 12 | 前端 `types/node.ts` + `api/client.ts` 擴充（13 個節點 API + nodeId 前綴） | #10（API 契約） | F-AP-01~12 |
-| 13 | 前端 `stores/nodes.ts`（state/getters/actions + in-flight 標記） | #12 | F-NS-01~09 |
-| 14 | 前端 `useWebSocket.ts` 4 事件（node_status/node_online/node_offline/node_removed）+ `Message` 資料欄位擴充 + `useI18n` 翻譯 | #12, #13 | F-AP-13~14 |
-| 15 | 前端元件 — `AggregateDashboardView.vue` + `NodeCard.vue` + `NodeSwitcher.vue` + `NodeFormModal.vue` + `NodeManagementView.vue` + `NodeDetailPanel.vue` | #13, #14 | F-AD-*, F-NC-*, F-SW-*, F-NF-*, F-NM-*, F-ND-* |
-| 16 | `DashboardView.vue` node-aware 改造（?node 前綴 / 離線禁用 + Banner / ?service 展開 / 向後相容） | #13, #15 | F-DV-01~12 |
-| 17 | `router/index.ts`（/ 改掛 Aggregate、新增 /nodes）+ `AppHeader.vue` 導覽連結 | #15, #16 | E2E-01, E2E-23 |
-| 18 | 前端元件測試（NodeFormModal 驗證/測試連線、NodeCard 狀態燈、DashboardView 離線禁用、WS 事件 Toast） | #15, #16 | F-* 補齊 |
-| 19 | Playwright E2E（註冊→測試連線→Aggregate→切換節點→操作→離線→恢復→跨節點搜尋，`frontend/e2e/014-multi-node-agent-management.spec.ts`） | #17, #18 | E2E-01~56 |
-| 20 | 手動驗證（真實多機、真實 TLS/mTLS、網路中斷、50 節點壓力、多 Manager 衝突） | #19 | MAN-01~14 |
+| 步驟 | 內容 | 依賴 |
+|------|------|------|
+| 1 | `internal/agentproto`：wire protocol 型別 + 常數 + 單元測試 | - |
+| 2 | `main.go` 遷移至 `cmd/manager/main.go`（行為不變，CI/E2E 路徑同步調整） | - |
+| 3 | `internal/noderegistry`：Node/Registry CRUD、唯一性、50 台上限、nodes.json atomic write + SYS-REG-* 測試 | #1（部分型別） |
+| 4 | `internal/nodeproxy/tls.go`：DialTLS 指紋 pinning + SYS-TLS-* 測試 | #1 |
+| 5 | `internal/nodemonitor`：狀態機 + fake clock + SYS-MON-* 測試 | #3 |
+| 6 | `internal/nodeproxy/hub.go + rpc.go + search.go`：Agent hub、WS RPC、singleflight、errgroup 搜尋 + SYS-PF-/SRCH-* 測試 | #1, #3, #4, #5 |
+| 7 | `internal/agentclient`：撥號/backoff/register/heartbeat/dispatch + SYS-AC-* 測試 | #1, #4 |
+| 8 | `internal/agentapi` + `cmd/agent/main.go`：Agent 本機 API 與入口 | #7 |
+| 9 | `internal/handler/nodes_handler.go` + route 掛載 + audit 欄位擴充 + HDL-* 測試 | #3, #5, #6 |
+| 10 | `internal/websocket/hub.go` 擴充 node.* 事件廣播 | #5, #9 |
+| 11 | 整合測試 harness（多進程 + 加速環境變數 §6.1 + TLS 測試 helper）：INT-* 系列 | #8, #9, #10 |
+| 12 | 前端 `types/node.ts` + `api/client.ts` 函式群 | #9（合約凍結後即可平行開始） |
+| 13 | 前端 `stores/node.ts` + `useWebSocket` node.* 處理 + Vitest | #12 |
+| 14 | 前端元件：NodeSummaryBar、NodeCard、NodeSwitcher + Vitest | #13 |
+| 15 | 前端 NodeFormModal、NodeManagementView、NodeDetailPanel + router /nodes + Vitest（参照 `docs/uiux/014-node-management-design.md`） | #14 |
+| 16 | DashboardView 視圖分流 + 單節點服務操作/離線禁用整合 + Vitest | #14, #15 |
+| 17 | Playwright E2E（globalSetup 多進程拓撲）：E2E-01～E2E-34 | #11, #16 |
+| 18 | Makefile build-agent targets、deploy/（agent systemd unit + 設定範例）、手動驗證 MAN-01～09 | #8, #17 |
 
-> DAG 無循環：後端基礎模組（registry → heartbeat → supervisor → agentclient → proxy handler）→ Agent binary → main.go 整合 → 前端（nodes store → 視圖 → node-aware Dashboard → 路由）→ 元件測試 → E2E。步驟依賴皆指向較小編號，無反向依賴。
+依賴為 DAG（#12 起前端與 #11 整合測試可平行）。關鍵路徑：1→3→5→6→9→11→17。
 
 ---
 
 ## 9. 基礎架構設定
 
-### 9.1 Agent 設定檔（`/etc/linux-service-manager/agent.yaml`，決策 7）
+**Nginx（Manager 反向代理，WebSocket upgrade）**
 
-```yaml
-manager_addr: manager.example.com:8443   # 必填：心跳目標（Manager HTTPS 端口）
-auth_token: lsm_node_xxxxxxxx            # 必填：與 Manager registry 同步的共享 secret
-node_name: web-server-01                 # 必填：節點名稱（唯一，與 Manager 比對）
-heartbeat_interval: 10s                  # 選填，預設 10s（ticker ±2s jitter）
-listen_addr: ":8443"                     # Agent 自身 HTTPS server
-tls_cert: /etc/linux-service-manager/agent.crt
-tls_key: /etc/linux-service-manager/agent.key
-client_cert: ""                          # 選填：mTLS 時 Manager 驗證用（Agent 以 RequireAndVerifyClientCert 驗證）
+```nginx
+location /api/v1/agent/ws {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_read_timeout 120s;   # 需 > WS read deadline 35s，避免 idle 斷線抖動
+    proxy_send_timeout 120s;
+}
+# 其餘 /api/v1/ 比照既有設定；前端 SPA fallback 不變
 ```
 
-- 檔案權限建議 **0600**（含 auth_token，決策 5 風險緩解）
-- 缺必填欄位（manager_addr / auth_token / node_name）→ Agent 啟動即失敗（SYS-45）
+**systemd**
 
-### 9.2 Agent systemd unit（`linux-service-agent.service`）
+- `linux-service-manager.service`（既有 Manager）：確保 `StateDirectory=linux-service-manager`（自動建立 `/var/lib/linux-service-manager`，nodes.json 由 app 以 0600 寫入）
+- `linux-service-agent.service`（新增，部署於各被控端）：
 
 ```ini
 [Unit]
 Description=Linux Service Manager Agent
 After=network-online.target
-Wants=network-online.target
-
 [Service]
-Type=simple
-ExecStart=/usr/local/bin/linux-service-agent
+ExecStart=/usr/local/bin/linux-service-agent --config /etc/linux-service-manager/agent.json
 Restart=always
-RestartSec=5
-# 需讀取 /etc/linux-service-manager/agent.yaml（0600）與 TLS 憑證目錄
-# 操作 systemd 需 root 或對應權限（與 Manager 單機部署相同要求）
-User=root
-Environment=LSM_AGENT_CONFIG=/etc/linux-service-manager/agent.yaml
-
+RestartSec=2
+DynamicUser=no
 [Install]
 WantedBy=multi-user.target
 ```
 
-```bash
-# 部署流程（對應 IF 3.3 / BDD @agent @download）
-scp agent-linux-amd64 user@target:/usr/local/bin/linux-service-agent
-ssh user@target "chmod +x /usr/local/bin/linux-service-agent"
-# 建立 /etc/linux-service-manager/agent.yaml（見 9.1）→ systemctl daemon-reload → systemctl start linux-service-agent
+**Agent 設定檔（`/etc/linux-service-manager/agent.json`）**
+
+```json
+{
+  "manager_addr": "manager.example.com:8443",
+  "auth_token": "<token>",
+  "node_name": "web-server-01",
+  "heartbeat_interval_seconds": 10,
+  "listen_addr": "127.0.0.1:8443",
+  "tls_cert": "/etc/linux-service-manager/agent.crt",
+  "tls_key": "/etc/linux-service-manager/agent.key"
+}
 ```
 
-- Agent binary 來源：Manager `GET /api/v1/agents/download?arch=amd64|arm64`（go:embed，無前端內嵌，決策 7）
-- Agent 離線時本地操作仍可用（直接存取 `https://agent:8443`，MAN-12）
+**環境變數（生產預設／測試加速，測試計畫 §6.1）**
 
-### 9.3 Manager 通訊埠與網路
+| 變數 | 生產預設 | 測試建議 |
+|------|---------|---------|
+| AGENT_HEARTBEAT_INTERVAL | 10s | 200ms |
+| MANAGER_OFFLINE_THRESHOLD | 30s | 600ms |
+| MANAGER_LONG_OFFLINE_THRESHOLD | 300s | 3s |
+| MANAGER_MONITOR_TICK | 5s | 200ms |
+| MANAGER_STARTUP_GRACE | 30s | 2s |
+| MANAGER_RPC_TIMEOUT_ACTION | 15s | 800ms |
+| MANAGER_RPC_TIMEOUT_QUERY | 10s | 1s |
+| MANAGER_WS_READ_DEADLINE | 35s | 700ms |
+| NODES_FILE_PATH | /var/lib/linux-service-manager/nodes.json | 臨時路徑（測試） |
+| AGENT_BINARY_DIR | /var/lib/linux-service-manager/agents | — |
 
-| 項目 | 設定 | 說明 |
-|------|------|------|
-| Manager HTTPS 端口 | 既有端口（8443 或部署既有設定） | Agent 心跳 `POST /api/v1/agent/heartbeat` 走此端口；**無新入站端口** |
-| Agent 通訊埠 | `:8443`（`listen_addr`） | Manager 出站 HTTPS（操作代理 / 健康檢查）；需在目標機器防火牆開放給 Manager 來源 IP |
-| 出站協定 | 純 HTTPS REST | 無新協定；nginx 反向代理**無需變更**（WebSocket upgrade 設定為既有，008 已實作） |
-| 50 節點流量 | 50 × 10s 心跳 = ~5 req/s + 操作請求 | 連線池 keep-alive 重用 TCP；無需 stream 化（決策 1） |
+**建置（Makefile）**
 
-### 9.4 TLS / mTLS 憑證（決策 5）
-
-| 模式 | 設定 | 驗證 |
-|------|------|------|
-| TLS（單向，強制） | Agent 端 `agent.crt` / `agent.key`；Manager 端節點 `tls_fingerprint`（SHA-256 pin）**或** 系統 CA | Manager 驗證 Agent 憑證（**不信任系統 CA、直接 pin** 為自簽第一公民，決策 5）；Agent 明文回 426 |
-| mTLS（雙向，每節點可選） | Agent `client_cert` + `tls.Config.ClientAuth=RequireAndVerifyClientCert` + `ClientCAs`；Manager 端送 client cert | 雙方互驗；mTLS 節點可省略 token（fingerprint + client cert 已雙向驗證） |
-| 憑證過期 | 已註冊節點連線失敗 → 🔴 離線 | 更新 Agent 憑證 + Manager 同步指紋後恢復上線（BDD @tls，E2E-48） |
-| 憑證目錄 | `/etc/linux-service-manager/`（agent.crt / agent.key / client_cert） | 權限建議 0600 |
-
-### 9.5 Manager 資料檔案（`/var/lib/linux-service-manager/`）
-
-| 檔案 | 格式 | 權限 | 寫入方式 | 說明 |
-|------|------|------|---------|------|
-| `nodes.json` | JSON（節點設定，含 token/指紋） | **0600** | atomic（temp + fsync + rename） | 僅節點 CRUD/狀態變更時寫入；啟動時全量載入記憶體（決策 4/5） |
-| `audit.jsonl` | JSON Lines（既有） | 0644 | buffered channel + writer goroutine | Entry 新增 `node_id`/`node_name`（omitempty，向後相容） |
-
-- 目錄 `MkdirAll(0755)` 於 save 時自動建立（既有 audit/token 依賴同一目錄）
-- CI 建置：`cd src && go build ./cmd/agent` 平行產出 `agent-linux-amd64` / `agent-linux-arm64`，嵌入 Manager binary（或放 `/var/lib/linux-service-manager/agents/`，決策 7）
+```makefile
+build-manager:
+	go build -o bin/linux-service-manager ./cmd/manager
+build-agent: ## linux/amd64 + linux/arm64
+	GOOS=linux GOARCH=amd64 go build -o bin/agent-linux-amd64 ./cmd/agent
+	GOOS=linux GOARCH=arm64 go build -o bin/agent-linux-arm64 ./cmd/agent
+```
 
 ---
 
-## 10. BDD Scenario 覆蓋矩陣
+## 附錄：BDD Scenario 對應追溯（S01–S51）
 
-> 69/69 Scenario 全覆蓋（含 9 組 Scenario Outline 之 Examples 全部展開：服務操作 ×5、測試連線失敗 ×2、Agent 架構 ×2、心跳機制 ×3、逾時規則 ×2、TLS 模式 ×2、401 ×9、整合操作 ×5、TLS 憑證 ×2，共 32 列）。每一列可在對應章節找到實作對應。
-
-| # | BDD Scenario | 規格章節（實作對應） | 測試對應（測試計畫） |
-|---|-------------|---------------------|---------------------|
-| 1 | 登入後預設進入 Aggregate Dashboard 並載入節點匯總資料（@entry @p0 @smoke） | 2.6 AggregateDashboardView、2.13 router（/ 為 Aggregate）、3.2 #2/#8 | F-AD-01~02, E2E-01 |
-| 2 | Aggregate Dashboard 顯示頂部統計列與節點狀態摘要（@aggregate @p0 @smoke） | 2.6 統計列、1.9.1 HandleNodesSummary、1.4 心跳附帶 stats | F-AD-02~03, F-NS-09, HDL-15, INT-05, E2E-02~03, MAN-01 |
-| 3 | 節點 Card 狀態指示燈依心跳狀態顯示不同顏色（@aggregate @p0 @smoke） | 2.7 NodeCard 狀態燈、1.5 deriveStatus 四態 | F-NC-02, F-AD-14, SYS-20~25, E2E-05 |
-| 4 | 無註冊節點時顯示空狀態與引導（@aggregate @p1） | 2.6 EmptyState + 導引 /nodes | F-AD-04, E2E-04 |
-| 5 | 點擊線上節點 Card 切換至單節點視圖（@switch @p0 @smoke） | 2.6 onCardClick、2.12 DashboardView node-aware、3.2 #10 | F-AD-11, F-DV-01, F-AP-06, E2E-06 |
-| 6 | 從 Header 節點下拉選單切換至其他節點（@switch @p1） | 2.8 NodeSwitcher select() | F-SW-02~04, E2E-07 |
-| 7 | 點擊「所有節點」返回 Aggregate Dashboard（@switch @p1） | 2.8 select(null) → `/`、2.12 返回按鈕 | F-SW-05, E2E-08 |
-| 8 | 節點下拉選單列出所有節點及其狀態指示燈（@switch @p1） | 2.8 選單渲染（狀態燈 + active 反白） | F-SW-02~03, E2E-09 |
-| 9 | 在選定節點上執行「<action>」操作成功（Outline ×5，@service @p0 @smoke） | 1.9.2 代理 ops handler、2.12 runAction、1.10 audit | F-DV-03~04, HDL-22, INT-04, E2E-10~14 |
-| 10 | 在單節點視圖檢視服務日誌（@service @p1） | 1.9.2 HandleNodeServiceLogs、2.12 日誌端點 | F-DV-10, HDL-25, SYS-52, INT-04, E2E-15 |
-| 11 | 服務操作失敗時顯示錯誤原因並寫入 Audit Log（@service @error-handling @p0） | 2.12 runAction 失敗 Toast、1.9.2 轉寫 + audit | F-DV-05, HDL-24, INT-04（失敗路徑）, E2E-16 |
-| 12 | 在 Aggregate Dashboard 跨節點搜尋服務（@search @p0 @smoke） | 2.6 debounce 300ms + searchServices、1.9.3 fan-out、3.2 #9 | F-AD-06~07, HDL-28, INT-05, E2E-17 |
-| 13 | 點擊搜尋結果跳轉至對應節點並展開服務（@search @p1） | 2.6 onSearchResultClick、2.12 ?service= 展開 | F-AD-10, F-DV-11, E2E-18 |
-| 14 | 搜尋無匹配結果時顯示空提示（@search @p1） | 2.6 searchEmpty + 關閉返回 | F-AD-08, HDL-33, E2E-19 |
-| 15 | 部分節點離線時搜尋僅回傳可達節點的結果（@search @error-handling @p1 @partial-failure） | 1.9.3 failed_nodes、6.2 E-21 | F-AD-09, HDL-29~30, INT-05, E2E-20, MAN-06 |
-| 16 | 查看節點詳細資訊面板（@node-detail @p0） | 2.11 NodeDetailPanel + getNodeInfo、1.9.2 HandleNodeInfo | F-AD-16, F-ND-01, HDL-26, E2E-21 |
-| 17 | 離線節點 Card 點擊顯示離線資訊面板（@node-detail @p1） | 2.6 onCardClick 離線分支、2.11 離線診斷 | F-NC-05, F-ND-02, E2E-22 |
-| 18 | 進入 Node Management 頁面顯示已註冊節點列表（@entry @node-mgmt @p0 @smoke） | 2.10 NodeManagementView、2.13 /nodes 路由 | F-NM-01~02, E2E-23 |
-| 19 | 點擊「新增節點」彈出表單 Modal（@node-mgmt @p0） | 2.10 openCreate、2.9 NodeFormModal | F-NF-01, E2E-24 |
-| 20 | 必填欄位缺失時標示紅色提示且不發送請求（@node-mgmt @p0 @validation） | 2.9 validate()（前端攔截）、1.9.1 validateNodePayload | F-NF-02, E2E-25 |
-| 21 | 測試連線成功顯示 Agent 資訊（@node-mgmt @p0 @smoke） | 2.9 handleTest、1.9.1 HandleTestConnection（GET /health 5s） | F-NF-03~04, HDL-11, INT-01, E2E-26 |
-| 22 | 測試連線失敗顯示「<failure_msg>」且可修正重試（Outline ×2，@error-handling @p0） | 2.9 testResult 紅色提示、1.9.1 502（connection refused / TLS expired） | F-NF-05, HDL-12~14, INT-01（失敗路徑）, E2E-27~28 |
-| 23 | 註冊成功且連線成功時節點立即上線（@node-mgmt @p0 @smoke） | 2.9 handleSave、1.9.1 HandleCreateNode + 健康檢查、3.1 Node 模型 | F-NF-06, HDL-02, SYS-04, INT-03, INT-08, E2E-29, MAN-02 |
-| 24 | 節點名稱重複時註冊被拒絕並返回表單（@error-handling @p0 @duplicate） | 1.3 Create 唯一性、1.9.1 409、2.9 Modal 保持開啟 | F-NF-07, HDL-03, SYS-05, E2E-30 |
-| 25 | 註冊時位址不可達則節點仍儲存但標示離線（@error-handling @p0） | 1.9.1 註冊健康檢查失敗分支、6.2 E-20 | F-NF-08, INT-03, E2E-31 |
-| 26 | 取消新增節點關閉 Modal 不產生任何變更（@node-mgmt @p1） | 2.9 取消按鈕 | F-NF-09, E2E-32 |
-| 27 | 編輯節點設定後儲存更新（@node-mgmt @p1） | 2.9 編輯預填 + handleSave（PUT）、1.9.1 HandleUpdateNode | F-NM-04, F-NF-10, HDL-09, SYS-06, INT-08, E2E-33 |
-| 28 | 移除節點前彈出確認對話框（@node-mgmt @p0） | 2.10 ConfirmModal（訊息字串） | F-NM-05, E2E-34 |
-| 29 | 確認移除後節點從 Dashboard 消失（@node-mgmt @p1） | 2.10 handleDeleted（DELETE + node_removed WS）、1.9.1 HandleDeleteNode | F-NM-06, HDL-10, SYS-07, INT-08, E2E-35 |
-| 30 | 取消移除不產生任何變更（@node-mgmt @p1） | 2.10 cancel | F-NM-07, E2E-36 |
-| 31 | 從 Manager 下載 <arch> 架構的 Agent binary（Outline ×2，@agent @p1 @download） | 2.10 handleDownload、1.9.1 HandleAgentDownload、9.2 部署 | HDL-16~18, F-AP-12, E2E-37~38 |
-| 32 | Agent 啟動後向 Manager 註冊並更新為線上（@agent @p0 @smoke） | 1.7.3 心跳 client（註冊 = 健康檢查 + 第一次心跳，D-1）、1.5 supervisor | SYS-44~46, SYS-56, INT-02, E2E-29, MAN-02 |
-| 33 | Agent 註冊的 node_name 與既有離線節點比對一致時恢復該節點（@agent @p1） | 1.4 heartbeat 比對 GetByName、1.5 恢復判定 | SYS-15~17（比對路徑）, INT-02, E2E-41, MAN-02 |
-| 34 | Agent 定期發送心跳且 Manager 更新 last_heartbeat（@heartbeat @p0 @smoke） | 1.4 SetHeartbeat、1.7.3 ticker、3.3 payload | SYS-15, SYS-18, SYS-56, INT-02, E2E-51（row 1） |
-| 35 | 節點狀態變更即時推送至所有已連線的 Web UI（@heartbeat @p0 @websocket） | 1.5 broadcast、2.5 WS 4 事件、3.4 訊息合約 | F-NS-05~08, F-AP-13, INT-09, E2E-43 |
-| 36 | 連續 30 秒未收到心跳時節點標示離線（@offline @p0 @smoke） | 1.5 deriveStatus（≥30s → offline）、2.7 Card 灰顯、2.6 統計更新 | SYS-22, F-NS-07, INT-02, INT-03, E2E-39, MAN-05 |
-| 37 | 離線時單節點視圖的操作按鈕全部禁用並顯示 Banner（@offline @p1） | 2.12 nodeOffline → canOperate + offline-banner、7 CSS | F-DV-07, E2E-40 |
-| 38 | 寬限期內心跳恢復自動回到線上（@offline @p0 @smoke） | 1.5 恢復判定（<300s → online）、node_online 推送 | SYS-27, INT-03, E2E-41, MAN-05 |
-| 39 | 超過 300 秒寬限期標示為長期離線（@offline @p1） | 1.5 deriveStatus（≥300s → long_offline）、2.6 排序 | SYS-23, F-AD-13, E2E-42 |
-| 40 | 長期離線節點可從列表移除且歷史資料保留（@offline @p1） | 2.10 移除、1.9.1 Delete（audit 保留）、6.2 E-22 | F-NM-06, HDL-10, INT-08, E2E-35, E2E-56 |
-| 41 | Agent 服務掛掉後重啟自動恢復連線（@error-handling @p0 @agent-crash） | 1.7.3 心跳重啟恢復（短連線模型）、1.5 恢復判定 | SYS-27, SYS-57, INT-03, E2E-44, MAN-02 |
-| 42 | Manager 與 Agent 網路中斷恢復後於寬限期內無縫回復（@error-handling @p1 @network） | 5.3 backoff 重試、1.5 寬限期恢復 | SYS-27, SYS-58, INT-03, E2E-41, E2E-44, MAN-05 |
-| 43 | 服務操作逾時 15 秒顯示逾時錯誤（@error-handling @p0 @timeout） | 1.9.2 per-route 15s context、2.12 逾時 Toast、3.2 錯誤映射 | F-DV-06, HDL-23, SYS-36, E2E-45 |
-| 44 | TLS 憑證過期導致已註冊節點離線（@error-handling @p1 @tls） | 1.6 AgentClient TLS 驗證失敗 → NodeOfflineError、9.4 憑證 | SYS-39, HDL-13, INT-06, E2E-48, MAN-13 |
-| 45 | Manager 重啟後於啟動寬限期內重連所有 Agent（@error-handling @p0 @restart） | 5.2 啟動寬限期、1.11 main.go 初始化 | SYS-28~29, INT-07, E2E-53, MAN-04 |
-| 46 | 同一個 Agent 被第二個 Manager 連線時被拒絕（@error-handling @p1 @multi-manager） | 1.4 VerifyToken（401）、6.2 E-17、9.1 manager_addr | SYS-47, SYS-58, INT-01（token 拒絕）, MAN-08 |
-| 47 | Agent 版本不相容時節點顯示警告狀態（@error-handling @p1 @version） | 1.5 version 優先 warning、2.11 Tooltip、6.2 E-11 | SYS-25~26, F-ND-03, E2E-49, MAN-07 |
-| 48 | 節點數量達到 50 個上限時拒絕新增（@edge-case @p0 @node-limit） | 1.3 MaxNodes、1.9.1 上限 400/409、6.1 E-1 | SYS-11~12, HDL-07, E2E-50, MAN-09 |
-| 49 | 心跳機制依 <threshold> 規則判定（Outline ×3，@edge-case @p1 @heartbeat） | 1.5 deriveStatus 時間邊界、6.1 E-2 | SYS-20~24, INT-02, E2E-51 |
-| 50 | 操作逾時依操作類型套用 <timeout_rule>（Outline ×2，@edge-case @p1 @timeout） | 1.9.2 15s / 1.9.3 10s、6.1 E-3 | SYS-36, HDL-23, HDL-31, E2E-52 |
-| 51 | 同一節點同一服務不允許並行操作（@edge-case @p0 @concurrency） | 2.4 inFlight 標記、6.1 E-4 | F-DV-08, E2E-46 |
-| 52 | 不同節點可並行操作（@edge-case @p1 @concurrency） | 2.4 key 含 nodeId、6.1 E-5 | F-DV-09, INT-04（多節點）, E2E-47, MAN-14 |
-| 53 | Manager ↔ Agent 通訊使用 <tls_mode> 模式（Outline ×2，@edge-case @p0 @tls） | 1.6 tlsConfigFor（pin / client cert）、1.7.2 RequireTLS、9.4 | SYS-38~41, SYS-55, INT-06, MAN-03 |
-| 54 | Agent 信任 Manager 的代理授權不直接驗證管理員（@edge-case @p1 @auth） | 1.9.2 代理注入節點 token、1.7.2 token middleware、6.1 E-7 | SYS-34, SYS-47, INT-01, E2E-16, MAN-12 |
-| 55 | 服務狀態以 Agent 即時回報為準不做本地快取（@edge-case @p1 @consistency） | 1.9.2 每次代理、3.3 心跳僅帶統計、6.1 E-8 | SYS-34, SYS-42~43, F-DV-01~02, INT-01, E2E-06, E2E-17 |
-| 56 | 不支援跨節點的服務相依操作（@edge-case @p1 @orchestration） | 2.12 操作僅作用單節點、6.1 E-9 | F-DV-03, E2E-10~14（無跨節點 UI）, MAN-12 |
-| 57 | 節點相關 API 未登入時回傳 401（Outline ×9，@api @security @p0） | 3.2 401 保護（AuthMiddlewareComposite）、1.9 handler | HDL-34~36, E2E-54 |
-| 58 | Node registry 持久化於磁碟且重啟後保留（@business-rules @p1 @data） | 1.3 Load/atomic save、5.2 重啟載入 | SYS-01~03, INT-07, INT-08, E2E-55 |
-| 59 | 移除節點時保留其歷史資料與 Audit Log（@business-rules @p1 @data） | 1.3 Delete、1.10 audit 獨立、6.2 E-22 | SYS-07, SYS-59, INT-08, E2E-56 |
-| 60 | 跨節點操作記錄包含 node_id 與 node_name（@business-rules @p1 @audit） | 1.10 Entry 新欄位、1.9.2 audit 寫入 | SYS-59~60, HDL-22, INT-04, E2E-10~14（audit 對照） |
-| 61 | Agent 離線時本地服務操作仍可透過直接存取 Agent 執行（@agent @business-rules @p1） | 1.7.2 獨立 server（不依賴 Manager）、6.2 E-26 | SYS-48~50（獨立運作）, INT-01, MAN-12 |
-| 62 | Agent 支援 Token 驗證來自 Manager 的請求（@agent @business-rules @p1 @security） | 1.7.2 tokenMiddleware（401）、1.9.2 Bearer 注入 | SYS-47, SYS-34, INT-01, E2E-26（測試連線）, MAN-08 |
-| 63 | Manager + 1 Agent 完成「<action>」服務管理流程（Outline ×5，@integration @p0 @smoke） | 4.2 操作代理資料流、1.9.2、1.7.2 | HDL-22, SYS-49, INT-04, E2E-10~14 |
-| 64 | Manager + 1 Agent 完成日誌查詢流程（@integration @p0 @smoke） | 4.2 代理、1.9.2 HandleNodeServiceLogs | HDL-25, SYS-52, INT-04, E2E-15 |
-| 65 | Manager + 3 Agents 時 Aggregate Dashboard 正確顯示所有節點（@integration @p1） | 2.6 Cards 網格 + 統計列、1.5 | F-AD-02~03, INT-05, E2E-02~03, MAN-01 |
-| 66 | Agent 離線 → Dashboard 更新 → Agent 恢復 → Dashboard 恢復（@integration @p1 @offline） | 4.4 WS 即時推送、5.1 狀態機 | SYS-22, SYS-27, INT-03, E2E-39, E2E-41, MAN-05 |
-| 67 | Manager 重啟後所有 Agent 自動重連（@integration @p1 @restart） | 5.2 啟動重連 + 寬限期、5.3 backoff | SYS-28~29, INT-07, E2E-53, MAN-04 |
-| 68 | TLS 憑證 <cert_status> 時通訊<outcome>（Outline ×2，@integration @p1 @tls） | 1.6 TLS 驗證、9.4 | SYS-38~39, INT-06, E2E-48, MAN-03, MAN-13 |
-| 69 | WebSocket 斷線後自動重連並恢復即時更新（@integration @p1 @websocket） | 2.5 useWebSocket 既有重連（maxRetryDelay 30s）、4.4 | F-AP-14, INT-09, E2E-43（重連補充） |
+| BDD | 對應章節 |
+|-----|---------|
+| S01–S02 | §2.10 Aggregate 模式、§3.1 summary、§7 `.node-summary-bar` |
+| S03–S05 | §2.10 視圖分流、§2.7 NodeSwitcher、§3.1 `GET /nodes/{id}/services` |
+| S06–S09 | §3.1 proxy endpoints、§1.6.2 singleflight、§2.10 單節點操作 |
+| S10–S16 | §2.8 NodeFormModal、§2.9 NodeManagementView、§3.1 test-connection / agent-binary |
+| S17 | §1.7 agentclient、§5.1 生命週期、§3.2 register/heartbeat |
+| S18–S23 | §5.2 狀態機、§2.6 NodeCard、§2.10 離線禁用/Banner、§3.1 DELETE、§2.11 |
+| S24–S27 | §1.6.3 SearchServices、§2.11 NodeSearchResults |
+| S28 | §3.1 `GET /nodes/{id}/info`、§2.6 detail emit |
+| S29–S37 | §6 邊界條件（R1–R7 各列） |
+| S38–S41 | §6（重複名稱/版本/必填/上限）、§1.4 ErrDuplicateName/ErrMaxNodes |
+| S42–S45 | §1.5 Config 閾值、§1.6.4 TLS、§1.7 backoff、§1.6.2 不快取即時代理 |
+| S46–S49 | §6（否定性：無跨節點編排入口）、§1.10 audit node_id、§1.4 persist、§1.6.1 token 反向認證 |
+| S50–S51 | §3.3 前端 WS 事件、§2.5 useWebSocket、§2.4 applyRegistryChanged |
 
 ---
 
-*由 Development Spec Generator 產生，技術裁決依 `docs/tech-decisions/014-multi-node-agent-management.md`（9 項決策）；測試覆蓋對應 `docs/test-plans/014-multi-node-agent-management測試計畫.md`（SYS/HDL/F/INT/E2E/MAN 編號）；上游輸入為 `docs/interaction-flows/014-multi-node-agent-management.md` 與 `docs/bdds/014-multi-node-agent-management.feature`（69 個 Scenario，含 9 組 Scenario Outline 共 32 列 Examples）*
+*最後更新：2025-08-25*
+
+**📋 修訂（2025-08-25）**：新增 Node Management 頁面 UI/UX 設計（`docs/uiux/014-node-management-design.md`），§2.8–2.9 前端元件規格已更新，包含完整的 Modal 狀態管理、搜尋篩選、下載 Agent 下拉選單、空狀態處理。

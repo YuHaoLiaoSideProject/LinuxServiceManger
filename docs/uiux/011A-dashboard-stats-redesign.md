@@ -3,7 +3,11 @@
 > **對應頁面**：Dashboard（服務列表頂部區：StatsBar ＋ Toolbar）
 > **狀態**：✅ 已實作（2025-08-11，驗收結果見 §9）
 > **設計日期**：2025-08-11
+<<<<<<<< HEAD:docs/uiux/001-dashboard-stats-redesign.md
 > **畫面文件**：`docs/uiux/001-dashboard-stats-redesign-mockup.html`（互動 mockup，可切換主題／裝置／點擊卡片過濾）
+========
+> **畫面文件**：`docs/uiux/011A-dashboard-stats-redesign-mockup.html`（互動 mockup，可切換主題／裝置／點擊卡片過濾）
+>>>>>>>> 01956e6 (feat: implement multi-node agent management (Phase 4)):docs/uiux/011A-dashboard-stats-redesign.md
 > **相關元件**：`StatsBar.vue`、`Toolbar.vue`、`DashboardView.vue`、`useServiceFilter.ts`、`main.css`
 > **決策（2025-08-11 使用者確認）**：
 > 1. 「未啟用」卡片 = ActiveState `inactive`（服務目前沒在跑），與現有 filter 語意相同

@@ -10,23 +10,20 @@ import (
 	"strings"
 	"time"
 
-	"path/filepath"
-
+	"linux-service-manager/internal/agentproto"
 	"linux-service-manager/internal/audit"
 	"linux-service-manager/internal/auth"
 	"linux-service-manager/internal/handler"
 	"linux-service-manager/internal/middleware"
 	"linux-service-manager/internal/monitor"
-	"linux-service-manager/internal/nodes"
-	"linux-service-manager/internal/notify"
+	"linux-service-manager/internal/nodemonitor"
+	"linux-service-manager/internal/noderegistry"
+	"linux-service-manager/internal/nodeproxy"
 	"linux-service-manager/internal/systemd"
-	"linux-service-manager/internal/token"
 	"linux-service-manager/internal/websocket"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
-	httpSwagger "github.com/swaggo/http-swagger/v2"
-	_ "linux-service-manager/docs"
 )
 
 //go:embed templates
@@ -35,40 +32,7 @@ var templatesFS embed.FS
 //go:embed static
 var staticFS embed.FS
 
-//go:embed agents/agent-linux-amd64 agents/agent-linux-arm64
-var agentBinariesFS embed.FS
-
-// @title Linux Service Manager API
-// @version 1.0.0
-// @description
-// Linux Service Manager 的 REST API。
-//
-// **認證方式**（除登入/登出/session 外皆需要）：
-// 1. **API Token**：`Authorization: Bearer lsm_...`（於「API Tokens」頁面建立）。
-//   - `read` scope：僅允許 GET/HEAD/OPTIONS，寫入操作回傳 403。
-//   - `full` scope：允許所有操作。
-//
-// 2. **Session Cookie**：瀏覽器登入後自動帶上（`session` cookie）。
-//
-// **錯誤格式**：非 2xx 回應一律為 `{"error": "說明"}`。
-//
-// **WebSocket**：`/api/v1/ws`（服務狀態推送）與 `/api/v1/services/{name}/logs/ws`（即時日誌）
-// 皆需認證 — 支援自訂 header 的 WebSocket 客戶端可帶 `Authorization: Bearer` header；
-// 瀏覽器原生 WebSocket 無法自訂 header，需使用 session cookie。
-//
-// **互動式文件**：登入後於 SPA 導覽列「API 文件」頁（或直接存取 `/api/v1/docs/`）。
-// @BasePath /api/v1
-// @securityDefinitions.apikey BearerAuth
-// @in header
-// @name Authorization
 func main() {
-	// Data directory is overridable via LSM_DATA_DIR (default: /var/lib/linux-service-manager).
-	// Useful for isolated deployments / test environments.
-	dataDir := os.Getenv("LSM_DATA_DIR")
-	if dataDir == "" {
-		dataDir = "/var/lib/linux-service-manager"
-	}
-
 	// Extract the templates directory as a sub-filesystem
 	templates, err := fs.Sub(templatesFS, "templates")
 	if err != nil {
@@ -76,21 +40,13 @@ func main() {
 	}
 
 	auditMod := audit.New(audit.Config{
-		FilePath:      filepath.Join(dataDir, "audit.jsonl"),
+		FilePath:      "/var/lib/linux-service-manager/audit.jsonl",
 		MaxFileSizeMB: 100,
 		RetentionDays: 90,
 	})
 	defer auditMod.Shutdown()
 
-	// Initialize token store
-	tokenStore := token.NewStore(filepath.Join(dataDir, "tokens.json"))
-	if err := tokenStore.Load(); err != nil {
-		log.Fatalf("failed to load token store: %v", err)
-	}
-	go tokenStore.RunLastUsedUpdater()
-	defer tokenStore.Shutdown()
-
-	h := handler.New(templates, &systemd.DefaultManager{}, auditMod, tokenStore)
+	h := handler.New(templates, &systemd.DefaultManager{}, auditMod)
 
 	// Initialize WebSocket Hub for real-time status push
 	hub := websocket.NewHub()
@@ -118,53 +74,7 @@ func main() {
 		}
 		return snapshots
 	}
-
-	// Initialize notify module (webhook notification) — before hub.Run registration
-	notifyMod := notify.New(notify.Config{
-		ChannelsPath:  filepath.Join(dataDir, "notify.json"),
-		HistoryPath:   filepath.Join(dataDir, "notify-history.jsonl"),
-		RetentionDays: 30,
-		Hub:           hub,
-	})
-	if err := notifyMod.Load(); err != nil {
-		log.Fatalf("failed to load notify store: %v", err)
-	}
-	hub.OnStatusChange = notifyMod.HandleStatusChange
-	go notifyMod.Run()
-	defer notifyMod.Shutdown()
-	h.Notify = notifyMod
-
 	go hub.Run()
-
-	// 多機節點管理（014）：registry 載入 + supervisor 狀態機 + AgentClient
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	nodeMod, err := nodes.New(nodes.Config{
-		RegistryPath:    filepath.Join(dataDir, "nodes.json"),
-		Hub:             hub,
-		AgentMinVersion: "1.2.0",
-	})
-	if err != nil {
-		log.Fatalf("failed to load node registry: %v", err)
-	}
-	go nodeMod.Supervisor.Run(ctx) // 5s ticker 狀態機（狀態變更才推播）
-
-	// 啟動健康檢查（決策 2 / §5.2）：背景 goroutine 非阻塞，對每個節點並行 GET /health
-	// （semaphore 10）嘗試建立第一筆 last_heartbeat；失敗節點靜默跳過，不延遲 ListenAndServe。
-	go func() {
-		res := nodeMod.StartupHealthCheck(ctx)
-		if res.Total > 0 {
-			log.Printf("startup health check: %d/%d nodes reachable (%d failed)", res.Success, res.Total, res.Failed)
-		}
-	}()
-	h.Nodes = nodeMod
-
-	// Agent binary（決策 7：CI 建置後嵌入 Manager binary）
-	if agentSub, subErr := fs.Sub(agentBinariesFS, "agents"); subErr == nil {
-		handler.SetAgentBinaries(agentSub)
-	} else {
-		log.Printf("WARNING: failed to open agents FS: %v", subErr)
-	}
 
 	// Start service status monitor (D-Bus or polling fallback)
 	go monitor.StartMonitor(hub, &systemd.DefaultManager{})
@@ -172,6 +82,55 @@ func main() {
 	// Attach hub to handler
 	h.Hub = hub
 
+	// ── Multi-node Agent Management ──
+	nodesPath := os.Getenv("NODES_FILE_PATH")
+	if nodesPath == "" {
+		nodesPath = "/var/lib/linux-service-manager/nodes.json"
+	}
+	reg, err := noderegistry.LoadRegistry(nodesPath)
+	if err != nil {
+		log.Fatalf("Failed to load nodes registry: %v", err)
+	}
+
+	binaryDir := os.Getenv("AGENT_BINARY_DIR")
+	if binaryDir == "" {
+		binaryDir = "/var/lib/linux-service-manager/agents"
+	}
+
+	agentHub := nodeproxy.NewHub()
+	agentHub.Registry = reg
+
+	mon := nodemonitor.New(reg, func(evt nodemonitor.StatusEvent) {
+		hub.BroadcastMessage(websocket.Message{
+			Type:     "node_status_changed",
+			NodeID:   evt.NodeID,
+			NodeName: evt.NodeName,
+			Status:   evt.Status,
+			Message:  evt.Message,
+		})
+	}, nodemonitor.Config{})
+	go mon.Run(context.Background())
+
+	agentHub.OnRegister = func(nodeID string, p agentproto.RegisterPayload) {
+		mon.OnConnect(nodeID, p, "1.0")
+	}
+	agentHub.OnHeartbeat = func(nodeID string, stats noderegistry.HeartbeatStats) {
+		mon.OnHeartbeat(nodeID, stats)
+	}
+	agentHub.OnDisconnect = func(nodeID string) {
+		mon.OnDisconnect(nodeID)
+	}
+
+	nh := &handler.NodesHandler{
+		Reg:       reg,
+		AgentHub:  agentHub,
+		Mon:       mon,
+		PushHub:   hub,
+		Audit:     auditMod,
+		BinaryDir: binaryDir,
+	}
+
+	// ── Router ──
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
@@ -184,20 +143,9 @@ func main() {
 	r.Post("/api/v1/logout", h.HandleLogoutJSON)
 	r.Get("/api/v1/session", h.HandleSessionCheck)
 
-	// 心跳接收（Auth 群組外 — Agent 以節點 Bearer token 自證，D-8）
-	r.Post("/api/v1/agent/heartbeat", h.HandleAgentHeartbeat)
-
-	// Token management routes (session-only — managing tokens requires session auth)
-	r.Group(func(r chi.Router) {
-		r.Use(middleware.AuthMiddlewareJSON)
-		r.Get("/api/v1/tokens", h.HandleListTokens)
-		r.Post("/api/v1/tokens", h.HandleCreateToken)
-		r.Post("/api/v1/tokens/{id}/revoke", h.HandleRevokeToken)
-	})
-
 	// JSON API (Vue SPA backend) — protected
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.AuthMiddlewareComposite(tokenStore))
+		r.Use(middleware.AuthMiddlewareJSON)
 		r.Get("/api/v1/services", h.HandleServicesJSON)
 		r.Post("/api/v1/services/{name}/start", h.HandleStartJSON)
 		r.Post("/api/v1/services/{name}/stop", h.HandleStopJSON)
@@ -209,40 +157,27 @@ func main() {
 		r.Get("/api/v1/ws", h.HandleStatusWS)
 		r.Get("/api/v1/audit", h.HandleAuditQuery)
 		r.Get("/api/v1/audit/export", h.HandleAuditExport)
-		// Service config editor (012)
-		r.Get("/api/v1/services/{name}/config", h.HandleGetServiceConfig)
-		r.Put("/api/v1/services/{name}/config", h.HandleSaveServiceConfig)
-		r.Post("/api/v1/services/{name}/config/validate", h.HandleValidateServiceConfig)
-		// Interactive API documentation (swagger-ui)
-		r.Get("/api/v1/docs/*", httpSwagger.Handler(httpSwagger.URL("/api/v1/docs/doc.json")))
-		// Webhook notification (013)
-		r.Get("/api/v1/notify/channels", h.HandleListChannels)
-		r.Post("/api/v1/notify/channels", h.HandleCreateChannel)
-		r.Put("/api/v1/notify/channels/{id}", h.HandleUpdateChannel)
-		r.Delete("/api/v1/notify/channels/{id}", h.HandleDeleteChannel)
-		r.Patch("/api/v1/notify/channels/{id}", h.HandlePatchChannelEnabled)
-		r.Post("/api/v1/notify/channels/{id}/test", h.HandleTestChannel)
-		r.Get("/api/v1/notify/history", h.HandleNotifyHistory)
-		// 多機節點管理（014）— ⚠️ chi 路由註冊順序：靜態段（summary/search/test-connection）先於 {id} 參數段
-		r.Get("/api/v1/nodes", h.HandleListNodes)
-		r.Post("/api/v1/nodes", h.HandleCreateNode)
-		r.Get("/api/v1/nodes/summary", h.HandleNodesSummary)
-		r.Get("/api/v1/nodes/services/search", h.HandleSearchServices)
-		r.Post("/api/v1/nodes/test-connection", h.HandleTestConnection)
-		r.Get("/api/v1/nodes/{id}", h.HandleGetNode)
-		r.Put("/api/v1/nodes/{id}", h.HandleUpdateNode)
-		r.Delete("/api/v1/nodes/{id}", h.HandleDeleteNode)
-		r.Post("/api/v1/nodes/{id}/reconnect", h.HandleNodeReconnect)
-		r.Get("/api/v1/nodes/{id}/services", h.HandleNodeServices)
-		r.Post("/api/v1/nodes/{id}/services/{name}/start", h.HandleNodeServiceStart)
-		r.Post("/api/v1/nodes/{id}/services/{name}/stop", h.HandleNodeServiceStop)
-		r.Post("/api/v1/nodes/{id}/services/{name}/restart", h.HandleNodeServiceRestart)
-		r.Post("/api/v1/nodes/{id}/services/{name}/enable", h.HandleNodeServiceEnable)
-		r.Post("/api/v1/nodes/{id}/services/{name}/disable", h.HandleNodeServiceDisable)
-		r.Get("/api/v1/nodes/{id}/services/{name}/logs", h.HandleNodeServiceLogs)
-		r.Get("/api/v1/nodes/{id}/info", h.HandleNodeInfo)
-		r.Get("/api/v1/agents/download", h.HandleAgentDownload)
 	})
+
+	// ── Nodes API (protected) ──
+	r.Route("/api/v1/nodes", func(r chi.Router) {
+		r.Use(middleware.AuthMiddlewareJSON)
+		r.Post("/", nh.HandleCreateNode)
+		r.Post("/test-connection", nh.HandleTestConnection)
+		r.Get("/summary", nh.HandleSummary)
+		r.Get("/agent-binary", nh.HandleAgentBinary)
+		r.Get("/{id}", nh.HandleGetNode)
+		r.Put("/{id}", nh.HandleUpdateNode)
+		r.Delete("/{id}", nh.HandleDeleteNode)
+		r.Post("/{id}/reconnect", nh.HandleReconnect)
+		r.Get("/{id}/services", nh.HandleNodeServices)
+		r.Post("/{id}/services/{name}/{action}", nh.HandleNodeAction)
+		r.Get("/{id}/services/{name}/logs", nh.HandleNodeLogs)
+		r.Get("/{id}/info", nh.HandleNodeInfo)
+	})
+
+	// Agent WebSocket endpoint (token auth, not session auth)
+	r.Get("/api/v1/agent/ws", agentHub.ServeWS)
 
 	// HTML routes (legacy htmx) — protected
 	r.Group(func(r chi.Router) {

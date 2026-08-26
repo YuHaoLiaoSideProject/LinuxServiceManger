@@ -2,17 +2,15 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ManagedNode } from '../types/node'
-import { fetchNodes, fetchNodeSummary, deleteNode, agentBinaryUrl } from '../api/nodeApi'
+import { deleteNode, agentBinaryUrl } from '../api/nodeApi'
 import { useNodeStore } from '../stores/node'
 import { useToast } from '../composables/useToast'
-import { useI18n } from '../composables/useI18n'
 import AppHeader from '../components/AppHeader.vue'
 import NodeSummaryBar from '../components/NodeSummaryBar.vue'
 import NodeFormModal from '../components/NodeFormModal.vue'
 import ConfirmModal from '../components/ConfirmModal.vue'
 import ToastContainer from '../components/ToastContainer.vue'
 
-const { t } = useI18n()
 const router = useRouter()
 const nodeStore = useNodeStore()
 const { showToast } = useToast()
@@ -45,9 +43,7 @@ const filteredNodes = computed(() => {
 async function loadNodes() {
   loading.value = true
   try {
-    const [nodes, summary] = await Promise.all([fetchNodes(), fetchNodeSummary()])
-    nodeStore.setNodes(nodes)
-    nodeStore.setSummary(summary)
+    await Promise.all([nodeStore.fetchNodes(), nodeStore.fetchSummary()])
   } catch (err) {
     showToast('載入節點失敗', 'error')
   } finally {
@@ -70,21 +66,15 @@ function openEditModal(node: ManagedNode) {
 function onFormCreated(node: ManagedNode) {
   nodeStore.addNode(node)
   showFormModal.value = false
-  fetchNodeSummary().then(s => nodeStore.setSummary(s))
+  nodeStore.fetchSummary()
 }
 
-function onFormUpdated(node: ManagedNode) {
-  nodeStore.updateNode(node.id, node)
+function onFormUpdated(_node: ManagedNode) {
   showFormModal.value = false
-  fetchNodeSummary().then(s => nodeStore.setSummary(s))
+  nodeStore.fetchNodes().then(() => nodeStore.fetchSummary())
 }
 
 function onNodeSelect(nodeId: string) {
-  router.push(`/?node=${nodeId}`)
-}
-
-function onNodeDetail(nodeId: string) {
-  // Could open a detail drawer; for now navigate to dashboard with node param
   router.push(`/?node=${nodeId}`)
 }
 
@@ -99,7 +89,7 @@ async function executeDelete() {
     await deleteNode(deletingNode.value.id)
     nodeStore.removeNode(deletingNode.value.id)
     showToast(`已移除「${deletingNode.value.name}」`, 'success')
-    fetchNodeSummary().then(s => nodeStore.setSummary(s))
+    nodeStore.fetchSummary()
   } catch (err: any) {
     showToast(err.response?.data?.error || '移除失敗', 'error')
   } finally {

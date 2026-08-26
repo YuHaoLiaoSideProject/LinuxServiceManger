@@ -8,16 +8,13 @@ const nodeStore = useNodeStore()
 function onSelectChange(e: Event) {
   const val = (e.target as HTMLSelectElement).value
   if (val === '__all__') {
-    nodeStore.setCurrentNodeId(null)
     router.push('/')
   } else {
-    nodeStore.setCurrentNodeId(val)
     router.push(`/?node=${val}`)
   }
 }
 
 function showAll() {
-  nodeStore.setCurrentNodeId(null)
   router.push('/')
 }
 </script>

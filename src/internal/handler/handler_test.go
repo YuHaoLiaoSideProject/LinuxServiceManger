@@ -57,7 +57,7 @@ func (m *mockSystemd) ListServices() ([]systemd.Service, error) {
 	return m.services, nil
 }
 
-func (m *mockSystemd) StartService(name string) error {
+func (m *mockSystemd) StartService(_ context.Context, name string) error {
 	m.startCalled = append(m.startCalled, name)
 	if m.startErrFor != nil {
 		if err, ok := m.startErrFor[name]; ok {
@@ -67,7 +67,7 @@ func (m *mockSystemd) StartService(name string) error {
 	return m.startErr
 }
 
-func (m *mockSystemd) StopService(name string) error {
+func (m *mockSystemd) StopService(_ context.Context, name string) error {
 	m.stopCalled = append(m.stopCalled, name)
 	if m.stopErrFor != nil {
 		if err, ok := m.stopErrFor[name]; ok {
@@ -77,7 +77,7 @@ func (m *mockSystemd) StopService(name string) error {
 	return m.stopErr
 }
 
-func (m *mockSystemd) RestartService(name string) error {
+func (m *mockSystemd) RestartService(_ context.Context, name string) error {
 	m.restartCalled = append(m.restartCalled, name)
 	if m.restartErrFor != nil {
 		if err, ok := m.restartErrFor[name]; ok {
@@ -179,13 +179,20 @@ func loginAndGetCookie(t *testing.T, router http.Handler, username, password str
 	}
 
 	cookies := w.Result().Cookies()
+	// With session-fixation fix, login produces TWO Set-Cookie headers:
+	// 1) the old session expired (MaxAge=-1)
+	// 2) the new session with rotated ID.
+	// Return the LAST matching cookie so we get the live session.
+	var sessionCookie *http.Cookie
 	for _, c := range cookies {
 		if c.Name == "linux-service-manager" {
-			return c
+		sessionCookie = c
 		}
 	}
-	t.Fatal("no session cookie returned from login")
-	return nil
+	if sessionCookie == nil {
+		t.Fatal("no session cookie returned from login")
+	}
+	return sessionCookie
 }
 
 func assertJSON(t *testing.T, w *httptest.ResponseRecorder, expectedStatus int) map[string]interface{} {

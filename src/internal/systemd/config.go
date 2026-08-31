@@ -239,7 +239,12 @@ func (s *ConfigStore) Backup(path string) (string, error) {
 	}
 	ts := backupTimeNow().UTC().Format(backupTimeLayout)
 	backupPath := path + ".bak." + ts
-	if err := os.WriteFile(backupPath, content, 0644); err != nil {
+	// 保留原始權限（M-4: 不覆寫為固定 0644）
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
+	if err := os.WriteFile(backupPath, content, mode); err != nil {
 		return "", err
 	}
 	return backupPath, nil
@@ -317,7 +322,12 @@ func (s *ConfigStore) Restore(backupPath, path string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, content, 0o644)
+	// 保留備份檔權限（M-4: 不覆寫為固定 0644）
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(backupPath); err == nil {
+		mode = info.Mode().Perm()
+	}
+	return os.WriteFile(path, content, mode)
 }
 
 // CheckConflict 比對現行檔 checksum 與 baseChecksum：

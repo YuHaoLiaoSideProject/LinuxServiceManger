@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/godbus/dbus/v5"
@@ -23,9 +24,9 @@ var lookPath = exec.LookPath
 // This allows mocking in tests.
 type ServiceManager interface {
 	ListServices() ([]Service, error)
-	StartService(name string) error
-	StopService(name string) error
-	RestartService(name string) error
+	StartService(ctx context.Context, name string) error
+	StopService(ctx context.Context, name string) error
+	RestartService(ctx context.Context, name string) error
 	EnableService(name string) error
 	DisableService(name string) error
 	GetUnitFileState(name string) (string, error)
@@ -36,9 +37,9 @@ type ServiceManager interface {
 type DefaultManager struct{}
 
 func (m *DefaultManager) ListServices() ([]Service, error)       { return ListServices() }
-func (m *DefaultManager) StartService(name string) error         { return StartService(name) }
-func (m *DefaultManager) StopService(name string) error          { return StopService(name) }
-func (m *DefaultManager) RestartService(name string) error       { return RestartService(name) }
+func (m *DefaultManager) StartService(ctx context.Context, name string) error         { return StartService(ctx, name) }
+func (m *DefaultManager) StopService(ctx context.Context, name string) error          { return StopService(ctx, name) }
+func (m *DefaultManager) RestartService(ctx context.Context, name string) error       { return RestartService(ctx, name) }
 func (m *DefaultManager) EnableService(name string) error        { return EnableService(name) }
 func (m *DefaultManager) DisableService(name string) error       { return DisableService(name) }
 func (m *DefaultManager) GetUnitFileState(name string) (string, error) { return GetUnitFileState(name) }
@@ -219,15 +220,22 @@ func listViaSystemctl() ([]Service, error) {
 }
 
 // StartService starts a systemd service unit using systemctl.
-func StartService(name string) error {
+// The ctx parameter allows callers (e.g. batch operations) to cancel
+// in-flight operations when their own deadline expires.
+func StartService(ctx context.Context, name string) error {
 	if err := ValidateServiceName(name); err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Check for pre-cancelled context before spawning a subprocess.
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("operation cancelled: %w", err)
+	}
+
+	derived, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "systemctl", "start", name)
+	cmd := exec.CommandContext(derived, "systemctl", "start", name)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("systemctl start %s: %s: %w", name, strings.TrimSpace(string(out)), err)
@@ -236,15 +244,22 @@ func StartService(name string) error {
 }
 
 // StopService stops a systemd service unit using systemctl.
-func StopService(name string) error {
+// The ctx parameter allows callers (e.g. batch operations) to cancel
+// in-flight operations when their own deadline expires.
+func StopService(ctx context.Context, name string) error {
 	if err := ValidateServiceName(name); err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Check for pre-cancelled context before spawning a subprocess.
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("operation cancelled: %w", err)
+	}
+
+	derived, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "systemctl", "stop", name)
+	cmd := exec.CommandContext(derived, "systemctl", "stop", name)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("systemctl stop %s: %s: %w", name, strings.TrimSpace(string(out)), err)
@@ -287,15 +302,22 @@ func DisableService(name string) error {
 }
 
 // RestartService restarts a systemd service unit using systemctl.
-func RestartService(name string) error {
+// The ctx parameter allows callers (e.g. batch operations) to cancel
+// in-flight operations when their own deadline expires.
+func RestartService(ctx context.Context, name string) error {
 	if err := ValidateServiceName(name); err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Check for pre-cancelled context before spawning a subprocess.
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("operation cancelled: %w", err)
+	}
+
+	derived, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "systemctl", "restart", name)
+	cmd := exec.CommandContext(derived, "systemctl", "restart", name)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("systemctl restart %s: %s: %w", name, strings.TrimSpace(string(out)), err)
@@ -343,16 +365,11 @@ func parseSystemctlOutput(output string) ([]Service, error) {
 // enrichServicesWithUnitFileInfo batch queries FragmentPath and UnitFileState
 // via systemctl show for all services and mutates them in-place.
 func enrichServicesWithUnitFileInfo(ctx context.Context, services []Service) {
+	const maxBatchSize = 500
+
 	names := make([]string, len(services))
 	for i, svc := range services {
 		names[i] = svc.Name
-	}
-
-	args := append([]string{"show", "--property=Id,FragmentPath,UnitFileState"}, names...)
-	cmd := exec.CommandContext(ctx, "systemctl", args...)
-	out, err := cmd.Output()
-	if err != nil {
-		return
 	}
 
 	// Parse output: each unit block starts with Id=, followed by FragmentPath=, UnitFileState=
@@ -363,32 +380,48 @@ func enrichServicesWithUnitFileInfo(ctx context.Context, services []Service) {
 	}
 	infoMap := make(map[string]unitFileInfo)
 
-	var currentName string
-	var currentInfo unitFileInfo
+	// Process in batches to avoid overly long argument lists
+	for start := 0; start < len(names); start += maxBatchSize {
+		end := start + maxBatchSize
+		if end > len(names) {
+			end = len(names)
+		}
+		batch := names[start:end]
 
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			// End of a unit block
-			if currentName != "" {
-				infoMap[currentName] = currentInfo
-				currentName = ""
-				currentInfo = unitFileInfo{}
-			}
+		args := append([]string{"show", "--property=Id,FragmentPath,UnitFileState"}, batch...)
+		cmd := exec.CommandContext(ctx, "systemctl", args...)
+		out, err := cmd.Output()
+		if err != nil {
 			continue
 		}
-		if strings.HasPrefix(line, "Id=") {
-			currentName = strings.TrimPrefix(line, "Id=")
-		} else if strings.HasPrefix(line, "FragmentPath=") {
-			currentInfo.FragmentPath = strings.TrimPrefix(line, "FragmentPath=")
-		} else if strings.HasPrefix(line, "UnitFileState=") {
-			currentInfo.UnitFileState = strings.TrimPrefix(line, "UnitFileState=")
+
+		var currentName string
+		var currentInfo unitFileInfo
+
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				// End of a unit block
+				if currentName != "" {
+					infoMap[currentName] = currentInfo
+					currentName = ""
+					currentInfo = unitFileInfo{}
+				}
+				continue
+			}
+			if strings.HasPrefix(line, "Id=") {
+				currentName = strings.TrimPrefix(line, "Id=")
+			} else if strings.HasPrefix(line, "FragmentPath=") {
+				currentInfo.FragmentPath = strings.TrimPrefix(line, "FragmentPath=")
+			} else if strings.HasPrefix(line, "UnitFileState=") {
+				currentInfo.UnitFileState = strings.TrimPrefix(line, "UnitFileState=")
+			}
 		}
-	}
-	// Don't forget the last block (no trailing blank line)
-	if currentName != "" {
-		infoMap[currentName] = currentInfo
+		// Don't forget the last block (no trailing blank line)
+		if currentName != "" {
+			infoMap[currentName] = currentInfo
+		}
 	}
 
 	// Apply info to services
@@ -433,24 +466,46 @@ func isLocked(name, unitFileState, fragmentPath string) bool {
 	return false
 }
 
+// unlockedConfig caches the parsed UNLOCKED_SERVICES patterns at first use.
+// This avoids repeated os.Getenv + strings.Split on every ListServices call.
+type unlockedConfig struct {
+	once     sync.Once
+	patterns []string
+}
+
+var unlockedCfg unlockedConfig
+
+// resetUnlockedConfigForTest resets the cached unlocked config.
+// Only for use in tests that set different UNLOCKED_SERVICES values.
+func resetUnlockedConfigForTest() {
+	unlockedCfg = unlockedConfig{}
+}
+
 // isUnlockedByConfig checks the UNLOCKED_SERVICES environment variable
 // against the given service name. Supports comma-separated values with
 // glob pattern matching via filepath.Match.
+// The env var is parsed once on first call and cached thereafter.
 func isUnlockedByConfig(name string) bool {
-	unlocked := os.Getenv("UNLOCKED_SERVICES")
-	if unlocked == "" {
+	unlockedCfg.once.Do(func() {
+		unlocked := os.Getenv("UNLOCKED_SERVICES")
+		if unlocked == "" {
+			return
+		}
+		for _, p := range strings.Split(unlocked, ",") {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				unlockedCfg.patterns = append(unlockedCfg.patterns, p)
+			}
+		}
+	})
+
+	if len(unlockedCfg.patterns) == 0 {
 		return false
 	}
 
 	nameWithoutSuffix := strings.TrimSuffix(name, ".service")
-	patterns := strings.Split(unlocked, ",")
 
-	for _, p := range patterns {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-
+	for _, p := range unlockedCfg.patterns {
 		// Exact match (with or without .service suffix)
 		if p == name || p == nameWithoutSuffix {
 			return true

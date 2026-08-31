@@ -17,6 +17,7 @@ import (
 
 	"linux-service-manager/internal/audit"
 	"linux-service-manager/internal/auth"
+	"linux-service-manager/internal/middleware"
 	"linux-service-manager/internal/systemd"
 	"linux-service-manager/internal/token"
 	wsutil "linux-service-manager/internal/websocket"
@@ -83,6 +84,19 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	json.NewEncoder(w).Encode(v)
 }
 
+// extractUsername returns the acting user for audit logging.
+// It tries token name first (Bearer auth), then falls back to session username.
+func extractUsername(r *http.Request) string {
+	if name, ok := r.Context().Value(middleware.CtxKeyTokenName).(string); ok && name != "" {
+		return "token:" + name
+	}
+	session := auth.GetSession(r)
+	if username, ok := session.Values["username"].(string); ok && username != "" {
+		return username
+	}
+	return "unknown"
+}
+
 // ============================================================
 //  POST /api/v1/login
 // ============================================================
@@ -113,6 +127,12 @@ func (h *Handler) HandleLoginJSON(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, messageJSON{Error: "invalid credentials"})
 		return
 	}
+
+	// P-6: Prevent Session Fixation — destroy old session, then create a
+	// brand-new session so the Session ID rotates upon successful login.
+	oldSession := auth.GetSession(r)
+	oldSession.Options.MaxAge = -1
+	auth.SaveSession(w, r, oldSession)
 
 	session := auth.GetSession(r)
 	session.Values["authenticated"] = true
@@ -151,6 +171,12 @@ func (h *Handler) HandleLogoutJSON(w http.ResponseWriter, r *http.Request) {
 	session.Values["authenticated"] = false
 	session.Options.MaxAge = -1
 	auth.SaveSession(w, r, session)
+
+	// Terminate all WebSocket connections for this user so they cannot
+	// continue receiving real-time updates after session invalidation.
+	if h.Hub != nil && username != "" {
+		h.Hub.KillByUser(username)
+	}
 
 	// Audit log
 	if h.Audit != nil {
@@ -243,11 +269,11 @@ func (h *Handler) HandleServicesJSON(w http.ResponseWriter, r *http.Request) {
 // @Router /services/{name}/start [post]
 func (h *Handler) HandleStartJSON(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	err := h.systemd.StartService(name)
+	err := h.systemd.StartService(r.Context(), name)
 
 	// Audit log
 	if h.Audit != nil {
-		username, _ := auth.GetSession(r).Values["username"].(string)
+		username := extractUsername(r)
 		result := audit.ResultSuccess
 		detail := ""
 		if err != nil {
@@ -289,11 +315,11 @@ func (h *Handler) HandleStartJSON(w http.ResponseWriter, r *http.Request) {
 // @Router /services/{name}/stop [post]
 func (h *Handler) HandleStopJSON(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	err := h.systemd.StopService(name)
+	err := h.systemd.StopService(r.Context(), name)
 
 	// Audit log
 	if h.Audit != nil {
-		username, _ := auth.GetSession(r).Values["username"].(string)
+		username := extractUsername(r)
 		result := audit.ResultSuccess
 		detail := ""
 		if err != nil {
@@ -335,11 +361,11 @@ func (h *Handler) HandleStopJSON(w http.ResponseWriter, r *http.Request) {
 // @Router /services/{name}/restart [post]
 func (h *Handler) HandleRestartJSON(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	err := h.systemd.RestartService(name)
+	err := h.systemd.RestartService(r.Context(), name)
 
 	// Audit log
 	if h.Audit != nil {
-		username, _ := auth.GetSession(r).Values["username"].(string)
+		username := extractUsername(r)
 		result := audit.ResultSuccess
 		detail := ""
 		if err != nil {
@@ -385,7 +411,7 @@ func (h *Handler) HandleEnableJSON(w http.ResponseWriter, r *http.Request) {
 
 	// Audit log
 	if h.Audit != nil {
-		username, _ := auth.GetSession(r).Values["username"].(string)
+		username := extractUsername(r)
 		result := audit.ResultSuccess
 		detail := ""
 		if err != nil {
@@ -438,7 +464,7 @@ func (h *Handler) HandleDisableJSON(w http.ResponseWriter, r *http.Request) {
 
 	// Audit log
 	if h.Audit != nil {
-		username, _ := auth.GetSession(r).Values["username"].(string)
+		username := extractUsername(r)
 		result := audit.ResultSuccess
 		detail := ""
 		if err != nil {
@@ -640,6 +666,8 @@ var validBatchActions = map[string]bool{
 // @Failure 500 {object} messageJSON "取得服務列表失敗"
 // @Router /services/batch [post]
 func (h *Handler) HandleBatchServices(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB limit
+
 	// 1. Decode request body
 	var req batchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -669,6 +697,14 @@ func (h *Handler) HandleBatchServices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 4.5. Validate all service names
+	for _, name := range req.Names {
+		if err := systemd.ValidateServiceName(name); err != nil {
+			writeJSON(w, http.StatusBadRequest, messageJSON{Error: err.Error()})
+			return
+		}
+	}
+
 	// 5. Validate: no locked services in names
 	services, err := h.systemd.ListServices()
 	if err != nil {
@@ -696,7 +732,7 @@ func (h *Handler) HandleBatchServices(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// 7. Get username for audit log
-	username, _ := auth.GetSession(r).Values["username"].(string)
+	username := extractUsername(r)
 	clientIP := audit.ExtractClientIP(r)
 
 	// 8. Sequential execution: iterate names, call systemd, write audit, collect results
@@ -717,15 +753,16 @@ func (h *Handler) HandleBatchServices(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Call systemd manager based on action
+		// Call systemd manager based on action — pass the batch context so
+		// the subprocess is killed when the overall deadline expires.
 		var svcErr error
 		switch req.Action {
 		case "start":
-			svcErr = h.systemd.StartService(name)
+			svcErr = h.systemd.StartService(ctx, name)
 		case "stop":
-			svcErr = h.systemd.StopService(name)
+			svcErr = h.systemd.StopService(ctx, name)
 		case "restart":
-			svcErr = h.systemd.RestartService(name)
+			svcErr = h.systemd.RestartService(ctx, name)
 		}
 
 		// Build result for this service
@@ -869,13 +906,12 @@ func (h *Handler) HandleServiceLogsWS(w http.ResponseWriter, r *http.Request) {
 
 	if err := cmd.Start(); err != nil {
 		log.Printf("ERROR starting journalctl for %s: %v", name, err)
-		errMsg := err.Error()
-		if strings.Contains(errMsg, "permission denied") {
+		if strings.Contains(err.Error(), "permission denied") {
 			conn.WriteMessage(websocket.TextMessage,
 				[]byte(`{"error":"permission denied: user lacks journalctl access"}`))
 		} else {
 			conn.WriteMessage(websocket.TextMessage,
-				[]byte(`{"error":"`+errMsg+`"}`))
+				[]byte(`{"error":"failed to start journalctl"}`))
 		}
 		return
 	}
@@ -968,7 +1004,7 @@ func (h *Handler) HandleCreateToken(w http.ResponseWriter, r *http.Request) {
 
 	// Audit log
 	if h.Audit != nil {
-		username, _ := auth.GetSession(r).Values["username"].(string)
+		username := extractUsername(r)
 		entry, entryErr := audit.NewEntry(username, audit.ExtractClientIP(r),
 			audit.ActionTokenCreate, resp.Name, audit.ResultSuccess, "")
 		if entryErr == nil {
@@ -1015,7 +1051,7 @@ func (h *Handler) HandleRevokeToken(w http.ResponseWriter, r *http.Request) {
 
 	// Audit log
 	if h.Audit != nil {
-		username, _ := auth.GetSession(r).Values["username"].(string)
+		username := extractUsername(r)
 		// Find token name for audit
 		tokenName := id
 		list := h.TokenStore.List()

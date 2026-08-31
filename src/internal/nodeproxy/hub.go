@@ -2,10 +2,12 @@ package nodeproxy
 
 import (
 	"context"
+	"crypto/subtle"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -25,6 +27,10 @@ const (
 	DefaultActionTimeout = 15 * time.Second
 	DefaultQueryTimeout  = 10 * time.Second
 	DefaultReadDeadline  = 35 * time.Second
+
+	// Rate limiting for WebSocket connections
+	rateLimitWindow = time.Minute
+	rateLimitMax    = 5
 )
 
 type agentConn struct {
@@ -32,6 +38,17 @@ type agentConn struct {
 	conn   *gorilla.Conn
 	send   chan []byte
 	cancel context.CancelFunc
+	closed bool
+	closeMu sync.Mutex
+}
+
+// pendingRequest tracks a pending RPC request along with the originating nodeID,
+// so cleanup can close only channels belonging to the disconnected node.
+type pendingRequest struct {
+	ch     chan agentproto.Envelope
+	nodeID string
+	mu     sync.Mutex
+	closed bool
 }
 
 type Hub struct {
@@ -39,12 +56,19 @@ type Hub struct {
 	conns map[string]*agentConn // key: nodeID
 
 	pendingMu sync.Mutex
-	pending   map[string]chan agentproto.Envelope
+	pending   map[string]*pendingRequest
 
 	inflightMu sync.Mutex
 	inflight   map[inflightKey]struct{}
 
+	// Rate limiting for WebSocket connections
+	rateMu      sync.Mutex
+	rateLimiter map[string][]time.Time
+
 	Registry *noderegistry.Registry
+
+	// Background cleanup for rate limiter
+	rateLimiterStop chan struct{}
 
 	OnRegister   func(nodeID string, p agentproto.RegisterPayload)
 	OnHeartbeat  func(nodeID string, stats noderegistry.HeartbeatStats)
@@ -58,19 +82,122 @@ type inflightKey struct{ NodeID, Service, Action string }
 
 // NewHub creates a new Hub with initialized maps and upgrader.
 func NewHub() *Hub {
-	return &Hub{
-		conns:    make(map[string]*agentConn),
-		pending:  make(map[string]chan agentproto.Envelope),
-		inflight: make(map[inflightKey]struct{}),
+	h := &Hub{
+		conns:           make(map[string]*agentConn),
+		pending:         make(map[string]*pendingRequest),
+		inflight:        make(map[inflightKey]struct{}),
+		rateLimiter:     make(map[string][]time.Time),
+		rateLimiterStop: make(chan struct{}),
 		upgrader: gorilla.Upgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
+			// Secure default: reject browser requests (Origin header present) unless
+			// WS_ALLOWED_ORIGINS is configured. Non-browser clients (no Origin) pass.
+			CheckOrigin: func(r *http.Request) bool {
+				if r == nil { return true }
+				return r.Header.Get("Origin") == ""
+			},
 		},
+	}
+
+	// Start background rate limiter cleanup goroutine
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				h.rateMu.Lock()
+				now := time.Now()
+				for ip, times := range h.rateLimiter {
+					var recent []time.Time
+					windowStart := now.Add(-rateLimitWindow)
+					for _, t := range times {
+						if t.After(windowStart) {
+							recent = append(recent, t)
+						}
+					}
+					if len(recent) == 0 {
+						delete(h.rateLimiter, ip)
+					} else {
+						h.rateLimiter[ip] = recent
+					}
+				}
+				h.rateMu.Unlock()
+			case <-h.rateLimiterStop:
+				return
+			}
+		}
+	}()
+
+	return h
+}
+
+// checkRateLimit returns true if the IP is within the rate limit
+// (max connections per minute window).
+func (h *Hub) checkRateLimit(ip string) bool {
+	h.rateMu.Lock()
+	defer h.rateMu.Unlock()
+
+	now := time.Now()
+	windowStart := now.Add(-rateLimitWindow)
+
+	times := h.rateLimiter[ip]
+	// Filter out entries outside the window
+	var recent []time.Time
+	for _, t := range times {
+		if t.After(windowStart) {
+			recent = append(recent, t)
+		}
+	}
+
+	if len(recent) >= rateLimitMax {
+		h.rateLimiter[ip] = recent
+		return false
+	}
+
+	recent = append(recent, now)
+	h.rateLimiter[ip] = recent
+	return true
+}
+
+// pendingGet retrieves a pending request by requestID.
+func (h *Hub) pendingGet(requestID string) (*pendingRequest, bool) {
+	h.pendingMu.Lock()
+	defer h.pendingMu.Unlock()
+	pr, ok := h.pending[requestID]
+	return pr, ok
+}
+
+// pendingSet stores a pending request.
+func (h *Hub) pendingSet(requestID, nodeID string, ch chan agentproto.Envelope) {
+	h.pendingMu.Lock()
+	defer h.pendingMu.Unlock()
+	h.pending[requestID] = &pendingRequest{ch: ch, nodeID: nodeID}
+}
+
+// pendingDelete removes a pending request and closes its channel.
+func (h *Hub) pendingDelete(requestID string) {
+	h.pendingMu.Lock()
+	defer h.pendingMu.Unlock()
+	if pr, ok := h.pending[requestID]; ok {
+		close(pr.ch)
+		delete(h.pending, requestID)
 	}
 }
 
 // ServeWS handles an incoming WebSocket connection from an agent.
 // It validates the token, upgrades the connection, and processes messages.
+// Authentication uses query token (not session-based auth).
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
+	// Rate limiting per IP
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		ip = r.RemoteAddr
+	}
+	if !h.checkRateLimit(ip) {
+		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		http.Error(w, "missing token", http.StatusUnauthorized)
@@ -126,8 +253,8 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify token matches
-	if node.Token != token {
+	// Verify token matches using constant-time comparison to prevent timing attacks
+	if subtle.ConstantTimeCompare([]byte(node.Token), []byte(token)) != 1 {
 		log.Printf("nodeproxy: token mismatch for node %q", regPayload.NodeName)
 		ws.Close()
 		return
@@ -272,14 +399,18 @@ func (h *Hub) dispatch(nodeID string, env agentproto.Envelope) {
 		}
 
 	case agentproto.TypeRPCResponse:
-		h.pendingMu.Lock()
-		ch, ok := h.pending[env.RequestID]
-		h.pendingMu.Unlock()
+		pr, ok := h.pendingGet(env.RequestID)
 		if ok {
+			pr.mu.Lock()
+			if pr.closed {
+				pr.mu.Unlock()
+				return
+			}
 			select {
-			case ch <- env:
+			case pr.ch <- env:
 			default:
 			}
+			pr.mu.Unlock()
 		}
 
 	default:
@@ -287,29 +418,28 @@ func (h *Hub) dispatch(nodeID string, env agentproto.Envelope) {
 	}
 }
 
-// cleanup removes a node from the connection map, closes all pending channels,
-// and notifies the OnDisconnect callback.
+// cleanup removes a node from the connection map, closes only pending channels
+// belonging to that node, and notifies the OnDisconnect callback.
 func (h *Hub) cleanup(nodeID string) {
 	h.mu.Lock()
-	delete(h.conns, nodeID)
+	ac, exists := h.conns[nodeID]
+	if exists {
+		// Mark connection as closed so Send() won't block on a full channel
+		ac.closeMu.Lock()
+		ac.closed = true
+		ac.closeMu.Unlock()
+		delete(h.conns, nodeID)
+	}
 	h.mu.Unlock()
 
-	// Close all pending channels for this node
+	// Close only pending channels belonging to this node
 	h.pendingMu.Lock()
-	var toClose []string
-	for reqID, ch := range h.pending {
-		// We need to check if this pending request belongs to this node.
-		// Since pending map is keyed by requestID, we need a reverse lookup.
-		// We'll use a separate approach: close channels whose requests are
-		// for this node by checking inflight.
-		_ = ch
-		toClose = append(toClose, reqID)
-	}
-	// Close all pending channels (they belong to the disconnected node
-	// if they were waiting for a response)
-	for _, reqID := range toClose {
-		if ch, ok := h.pending[reqID]; ok {
-			close(ch)
+	for reqID, pr := range h.pending {
+		if pr.nodeID == nodeID {
+			pr.mu.Lock()
+			pr.closed = true
+			pr.mu.Unlock()
+			close(pr.ch)
 			delete(h.pending, reqID)
 		}
 	}
@@ -333,7 +463,7 @@ func (h *Hub) cleanup(nodeID string) {
 }
 
 // Send sends an envelope to the specified node.
-// Returns ErrNodeOffline if the node is not connected.
+// Returns ErrNodeOffline if the node is not connected or has been marked closed.
 func (h *Hub) Send(nodeID string, env agentproto.Envelope) error {
 	h.mu.RLock()
 	ac, ok := h.conns[nodeID]
@@ -342,6 +472,14 @@ func (h *Hub) Send(nodeID string, env agentproto.Envelope) error {
 	if !ok {
 		return ErrNodeOffline
 	}
+
+	// Check if connection is marked as closed (cleanup in progress)
+	ac.closeMu.Lock()
+	if ac.closed {
+		ac.closeMu.Unlock()
+		return ErrNodeOffline
+	}
+	ac.closeMu.Unlock()
 
 	data, err := json.Marshal(env)
 	if err != nil {

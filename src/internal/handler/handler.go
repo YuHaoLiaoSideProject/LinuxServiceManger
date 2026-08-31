@@ -119,21 +119,21 @@ func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 // HandleStart starts a systemd service.
 func (h *Handler) HandleStart(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	err := h.systemd.StartService(name)
+	err := h.systemd.StartService(r.Context(), name)
 	h.respondWithFlash(w, name, "啟動", err)
 }
 
 // HandleStop stops a systemd service.
 func (h *Handler) HandleStop(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	err := h.systemd.StopService(name)
+	err := h.systemd.StopService(r.Context(), name)
 	h.respondWithFlash(w, name, "停止", err)
 }
 
 // HandleRestart restarts a systemd service.
 func (h *Handler) HandleRestart(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	err := h.systemd.RestartService(name)
+	err := h.systemd.RestartService(r.Context(), name)
 	h.respondWithFlash(w, name, "重啟", err)
 }
 

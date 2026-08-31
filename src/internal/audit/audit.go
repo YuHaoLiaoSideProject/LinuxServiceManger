@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -23,23 +24,55 @@ import (
 type Action string
 
 const (
-	ActionLogin    Action = "login"
-	ActionLogout   Action = "logout"
-	ActionStart    Action = "start"
-	ActionStop     Action = "stop"
-	ActionRestart  Action = "restart"
-	ActionEnable   Action = "enable"
-	ActionDisable  Action = "disable"
+	ActionLogin              Action = "login"
+	ActionLogout             Action = "logout"
+	ActionStart              Action = "start"
+	ActionStop               Action = "stop"
+	ActionRestart            Action = "restart"
+	ActionEnable             Action = "enable"
+	ActionDisable            Action = "disable"
+	// Node actions
+	ActionNodeCreate         Action = "node_create"
+	ActionNodeUpdate         Action = "node_update"
+	ActionNodeDelete         Action = "node_delete"
+	ActionNodeTestConnection Action = "node_test_connection"
+	ActionNodeReconnect      Action = "node_reconnect"
+	// Config actions
+	ActionConfigView         Action = "config_view"
+	ActionConfigSave         Action = "config_save"
+	// Token actions
+	ActionTokenCreate        Action = "token_create"
+	ActionTokenRevoke        Action = "token_revoke"
+	// Notify actions
+	ActionNotifyCreate       Action = "notify_create"
+	ActionNotifyUpdate       Action = "notify_update"
+	ActionNotifyDelete       Action = "notify_delete"
+	ActionNotifyToggle       Action = "notify_toggle"
+	ActionNotifyTest         Action = "notify_test"
 )
 
 var validActions = map[Action]bool{
-	ActionLogin:   true,
-	ActionLogout:  true,
-	ActionStart:   true,
-	ActionStop:    true,
-	ActionRestart: true,
-	ActionEnable:  true,
-	ActionDisable: true,
+	ActionLogin:              true,
+	ActionLogout:             true,
+	ActionStart:              true,
+	ActionStop:               true,
+	ActionRestart:            true,
+	ActionEnable:             true,
+	ActionDisable:            true,
+	ActionNodeCreate:         true,
+	ActionNodeUpdate:         true,
+	ActionNodeDelete:         true,
+	ActionNodeTestConnection: true,
+	ActionNodeReconnect:      true,
+	ActionConfigView:         true,
+	ActionConfigSave:         true,
+	ActionTokenCreate:        true,
+	ActionTokenRevoke:        true,
+	ActionNotifyCreate:       true,
+	ActionNotifyUpdate:       true,
+	ActionNotifyDelete:       true,
+	ActionNotifyToggle:       true,
+	ActionNotifyTest:         true,
 }
 
 // actionDisplayLabels maps each audit action to its localized display label
@@ -48,13 +81,27 @@ var validActions = map[Action]bool{
 // as the raw action value — otherwise searching for the text users actually
 // see (e.g. "登入") returns no records.
 var actionDisplayLabels = map[Action]string{
-	ActionLogin:   "登入",
-	ActionLogout:  "登出",
-	ActionStart:   "啟動",
-	ActionStop:    "停止",
-	ActionRestart: "重啟",
-	ActionEnable:  "啟用",
-	ActionDisable: "停用",
+	ActionLogin:              "登入",
+	ActionLogout:             "登出",
+	ActionStart:              "啟動",
+	ActionStop:               "停止",
+	ActionRestart:            "重啟",
+	ActionEnable:             "啟用",
+	ActionDisable:            "停用",
+	ActionNodeCreate:         "新增節點",
+	ActionNodeUpdate:         "更新節點",
+	ActionNodeDelete:         "移除節點",
+	ActionNodeTestConnection: "測試節點連線",
+	ActionNodeReconnect:      "重新連線節點",
+	ActionConfigView:         "檢視設定",
+	ActionConfigSave:         "儲存設定",
+	ActionTokenCreate:        "建立 Token",
+	ActionTokenRevoke:        "撤銷 Token",
+	ActionNotifyCreate:       "建立通知",
+	ActionNotifyUpdate:       "更新通知",
+	ActionNotifyDelete:       "刪除通知",
+	ActionNotifyToggle:       "切換通知",
+	ActionNotifyTest:         "測試通知",
 }
 
 // Result represents the outcome of an audited operation.
@@ -213,7 +260,7 @@ func (m *Module) appendEntry(entry Entry) {
 		entry.Timestamp = time.Now().UTC().Format(time.RFC3339)
 	}
 
-	f, err := os.OpenFile(m.cfg.FilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(m.cfg.FilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0640)
 	if err != nil {
 		log.Printf("AUDIT ERROR: failed to open audit file: %v", err)
 		return
@@ -295,8 +342,14 @@ func (m *Module) Query(params QueryParams) (QueryResult, error) {
 	}, nil
 }
 
-// scanAndFilter reads the entire JSONL file and returns entries matching the
-// query filters, sorted newest-first.
+// maxScanRows is a safety limit to prevent unbounded memory growth when
+// scanning large JSONL files. Queries with pagination should rarely need
+// more than this many entries.
+const maxScanRows = 10000
+
+// scanAndFilter streams the JSONL file line-by-line, applying filters as it
+// goes and only keeping entries that match. A hard cap of maxScanRows prevents
+// unbounded memory growth on very large files.
 func (m *Module) scanAndFilter(params QueryParams) ([]Entry, error) {
 	f, err := os.Open(m.cfg.FilePath)
 	if err != nil {
@@ -307,12 +360,16 @@ func (m *Module) scanAndFilter(params QueryParams) ([]Entry, error) {
 	}
 	defer f.Close()
 
-	entries := []Entry{}
+	entries := make([]Entry, 0, 256) // pre-allocate a small initial capacity
 	scanner := bufio.NewScanner(f)
 	// Allow large lines (up to 1 MB)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	for scanner.Scan() {
+		if len(entries) >= maxScanRows {
+			break
+		}
+
 		line := scanner.Text()
 		if line == "" {
 			continue
@@ -360,13 +417,9 @@ func (m *Module) scanAndFilter(params QueryParams) ([]Entry, error) {
 	}
 
 	// Sort time-descending (newest first)
-	for i := 0; i < len(entries); i++ {
-		for j := i + 1; j < len(entries); j++ {
-			if entries[i].Timestamp < entries[j].Timestamp {
-				entries[i], entries[j] = entries[j], entries[i]
-			}
-		}
-	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Timestamp > entries[j].Timestamp
+	})
 
 	return entries, nil
 }
@@ -491,6 +544,14 @@ func (m *Module) cleanupRetention() {
 		kept++
 	}
 
+	if err := tmp.Sync(); err != nil {
+		log.Printf("AUDIT ERROR: cleanup sync: %v", err)
+		tmp.Close()
+		f.Close()
+		os.Remove(tmpName)
+		return
+	}
+
 	tmp.Close()
 	f.Close()
 
@@ -545,29 +606,122 @@ func NewNodeEntry(username, sourceIP string, action Action, target string, resul
 	}
 }
 
-// ExtractClientIP extracts the client IP from a request, preferring
-// X-Forwarded-For over RemoteAddr.
+// ExtractClientIP extracts the client IP from a request.
+// It trusts X-Forwarded-For / X-Real-IP only when the peer (RemoteAddr)
+// is in the trusted proxy list; otherwise it returns the peer IP directly.
+// When trusted, it strips known proxy IPs from the right side of XFF
+// and returns the rightmost non-trusted IP.
 func ExtractClientIP(r *http.Request) string {
+	peerHost, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		peerHost = r.RemoteAddr
+	}
+
+	// Normalize IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1 → 127.0.0.1)
+	if normalized, ok := normalizeIP(peerHost); ok {
+		peerHost = normalized
+	}
+
+	// Check if peer is trusted
+	isTrusted := false
+	for _, tp := range trustedProxies() {
+		if tp == peerHost {
+			isTrusted = true
+			break
+		}
+	}
+
+	if !isTrusted {
+		return peerHost
+	}
+
+	// Peer is trusted: parse X-Forwarded-For with right-to-left stripping
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// Take the first IP in the comma-separated list
 		parts := strings.Split(xff, ",")
-		if len(parts) > 0 {
-			ip := strings.TrimSpace(parts[0])
-			if ip != "" {
+		// Walk from right to left, skipping trusted proxy IPs
+		for i := len(parts) - 1; i >= 0; i-- {
+			ip := strings.TrimSpace(parts[i])
+			if ip == "" {
+				continue
+			}
+			// Normalize for comparison
+			if n, ok := normalizeIP(ip); ok {
+				ip = n
+			}
+			// If this IP is not a trusted proxy, it's the real client
+			trusted := false
+			for _, tp := range trustedProxies() {
+				if tp == ip {
+					trusted = true
+					break
+				}
+			}
+			if !trusted {
 				return ip
 			}
 		}
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
+	if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
+		return xrip
 	}
-	return host
+
+	return peerHost
+}
+
+// normalizeIP returns the IPv4 form if ip is an IPv4-mapped IPv6 address.
+func normalizeIP(ip string) (string, bool) {
+	host := ip
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		host = host[1 : len(host)-1]
+	}
+	if strings.HasPrefix(host, "::ffff:") {
+		return host[7:], true
+	}
+	return "", false
 }
 
 // ============================================================
-//  Helpers
+//  Trusted Proxies
 // ============================================================
+
+// defaultTrustedProxies are the default trusted proxy IPs (loopback).
+var defaultTrustedProxies = []string{"127.0.0.1", "::1"}
+
+// trustedProxiesOverride is used by setTrustedProxiesForTest to override the
+// trusted proxy list in tests. When nil, trustedProxies() reads from env.
+var trustedProxiesOverride []string
+
+// trustedProxies returns the list of trusted proxy IPs.
+// It first checks for a test override, then reads TRUSTED_PROXY_IPS env var,
+// and falls back to defaults.
+func trustedProxies() []string {
+	if trustedProxiesOverride != nil {
+		return trustedProxiesOverride
+	}
+	if env := os.Getenv("TRUSTED_PROXY_IPS"); env != "" {
+		var ips []string
+		for _, s := range strings.Split(env, ",") {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				ips = append(ips, s)
+			}
+		}
+		if len(ips) > 0 {
+			return ips
+		}
+	}
+	return defaultTrustedProxies
+}
+
+// setTrustedProxiesForTest overrides the trusted proxy list for testing.
+// Call with no arguments to clear the override.
+func setTrustedProxiesForTest(ips ...string) {
+	if len(ips) == 0 {
+		trustedProxiesOverride = nil
+	} else {
+		trustedProxiesOverride = ips
+	}
+}
 
 func dirOf(path string) string {
 	if idx := lastSlash(path); idx > 0 {

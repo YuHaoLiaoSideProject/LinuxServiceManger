@@ -3,6 +3,8 @@ package nodes
 import (
 	"encoding/json"
 	"net/http"
+	"sync"
+	"time"
 )
 
 // Heartbeat 是 Agent → Manager 的心跳 payload（決策 3）。
@@ -16,14 +18,20 @@ type Heartbeat struct {
 	Timestamp     string       `json:"timestamp"` // RFC3339 UTC
 }
 
+// minHeartbeatInterval 是每個 node 的最小心跳間隔（防高頻 heartbeat DoS）。
+const minHeartbeatInterval = 3 * time.Second
+
 // HeartbeatHandler 是心跳接收端（持有 registry 引用；由 handler 包的 HandleAgentHeartbeat 橋接委派）。
 type HeartbeatHandler struct {
-	registry *Registry
+	registry    *Registry
+	mu          sync.Mutex
+	lastHB      map[string]time.Time // nodeName → last accepted heartbeat time
+	MinInterval time.Duration        // 可覆寫（測試用 0）；0 時使用 minHeartbeatInterval
 }
 
 // NewHeartbeatHandler 建立心跳接收 handler。
 func NewHeartbeatHandler(reg *Registry) *HeartbeatHandler {
-	return &HeartbeatHandler{registry: reg}
+	return &HeartbeatHandler{registry: reg, lastHB: make(map[string]time.Time)}
 }
 
 // Handle 是 POST /api/v1/agent/heartbeat 的處理邏輯（在 Auth 群組外，token 自證）：
@@ -44,6 +52,22 @@ func (h *HeartbeatHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
 		return
 	}
+
+	// Per-node rate limit: reject heartbeats arriving faster than MinInterval.
+	// Returns 200 (idempotent) so the agent does not retry with backoff.
+	interval := h.MinInterval
+	if interval <= 0 {
+		interval = minHeartbeatInterval
+	}
+	now := time.Now()
+	h.mu.Lock()
+	if last, ok := h.lastHB[hb.NodeName]; ok && now.Sub(last) < interval {
+		h.mu.Unlock()
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "accepted": true})
+		return
+	}
+	h.lastHB[hb.NodeName] = now
+	h.mu.Unlock()
 
 	h.registry.SetHeartbeat(hb.NodeName, hb)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "accepted": true})

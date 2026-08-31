@@ -1,6 +1,7 @@
 package noderegistry
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,18 @@ import (
 	"sync"
 	"time"
 )
+
+// generateNodeID produces a cryptographically random node ID.
+// Falls back to timestamp-based ID if crypto/rand fails.
+func generateNodeID() string {
+	b := make([]byte, 16)
+	_, err := rand.Read(b)
+	if err != nil {
+		// fallback to timestamp
+		return fmt.Sprintf("node-%d", time.Now().UnixNano())
+	}
+	return fmt.Sprintf("node-%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
 
 var (
 	ErrDuplicateName = errors.New("node name already exists")
@@ -20,6 +33,10 @@ const MaxNodes = 50
 
 type Node struct {
 	// Persistent fields (saved to nodes.json)
+	// SECURITY NOTE: Token is stored in plaintext. The file is written with 0600
+	// permissions (owner-only read/write) and should reside under /var/lib/ which
+	// is typically root-owned. If the server process is compromised, tokens are
+	// exposed. For higher security, consider mTLS or JWT-signed agent auth.
 	ID             string `json:"id"`
 	Name           string `json:"name"`
 	Address        string `json:"address"`
@@ -113,7 +130,7 @@ func (r *Registry) Add(req AddRequest) (*Node, error) {
 	}
 
 	node := &Node{
-		ID:             fmt.Sprintf("node-%d", r.now().UnixNano()),
+		ID:             generateNodeID(),
 		Name:           req.Name,
 		Address:        req.Address,
 		TLSFingerprint: req.TLSFingerprint,
@@ -269,8 +286,48 @@ func (r *Registry) ApplyHeartbeat(id string, stats HeartbeatStats, at time.Time)
 	}
 }
 
+// UpdateOnlineState atomically updates a node's runtime state for connect events.
+// Fields with zero values are skipped (use time.Time{} to skip OnlineSince).
+func (r *Registry) UpdateOnlineState(id, hostname, version, status string, versionCompat bool, versionMessage string, onlineSince time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	node, exists := r.nodes[id]
+	if !exists {
+		return
+	}
+
+	if hostname != "" {
+		node.Hostname = hostname
+	}
+	if version != "" {
+		node.AgentVersion = version
+	}
+	node.Status = status
+	node.VersionCompat = versionCompat
+	node.VersionMessage = versionMessage
+	if !onlineSince.IsZero() {
+		node.OnlineSince = onlineSince
+	}
+}
+
+// SetOffline atomically transitions a node to offline status.
+func (r *Registry) SetOffline(id string, offlineSince time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	node, exists := r.nodes[id]
+	if !exists {
+		return
+	}
+	node.Status = "offline"
+	node.OfflineSince = offlineSince
+}
+
 // persist writes the nodes to disk atomically.
 // It writes to a temporary file first, then renames it to the target path.
+// File mode 0600 ensures only the process owner can read/write the file
+// (which contains node tokens in plaintext).
 func (r *Registry) persist() error {
 	nodes := make([]*Node, 0, len(r.nodes))
 	for _, n := range r.nodes {
@@ -283,13 +340,18 @@ func (r *Registry) persist() error {
 	}
 
 	tmpPath := r.path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+	const fileMode = 0600 // owner-only: protect node tokens stored in plaintext
+	if err := os.WriteFile(tmpPath, data, fileMode); err != nil {
 		return err
 	}
 
+	// Ensure the target file also has strict permissions (in case it was
+	// created previously with more permissive mode).
 	if err := os.Rename(tmpPath, r.path); err != nil {
+		os.Remove(tmpPath)
 		return err
 	}
+	os.Chmod(r.path, fileMode) // best-effort; ignore error on read-only filesystems
 
 	return nil
 }

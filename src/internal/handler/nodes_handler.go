@@ -93,7 +93,8 @@ func (h *NodesHandler) HandleCreateNode(w http.ResponseWriter, r *http.Request) 
 		case noderegistry.ErrMaxNodes:
 			writeJSONError(w, http.StatusConflict, "maximum of 50 nodes reached")
 		default:
-			writeJSONError(w, http.StatusInternalServerError, err.Error())
+			log.Printf("ERROR creating node: %v", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create node")
 		}
 		return
 	}
@@ -155,7 +156,8 @@ func (h *NodesHandler) HandleUpdateNode(w http.ResponseWriter, r *http.Request) 
 		case noderegistry.ErrDuplicateName:
 			writeJSONError(w, http.StatusConflict, "node name already exists")
 		default:
-			writeJSONError(w, http.StatusInternalServerError, err.Error())
+			log.Printf("ERROR updating node %s: %v", id, err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to update node")
 		}
 		return
 	}
@@ -178,7 +180,8 @@ func (h *NodesHandler) HandleDeleteNode(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := h.Reg.Remove(id); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("ERROR deleting node %s: %v", id, err)
+		writeJSONError(w, http.StatusInternalServerError, "failed to delete node")
 		return
 	}
 
@@ -285,7 +288,8 @@ func (h *NodesHandler) HandleNodeServices(w http.ResponseWriter, r *http.Request
 		if err == nodeproxy.ErrNodeOffline {
 			writeJSONError(w, http.StatusServiceUnavailable, "node is offline")
 		} else {
-			writeJSONError(w, http.StatusInternalServerError, err.Error())
+			log.Printf("ERROR querying node %s services: %v", id, err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to query node services")
 		}
 		return
 	}
@@ -321,12 +325,7 @@ func (h *NodesHandler) HandleNodeAction(w http.ResponseWriter, r *http.Request) 
 	err := h.AgentHub.CallAction(r.Context(), id, method, name)
 
 	// Audit entry
-	username := "system"
-	if u := r.Context().Value("username"); u != nil {
-		if s, ok := u.(string); ok {
-			username = s
-		}
-	}
+	username := extractUsername(r)
 	result := audit.ResultSuccess
 	detail := fmt.Sprintf("%s %s on %s", action, name, node.Name)
 	if err != nil {
@@ -344,7 +343,8 @@ func (h *NodesHandler) HandleNodeAction(w http.ResponseWriter, r *http.Request) 
 		if err == nodeproxy.ErrNodeOffline {
 			writeJSONError(w, http.StatusServiceUnavailable, "node is offline")
 		} else {
-			writeJSONError(w, http.StatusInternalServerError, err.Error())
+			log.Printf("ERROR performing action %s on %s/%s: %v", action, id, name, err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to perform action on node")
 		}
 		return
 	}
@@ -388,7 +388,8 @@ func (h *NodesHandler) HandleNodeLogs(w http.ResponseWriter, r *http.Request) {
 		if err == nodeproxy.ErrNodeOffline {
 			writeJSONError(w, http.StatusServiceUnavailable, "node is offline")
 		} else {
-			writeJSONError(w, http.StatusInternalServerError, err.Error())
+			log.Printf("ERROR querying node %s logs: %v", id, err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to query node logs")
 		}
 		return
 	}
@@ -418,7 +419,8 @@ func (h *NodesHandler) HandleNodeInfo(w http.ResponseWriter, r *http.Request) {
 		if err == nodeproxy.ErrNodeOffline {
 			writeJSONError(w, http.StatusServiceUnavailable, "node is offline")
 		} else {
-			writeJSONError(w, http.StatusInternalServerError, err.Error())
+			log.Printf("ERROR querying node %s info: %v", id, err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to query node info")
 		}
 		return
 	}
@@ -447,7 +449,8 @@ func (h *NodesHandler) HandleAgentBinary(w http.ResponseWriter, r *http.Request)
 		if os.IsNotExist(err) {
 			writeJSONError(w, http.StatusNotFound, "agent binary not found for arch: "+arch)
 		} else {
-			writeJSONError(w, http.StatusInternalServerError, err.Error())
+			log.Printf("ERROR reading agent binary %s: %v", binaryPath, err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to read agent binary")
 		}
 		return
 	}

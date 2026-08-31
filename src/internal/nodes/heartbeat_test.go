@@ -19,7 +19,9 @@ func newHeartbeatHandler(t *testing.T) (*Registry, *HeartbeatHandler, string) {
 	if err != nil {
 		t.Fatalf("create node: %v", err)
 	}
-	return r, &HeartbeatHandler{registry: r}, created.Token
+	h := NewHeartbeatHandler(r)
+	h.MinInterval = 0 // disable throttling for tests
+	return r, h, created.Token
 }
 
 func validHeartbeatBody() string {

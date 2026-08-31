@@ -174,6 +174,7 @@ func TestIsLocked(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
 			t.Setenv("UNLOCKED_SERVICES", tt.unlockedEnv)
+			resetUnlockedConfigForTest() // reset sync.Once cache for each sub-test
 			got := isLocked(tt.nameToLock, tt.unitFileState, tt.fragmentPath)
 			if got != tt.wantLocked {
 				t.Errorf("isLocked(%q, %q, %q) = %v, want %v — %s",
@@ -231,6 +232,7 @@ func TestIsUnlockedByConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
 			t.Setenv("UNLOCKED_SERVICES", tt.envValue)
+			resetUnlockedConfigForTest() // reset sync.Once cache for each sub-test
 			got := isUnlockedByConfig(tt.name)
 			if got != tt.wantUnlock {
 				t.Errorf("isUnlockedByConfig(%q) with UNLOCKED_SERVICES=%q = %v, want %v",

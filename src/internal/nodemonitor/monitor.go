@@ -95,11 +95,8 @@ func (m *Monitor) scanNodes(now time.Time) {
 			// online/warning → offline after OfflineThreshold
 			if !node.LastHeartbeat.IsZero() && now.Sub(node.LastHeartbeat) > m.cfg.OfflineThreshold {
 				// SYS-MON-09: only transition if not already offline
-				m.reg.SetRuntimeStatus(node.ID, StatusOffline)
-				// Fetch the updated node for OfflineSince
-				if n, ok := m.reg.Get(node.ID); ok {
-					n.OfflineSince = now
-				}
+				// Atomically set status and OfflineSince under write lock.
+				m.reg.SetOffline(node.ID, now)
 				m.publish(StatusEvent{
 					NodeID:   node.ID,
 					NodeName: node.Name,
@@ -154,28 +151,25 @@ func (m *Monitor) OnConnect(nodeID string, p agentproto.RegisterPayload, minVers
 		return
 	}
 
-	// Update runtime info from payload.
-	node.Hostname = p.Hostname
-	node.AgentVersion = p.Version
-
 	// Version compatibility check.
 	status := StatusOnline
 	msg := ""
+	versionCompat := true
+	versionMessage := ""
 	if minVersion != "" && p.Version < minVersion {
-		node.VersionCompat = false
-		node.VersionMessage = "Agent version outdated"
+		versionCompat = false
+		versionMessage = "Agent version outdated"
 		status = StatusWarning
 		msg = "Agent version outdated"
-	} else {
-		node.VersionCompat = true
-		node.VersionMessage = ""
 	}
 
-	// Set status (any non-online → online is recovery, SYS-MON-07/08).
-	node.Status = status
+	var onlineSince time.Time
 	if status == StatusOnline {
-		node.OnlineSince = m.cfg.Now()
+		onlineSince = m.cfg.Now()
 	}
+
+	// Atomically update all runtime fields under write lock.
+	m.reg.UpdateOnlineState(nodeID, p.Hostname, p.Version, status, versionCompat, versionMessage, onlineSince)
 
 	m.publish(StatusEvent{
 		NodeID:   nodeID,
@@ -193,9 +187,8 @@ func (m *Monitor) OnDisconnect(nodeID string) {
 		return
 	}
 
-	now := m.cfg.Now()
-	node.Status = StatusOffline
-	node.OfflineSince = now
+	// Atomically set offline status and timestamp under write lock.
+	m.reg.SetOffline(nodeID, m.cfg.Now())
 
 	m.publish(StatusEvent{
 		NodeID:   nodeID,

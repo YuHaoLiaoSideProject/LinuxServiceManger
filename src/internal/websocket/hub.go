@@ -19,10 +19,14 @@ type Message struct {
 	Timestamp     string            `json:"timestamp,omitempty"`
 	Services      []ServiceSnapshot `json:"services,omitempty"`
 	// Node fields
-	NodeID        string            `json:"id,omitempty"`
+	ID            string            `json:"id,omitempty"`
+	NodeID        string            `json:"node_id,omitempty"`
 	NodeName      string            `json:"node_name,omitempty"`
 	Status        string            `json:"status,omitempty"`
 	Message       string            `json:"message,omitempty"`
+	LastHeartbeat string            `json:"last_heartbeat,omitempty"` // RFC3339 UTC
+	AgentVersion  string            `json:"agent_version,omitempty"`
+	Reason        string            `json:"reason,omitempty"`
 }
 
 // ServiceSnapshot is a lightweight service state snapshot.
@@ -112,7 +116,11 @@ func (h *Hub) Run() {
 			}
 			h.mu.RUnlock()
 			for _, client := range deadClients {
-				h.Unregister <- client
+				select {
+				case h.Unregister <- client:
+				default:
+					close(client.Send)
+				}
 			}
 		case <-heartbeat.C:
 			now := time.Now()
@@ -134,7 +142,11 @@ func (h *Hub) Run() {
 				case client.Send <- exp:
 				default:
 				}
-				h.Unregister <- client
+				select {
+				case h.Unregister <- client:
+				default:
+					close(client.Send)
+				}
 			}
 
 			// Send heartbeat to remaining clients
@@ -220,4 +232,30 @@ func (h *Hub) CountByUser(userID string) int {
 		}
 	}
 	return count
+}
+
+// KillByUser closes all WebSocket connections belonging to the given user ID.
+// Called on logout to ensure no lingering connections bypass session invalidation.
+func (h *Hub) KillByUser(userID string) {
+	h.mu.RLock()
+	var targets []*Client
+	for c := range h.Clients {
+		if c.UserID == userID {
+			targets = append(targets, c)
+		}
+	}
+	h.mu.RUnlock()
+
+	for _, c := range targets {
+		msg, _ := json.Marshal(Message{Type: "session_expired", Reason: "logout"})
+		select {
+		case c.Send <- msg:
+		default:
+		}
+		select {
+		case h.Unregister <- c:
+		default:
+			close(c.Send)
+		}
+	}
 }

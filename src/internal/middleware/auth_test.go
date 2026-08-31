@@ -5,11 +5,17 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"linux-service-manager/internal/auth"
 	"linux-service-manager/internal/token"
 )
+
+func TestMain(m *testing.M) {
+	auth.Setup() // initialize session store before any test runs
+	os.Exit(m.Run())
+}
 
 // ============================================================
 //  Helper functions

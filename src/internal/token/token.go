@@ -8,6 +8,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"log"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -352,13 +354,9 @@ func (s *Store) List() []TokenResponse {
 	}
 
 	// Sort by created_at DESC
-	for i := 0; i < len(result); i++ {
-		for j := i + 1; j < len(result); j++ {
-			if result[i].CreatedAt.Before(result[j].CreatedAt) {
-				result[i], result[j] = result[j], result[i]
-			}
-		}
-	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].CreatedAt.After(result[j].CreatedAt)
+	})
 
 	return result
 }
@@ -479,7 +477,9 @@ func (s *Store) flushLastUsed(pending map[string]bool) {
 		}
 	}
 	if changed {
-		s.save() // best-effort; errors are silently ignored
+		if err := s.save(); err != nil {
+			log.Printf("WARNING: failed to persist token last_used_at: %v", err)
+		}
 	}
 }
 

@@ -202,11 +202,15 @@ func (c *Client) dial(ctx context.Context) (*gorilla.Conn, error) {
 	}
 
 	wsURL := u.String()
-	log.Printf("[agentclient] dialing %s", wsURL)
+	logURL := wsURL
+	if c.cfg.AuthToken != "" {
+		logURL = strings.Replace(logURL, "token="+c.cfg.AuthToken, "token=***", 1)
+	}
+	log.Printf("[agentclient] dialing %s", logURL)
 
 	conn, _, err := dialer.DialContext(ctx, wsURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("ws dial %s: %w", wsURL, err)
+		return nil, fmt.Errorf("ws dial %s: %w", logURL, err)
 	}
 
 	return conn, nil

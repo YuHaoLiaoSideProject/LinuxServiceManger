@@ -18,6 +18,8 @@ func RateLimit(maxRequests int, window time.Duration) func(http.Handler) http.Ha
 		resetAt time.Time
 	}
 
+	const maxEntries = 10000 // upper bound to prevent memory exhaustion from distributed IPs
+
 	var mu sync.Mutex
 	clients := make(map[string]*entry)
 
@@ -44,6 +46,17 @@ func RateLimit(maxRequests int, window time.Duration) func(http.Handler) http.Ha
 			now := time.Now()
 			e, exists := clients[ip]
 			if !exists || now.After(e.resetAt) {
+				// Reject new IPs when at capacity to prevent memory exhaustion
+				if len(clients) >= maxEntries && !exists {
+					mu.Unlock()
+					w.Header().Set("Content-Type", "application/json")
+					w.Header().Set("Retry-After", "60")
+					w.WriteHeader(http.StatusTooManyRequests)
+					json.NewEncoder(w).Encode(map[string]string{
+						"error": "server busy, please try again later",
+					})
+					return
+				}
 				clients[ip] = &entry{count: 1, resetAt: now.Add(window)}
 				mu.Unlock()
 				next.ServeHTTP(w, r)

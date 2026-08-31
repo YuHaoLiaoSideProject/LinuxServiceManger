@@ -88,17 +88,12 @@ func TestHub_CleanupOnDisconnect(t *testing.T) {
 
 	// Create a pending request
 	pendingCh := make(chan agentproto.Envelope, 1)
-	hub.pendingMu.Lock()
-	hub.pending["test-request-1"] = pendingCh
-	hub.pendingMu.Unlock()
+	hub.pendingSet("test-request-1", node.ID, pendingCh)
 
 	// Verify pending exists
-	hub.pendingMu.Lock()
-	if _, ok := hub.pending["test-request-1"]; !ok {
-		hub.pendingMu.Unlock()
+	if _, ok := hub.pendingGet("test-request-1"); !ok {
 		t.Fatal("pending request should exist before cleanup")
 	}
-	hub.pendingMu.Unlock()
 
 	// Trigger cleanup
 	hub.cleanup(node.ID)

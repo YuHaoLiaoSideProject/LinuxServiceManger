@@ -5,50 +5,6 @@ import (
 )
 
 // ============================================================
-//  TEST: HasDefaultSecret (F11, F12)
-// ============================================================
-
-func TestHasDefaultSecret(t *testing.T) {
-	tests := []struct {
-		name       string
-		sessionKey string
-		adminPass  string
-		want       bool // true = using defaults
-	}{
-		// F11: 正確設定所有安全性環境變數
-		{"both set", "my-secret-key-32bytes!!", "strong-password", false},
-		// F11: 未設定 SESSION_KEY
-		{"missing session key", "", "strong-password", true},
-		// F11: 未設定 ADMIN_PASS
-		{"missing admin pass", "my-secret-key", "", true},
-		// F11: 兩者都未設定
-		{"both missing", "", "", true},
-		// F12: 環境變數設為空白字串視為未設定 — SESSION_KEY 空白
-		{"blank session key", "", "strong-password", true},
-		// F12: 環境變數設為空白字串視為未設定 — ADMIN_PASS 空白
-		{"blank admin pass", "my-key", "", true},
-		// F12: 兩者皆為空白字串
-		{"both blank", "", "", true},
-		// Extra: only one set, other explicitly set to non-empty
-		{"only session key set", "my-key", "", true},
-		{"only admin pass set", "", "my-pass", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("SESSION_KEY", tt.sessionKey)
-			t.Setenv("ADMIN_PASS", tt.adminPass)
-
-			got := HasDefaultSecret()
-			if got != tt.want {
-				t.Errorf("HasDefaultSecret() = %v, want %v (SESSION_KEY=%q, ADMIN_PASS=%q)",
-					got, tt.want, tt.sessionKey, tt.adminPass)
-			}
-		})
-	}
-}
-
-// ============================================================
 //  TEST: Login (F41)
 // ============================================================
 

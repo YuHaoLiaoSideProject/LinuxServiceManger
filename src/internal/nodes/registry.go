@@ -145,9 +145,24 @@ func (r *Registry) save() error {
 		}
 	}
 
-	// Atomic write: temp file + rename（0600 — token 含於檔內）
+	// Atomic write: temp file + fsync + rename（0600 — token 含於檔內）
 	tmpPath := r.filePath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+	f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmpPath)
 		return err
 	}
 	return os.Rename(tmpPath, r.filePath)

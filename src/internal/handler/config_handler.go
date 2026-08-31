@@ -14,7 +14,6 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"linux-service-manager/internal/audit"
-	"linux-service-manager/internal/auth"
 	"linux-service-manager/internal/systemd"
 )
 
@@ -68,6 +67,8 @@ type conflictResponse struct {
 // @Failure 500 {object} messageJSON "讀取失敗"
 // @Router /services/{name}/config [get]
 func (h *Handler) HandleGetServiceConfig(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB limit
+
 	name := chi.URLParam(r, "name")
 	if err := systemd.ValidateServiceName(name); err != nil {
 		writeJSON(w, http.StatusBadRequest, messageJSON{Error: "invalid service name"})
@@ -89,9 +90,8 @@ func (h *Handler) HandleGetServiceConfig(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusRequestEntityTooLarge, messageJSON{Error: err.Error()})
 		return
 	case err != nil:
-		// 權限不足等讀取失敗 → 500，錯誤訊息保留底層原因
 		log.Printf("ERROR reading config %s: %v", name, err)
-		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "無法讀取設定檔：" + err.Error()})
+		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "無法讀取設定檔"})
 		return
 	}
 
@@ -130,6 +130,8 @@ func (h *Handler) HandleGetServiceConfig(w http.ResponseWriter, r *http.Request)
 // @Failure 500 {object} map[string]interface{} "寫入/daemon-reload 失敗（含 backupPath）"
 // @Router /services/{name}/config [put]
 func (h *Handler) HandleSaveServiceConfig(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB limit
+
 	name := chi.URLParam(r, "name")
 	if err := systemd.ValidateServiceName(name); err != nil {
 		writeJSON(w, http.StatusBadRequest, messageJSON{Error: "invalid service name"})
@@ -212,8 +214,9 @@ func (h *Handler) HandleSaveServiceConfig(w http.ResponseWriter, r *http.Request
 	if err := h.Config.DaemonReload(ctx); err != nil {
 		detail := fmt.Sprintf("設定檔已寫入，daemon-reload 失敗: %v; backup=%s", err, backupPath)
 		h.writeConfigAudit(r, audit.ActionConfigSave, name, audit.ResultSuccess, detail) // 半成功，audit result=success
+		log.Printf("ERROR daemon-reload %s: %v", name, err)
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"error":      "設定檔已儲存，但 daemon-reload 失敗: " + err.Error() + "。請手動執行 systemctl daemon-reload。備份檔：" + backupPath,
+			"error":      "設定檔已儲存，但 daemon-reload 失敗。請手動執行 systemctl daemon-reload。",
 			"backupPath": backupPath,
 		})
 		return
@@ -275,7 +278,7 @@ func (h *Handler) writeConfigAudit(r *http.Request, action audit.Action, name st
 	if h.Audit == nil {
 		return
 	}
-	username, _ := auth.GetSession(r).Values["username"].(string)
+	username := extractUsername(r)
 	entry, err := audit.NewEntry(username, audit.ExtractClientIP(r), action, name, result, detail)
 	if err != nil {
 		log.Printf("ERROR audit entry: %v", err)

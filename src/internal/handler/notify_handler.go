@@ -14,7 +14,6 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"linux-service-manager/internal/audit"
-	"linux-service-manager/internal/auth"
 	"linux-service-manager/internal/notify"
 	"linux-service-manager/internal/systemd"
 )
@@ -128,7 +127,7 @@ func (h *Handler) HandleCreateChannel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Printf("ERROR creating channel: %v", err)
-		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: err.Error()})
+		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "建立 Channel 失敗"})
 		return
 	}
 
@@ -193,7 +192,7 @@ func (h *Handler) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Printf("ERROR updating channel: %v", err)
-		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: err.Error()})
+		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "更新 Channel 失敗"})
 		return
 	}
 
@@ -233,7 +232,7 @@ func (h *Handler) HandleDeleteChannel(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.Notify.DeleteChannel(id); err != nil {
 		log.Printf("ERROR deleting channel: %v", err)
-		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: err.Error()})
+		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "刪除 Channel 失敗"})
 		return
 	}
 
@@ -281,7 +280,7 @@ func (h *Handler) HandlePatchChannelEnabled(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		log.Printf("ERROR patching channel: %v", err)
-		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: err.Error()})
+		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "更新 Channel 狀態失敗"})
 		return
 	}
 
@@ -390,7 +389,7 @@ func (h *Handler) HandleNotifyHistory(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("ERROR querying history: %v", err)
-		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: err.Error()})
+		writeJSON(w, http.StatusInternalServerError, messageJSON{Error: "查詢發送紀錄失敗"})
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
@@ -526,7 +525,7 @@ func (h *Handler) writeNotifyAudit(r *http.Request, action audit.Action, target 
 	if h.Audit == nil {
 		return
 	}
-	username, _ := auth.GetSession(r).Values["username"].(string)
+	username := extractUsername(r)
 	entry, err := audit.NewEntry(username, audit.ExtractClientIP(r), action, target, result, detail)
 	if err != nil {
 		log.Printf("ERROR audit entry: %v", err)

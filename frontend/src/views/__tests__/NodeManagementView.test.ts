@@ -36,13 +36,13 @@ const nodesStore = reactive({
   markInFlight: vi.fn(),
 })
 
-vi.mock('../../stores/nodes', () => ({
-  useNodesStore: () => nodesStore,
+vi.mock('../../stores/node', () => ({
+  useNodeStore: () => nodesStore,
 }))
 
-vi.mock('../../api/client', () => ({
+vi.mock('../../api/nodeApi', () => ({
   deleteNode: mockDeleteNode,
-  downloadAgent: mockDownloadAgent,
+  agentBinaryUrl: mockDownloadAgent,
 }))
 
 vi.mock('../../composables/useToast', () => ({

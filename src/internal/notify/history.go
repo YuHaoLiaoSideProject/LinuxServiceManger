@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"sort"
 	"sync"
 	"time"
 )
@@ -186,7 +187,13 @@ func (h *History) Query(params HistoryQuery) (HistoryResult, error) {
 	}, nil
 }
 
-// scanAndFilter 讀取整個 JSONL 檔案，依 channel_id/status 過濾並時間倒序。
+// maxHistoryScanRows is a safety limit to prevent unbounded memory growth
+// when scanning large history JSONL files.
+const maxHistoryScanRows = 10000
+
+// scanAndFilter streams the JSONL file line-by-line, applying filters as it
+// goes and only keeping entries that match. A hard cap of maxHistoryScanRows
+// prevents unbounded memory growth on very large files.
 func (h *History) scanAndFilter(params HistoryQuery) ([]HistoryEntry, error) {
 	f, err := os.Open(h.cfg.HistoryPath)
 	if err != nil {
@@ -197,11 +204,14 @@ func (h *History) scanAndFilter(params HistoryQuery) ([]HistoryEntry, error) {
 	}
 	defer f.Close()
 
-	entries := []HistoryEntry{}
+	entries := make([]HistoryEntry, 0, 256)
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	for scanner.Scan() {
+		if len(entries) >= maxHistoryScanRows {
+			break
+		}
 		line := scanner.Text()
 		if line == "" {
 			continue
@@ -227,13 +237,9 @@ func (h *History) scanAndFilter(params HistoryQuery) ([]HistoryEntry, error) {
 	}
 
 	// Sort time-descending (newest first)
-	for i := 0; i < len(entries); i++ {
-		for j := i + 1; j < len(entries); j++ {
-			if entries[i].Timestamp < entries[j].Timestamp {
-				entries[i], entries[j] = entries[j], entries[i]
-			}
-		}
-	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Timestamp > entries[j].Timestamp
+	})
 
 	return entries, nil
 }

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -37,15 +38,15 @@ type mockSystemd struct {
 }
 
 func (m *mockSystemd) ListServices() ([]systemd.Service, error) { return m.services, m.listErr }
-func (m *mockSystemd) StartService(name string) error {
+func (m *mockSystemd) StartService(_ context.Context, name string) error {
 	m.startCalled = append(m.startCalled, name)
 	return nil
 }
-func (m *mockSystemd) StopService(name string) error {
+func (m *mockSystemd) StopService(_ context.Context, name string) error {
 	m.stopCalled = append(m.stopCalled, name)
 	return nil
 }
-func (m *mockSystemd) RestartService(name string) error {
+func (m *mockSystemd) RestartService(_ context.Context, name string) error {
 	m.restartCalled = append(m.restartCalled, name)
 	return m.restartErr
 }

@@ -5,59 +5,51 @@ defineProps<{ summary: NodeSummary | null }>()
 </script>
 
 <template>
-  <div v-if="summary" class="node-summary-bar" role="group" aria-label="節點統計">
-    <div class="node-summary-item">
-      <span class="node-summary-value">{{ summary.totalNodes }}</span>
-      <span class="node-summary-label">總節點數</span>
-      <span class="node-summary-detail">
-        線上 {{ summary.online }}・離線 {{ summary.offline }}
-      </span>
-    </div>
-    <div class="node-summary-item">
-      <span class="node-summary-value">{{ summary.servicesTotal }}</span>
-      <span class="node-summary-label">總服務</span>
-      <span class="node-summary-detail">
-        執行中 {{ summary.running }}・失敗 {{ summary.failed }}
-      </span>
-    </div>
+  <div v-if="summary" class="nm-stats-bar" role="group" aria-label="節點統計">
+    <span class="nm-stat">
+      節點 <b>{{ summary.totalNodes }}</b>
+      <b class="nm-stat--ok">{{ summary.online }} 線上</b>
+      <b class="nm-stat--bad" v-if="summary.offline > 0">{{ summary.offline }} 離線</b>
+    </span>
+    <span class="nm-stat">
+      服務 <b>{{ summary.servicesTotal }}</b>
+      <b class="nm-stat--ok">{{ summary.running }} 執行中</b>
+      <b class="nm-stat--bad" v-if="summary.failed > 0">{{ summary.failed }} 失敗</b>
+    </span>
   </div>
 </template>
 
 <style scoped>
-.node-summary-bar {
+.nm-stats-bar {
   display: flex;
-  gap: 1rem;
+  gap: 0.5rem;
   flex-wrap: wrap;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--lms-border);
+  background: var(--lms-surface);
+  border-radius: var(--lms-radius) var(--lms-radius) 0 0;
 }
 
-.node-summary-item {
-  flex: 1;
-  min-width: 180px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 1rem 1.25rem;
+.nm-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  background: var(--lms-surface-2);
   border: 1px solid var(--lms-border);
   border-radius: var(--lms-radius);
-  background: var(--lms-surface);
-  text-align: center;
-  gap: 0.25rem;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.78rem;
 }
 
-.node-summary-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--lms-accent);
+.nm-stat b {
+  font-size: 0.95rem;
 }
 
-.node-summary-label {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--lms-muted);
+.nm-stat--ok {
+  color: var(--lms-success);
 }
 
-.node-summary-detail {
-  font-size: 0.8rem;
-  color: var(--lms-muted);
+.nm-stat--bad {
+  color: var(--lms-danger);
 }
 </style>

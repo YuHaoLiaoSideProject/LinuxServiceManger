@@ -20,6 +20,7 @@ import (
 	"linux-service-manager/internal/noderegistry"
 	"linux-service-manager/internal/nodeproxy"
 	"linux-service-manager/internal/systemd"
+	"linux-service-manager/internal/token"
 	"linux-service-manager/internal/websocket"
 
 	"github.com/go-chi/chi/v5"
@@ -33,6 +34,12 @@ var templatesFS embed.FS
 var staticFS embed.FS
 
 func main() {
+	// Initialize auth module (reads env vars, sets up session store).
+	auth.Setup()
+
+	// Ensure ADMIN_PASS is set before proceeding.
+	auth.MustValidate()
+
 	// Extract the templates directory as a sub-filesystem
 	templates, err := fs.Sub(templatesFS, "templates")
 	if err != nil {
@@ -46,7 +53,17 @@ func main() {
 	})
 	defer auditMod.Shutdown()
 
-	h := handler.New(templates, &systemd.DefaultManager{}, auditMod)
+	sm := &systemd.DefaultManager{}
+
+	tokenStorePath := os.Getenv("TOKENS_FILE_PATH")
+	if tokenStorePath == "" {
+		tokenStorePath = "/var/lib/linux-service-manager/tokens.json"
+	}
+	tokenStore := token.NewStore(tokenStorePath)
+	defer tokenStore.Shutdown()
+	tokenStore.RunLastUsedUpdater()
+
+	h := handler.New(templates, sm, auditMod, tokenStore)
 
 	// Initialize WebSocket Hub for real-time status push
 	hub := websocket.NewHub()
@@ -59,7 +76,7 @@ func main() {
 		}
 	}
 	hub.OnSnapshot = func() []websocket.ServiceSnapshot {
-		services, err := (&systemd.DefaultManager{}).ListServices()
+		services, err := sm.ListServices()
 		if err != nil {
 			return nil
 		}
@@ -77,7 +94,7 @@ func main() {
 	go hub.Run()
 
 	// Start service status monitor (D-Bus or polling fallback)
-	go monitor.StartMonitor(hub, &systemd.DefaultManager{})
+	go monitor.StartMonitor(hub, sm)
 
 	// Attach hub to handler
 	h.Hub = hub
@@ -176,8 +193,13 @@ func main() {
 		r.Get("/{id}/info", nh.HandleNodeInfo)
 	})
 
-	// Agent WebSocket endpoint (token auth, not session auth)
-	r.Get("/api/v1/agent/ws", agentHub.ServeWS)
+	// Agent WebSocket endpoint — uses query token auth (not session-based auth).
+	// Agents authenticate by passing ?token=<node-token> as a query parameter.
+	// Router-level rate limit: blocks abusive IPs before upgrade/ReadMessage cost.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RateLimit(5, time.Minute))
+		r.Get("/api/v1/agent/ws", agentHub.ServeWS)
+	})
 
 	// HTML routes (legacy htmx) — protected
 	r.Group(func(r chi.Router) {
@@ -231,18 +253,22 @@ func main() {
 		w.Write(indexContent)
 	})
 
-	// Reject startup if security-critical environment variables are not set.
-	if auth.HasDefaultSecret() {
-		log.Fatal("SESSION_KEY and ADMIN_PASS environment variables are required. Set them before starting.")
-	}
-
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1MB
+	}
 	log.Printf("🚀 Linux Service Manager starting on http://localhost:%s", port)
-	if err := http.ListenAndServe(":"+port, r); err != nil {
-		log.Fatalf("server error: %v", err)
+	if err := srv.ListenAndServe(); err != nil {
+		log.Fatalf("Server failed: %v", err)
 	}
 }

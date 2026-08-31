@@ -67,17 +67,10 @@ func (h *Hub) Call(ctx context.Context, nodeID, method string, params, out any, 
 
 	// Create pending channel (buffered 1)
 	pendingCh := make(chan agentproto.Envelope, 1)
-	h.pendingMu.Lock()
-	h.pending[requestID] = pendingCh
-	h.pendingMu.Unlock()
+	h.pendingSet(requestID, nodeID, pendingCh)
 
 	defer func() {
-		h.pendingMu.Lock()
-		if ch, ok := h.pending[requestID]; ok {
-			close(ch)
-			delete(h.pending, requestID)
-		}
-		h.pendingMu.Unlock()
+		h.pendingDelete(requestID)
 	}()
 
 	// Send rpc_request envelope

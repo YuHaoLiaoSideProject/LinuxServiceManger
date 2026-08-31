@@ -154,11 +154,11 @@ func (s *Server) handleOp(action string) http.HandlerFunc {
 		var err error
 		switch action {
 		case "start":
-			err = s.systemd.StartService(name)
+			err = s.systemd.StartService(r.Context(), name)
 		case "stop":
-			err = s.systemd.StopService(name)
+			err = s.systemd.StopService(r.Context(), name)
 		case "restart":
-			err = s.systemd.RestartService(name)
+			err = s.systemd.RestartService(r.Context(), name)
 		case "enable":
 			err = s.systemd.EnableService(name)
 		case "disable":

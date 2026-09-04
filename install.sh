@@ -130,8 +130,13 @@ if [[ "$NO_SERVICE" == false ]]; then
     fi
   else
     echo ""
-    read -r -p "$(echo -e "${CYAN}[INSTALL]${NC} 是否安裝 systemd service？[Y/n] ")" answer
-    answer="${answer:-Y}"
+    if [[ -t 0 ]]; then
+      read -r -p "$(echo -e "${CYAN}[INSTALL]${NC} 是否安裝 systemd service？[Y/n] ")" answer
+      answer="${answer:-Y}"
+    else
+      answer="Y"
+      log "（非互動模式，自動安裝 systemd service）"
+    fi
 
     if [[ "$answer" =~ ^[Yy]$ ]]; then
       sudo tee "${SERVICE_FILE}" > /dev/null <<EOF

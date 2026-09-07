@@ -137,6 +137,7 @@ func (h *Handler) HandleLoginJSON(w http.ResponseWriter, r *http.Request) {
 	session := auth.GetSession(r)
 	session.Values["authenticated"] = true
 	session.Values["username"] = username
+	session.Options.MaxAge = 1800 // 30 minutes — must be set explicitly
 	auth.SaveSession(w, r, session)
 
 	// Audit log

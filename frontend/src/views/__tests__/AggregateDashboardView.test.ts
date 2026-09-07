@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { reactive } from 'vue'
-import type { Node, NodeSummary, SearchResponse } from '../../types/node'
+import type { ManagedNode, NodeSummary, SearchResponse } from '../../types/node'
 
 const { mockFetchNodes, mockFetchSummary, mockSearchServices, mockGetNodeInfo, mockRouterPush, mockWsOn } = vi.hoisted(() => ({
   mockFetchNodes: vi.fn(),
@@ -90,34 +90,42 @@ vi.mock('vue-router', () => ({
 import AggregateDashboardView from '../AggregateDashboardView.vue'
 
 // ── 測試資料 ──
-let seedNodes: Node[] = []
+let seedNodes: ManagedNode[] = []
 let seedSummary: NodeSummary | null = null
 
-function makeNode(overrides: Partial<Node> = {}): Node {
+function makeNode(overrides: Partial<ManagedNode> = {}): ManagedNode {
   return {
     id: 'n1',
     name: 'web-server-01',
-    address: '10.0.0.5:8443',
     hostname: 'web-server-01',
+    address: '10.0.0.5:8443',
     status: 'online',
+    version: '1.2.3',
+    versionCompatible: true,
+    versionMessage: '',
+    lastHeartbeat: null,
+    lastOnlineAt: null,
+    onlineSince: null,
+    offlineSince: null,
+    servicesTotal: 3,
+    servicesRunning: 2,
+    servicesFailed: 1,
     service_stats: { total: 3, active: 2, failed: 1 },
-    created_at: '2026-08-13T08:00:00Z',
-    updated_at: '2026-08-13T08:00:00Z',
     ...overrides,
-  } as Node
+  } as ManagedNode
 }
 
 function makeSummary(overrides: Partial<NodeSummary> = {}): NodeSummary {
   return {
-    total_nodes: 2,
+    totalNodes: 2,
     online: 1,
     degraded: 0,
     offline: 1,
     long_offline: 0,
     warning: 0,
-    total_services: 8,
-    active_services: 4,
-    failed_services: 4,
+    servicesTotal: 8,
+    running: 4,
+    failed: 4,
     ...overrides,
   }
 }
@@ -279,8 +287,8 @@ describe('AggregateDashboardView（F-AD）', () => {
     vi.useFakeTimers()
     mockSearchServices.mockResolvedValue(makeSearch({
       results: [
-        { node_id: 'n1', node_name: 'web-server-01', service: 'nginx.service', active: 'active', sub: 'running' },
-        { node_id: 'n2', node_name: 'db-server-01', service: 'postgresql.service', active: 'active', sub: 'running' },
+        { node_id: 'n1', node_name: 'web-server-01', service: 'nginx.service', active: true },
+        { node_id: 'n2', node_name: 'db-server-01', service: 'postgresql.service', active: true },
       ],
     }))
     seedNodes = []
@@ -319,10 +327,10 @@ describe('AggregateDashboardView（F-AD）', () => {
     vi.useFakeTimers()
     mockSearchServices.mockResolvedValue(makeSearch({
       results: [
-        { node_id: 'n1', node_name: 'web-server-01', service: 'nginx.service', active: 'active', sub: 'running' },
+        { node_id: 'n1', node_name: 'web-server-01', service: 'nginx.service', active: true },
       ],
       failed_nodes: [
-        { node_id: 'n2', node_name: 'db-server-01', reason: 'offline' },
+        { node_id: 'n2', node_name: 'db-server-01', error: 'offline' },
       ],
     }))
     seedNodes = []
@@ -341,7 +349,7 @@ describe('AggregateDashboardView（F-AD）', () => {
     vi.useFakeTimers()
     mockSearchServices.mockResolvedValue(makeSearch({
       results: [
-        { node_id: 'n1', node_name: 'web-server-01', service: 'nginx.service', active: 'active', sub: 'running' },
+        { node_id: 'n1', node_name: 'web-server-01', service: 'nginx.service', active: true },
       ],
     }))
     seedNodes = []
@@ -451,7 +459,7 @@ describe('AggregateDashboardView（F-AD）', () => {
   it('F-AD-17: 關閉搜尋返回 Card 視圖', async () => {
     vi.useFakeTimers()
     mockSearchServices.mockResolvedValue(makeSearch({
-      results: [{ node_id: 'n1', node_name: 'web-server-01', service: 'nginx.service', active: 'active', sub: 'running' }],
+      results: [{ node_id: 'n1', node_name: 'web-server-01', service: 'nginx.service', active: true }],
     }))
     seedNodes = [makeNode()]
     const wrapper = mountAggregate()

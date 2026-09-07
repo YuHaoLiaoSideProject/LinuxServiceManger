@@ -51,13 +51,14 @@ const DefaultSessionTTL = 30 * time.Minute
 
 // Hub maintains the set of active clients and broadcasts messages to them.
 type Hub struct {
-	mu         sync.RWMutex
-	Clients    map[*Client]bool
-	Broadcast  chan []byte
-	Register   chan *Client
-	Unregister chan *Client
-	OnSnapshot func() []ServiceSnapshot
-	SessionTTL time.Duration // 0 means use DefaultSessionTTL
+	mu              sync.RWMutex
+	Clients         map[*Client]bool
+	Broadcast       chan []byte
+	Register        chan *Client
+	Unregister      chan *Client
+	OnSnapshot      func() []ServiceSnapshot
+	OnStatusChange  func(name, active, sub string) // Called when a service status changes (for notifications)
+	SessionTTL      time.Duration // 0 means use DefaultSessionTTL
 }
 
 const channelBufferSize = 256
@@ -181,6 +182,9 @@ func (h *Hub) BroadcastStatusChange(name, active, sub string) {
 		Active: active,
 		Sub:    sub,
 	})
+	if h.OnStatusChange != nil {
+		h.OnStatusChange(name, active, sub)
+	}
 }
 
 // BroadcastOnBootChange sends an on_boot_change message (unitFileState only).

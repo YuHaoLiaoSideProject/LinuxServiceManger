@@ -20,7 +20,7 @@ const reconnecting = ref(false)    // 重新連線按鈕 loading spinner
 
 /** 上線時長（uptime_seconds → Xd Xh Xm）／離線持續時間（now - last_heartbeat） */
 const uptimeText = computed(() => {
-  const sec = info.value?.uptime ?? 0
+  const sec = typeof info.value?.uptime === 'number' ? info.value.uptime : (Number(info.value?.uptime) || 0)
   if (sec <= 0) return '—'
   const d = Math.floor(sec / 86400)
   const h = Math.floor((sec % 86400) / 3600)
@@ -98,7 +98,7 @@ async function handleConfirmDelete(): Promise<void> {
       <dl>
         <dt>Hostname</dt><dd>{{ node?.hostname || '—' }}</dd>
         <dt>Agent 版本</dt><dd>{{ node?.agent_version || '—' }}</dd>
-        <dt>OS</dt><dd>{{ info?.os || node?.os || '—' }}</dd>
+        <dt>OS</dt><dd>{{ info?.os || '—' }}</dd>
         <template v-if="node?.status === 'online'">
           <dt>上線時長</dt><dd>{{ uptimeText }}</dd>
           <dt>最後心跳</dt><dd>{{ node?.last_heartbeat || '—' }}</dd>

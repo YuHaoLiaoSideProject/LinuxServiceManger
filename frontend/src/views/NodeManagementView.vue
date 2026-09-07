@@ -5,6 +5,7 @@ import type { ManagedNode } from '../types/node'
 import { deleteNode, agentBinaryUrl } from '../api/nodeApi'
 import { useNodeStore } from '../stores/node'
 import { useToast } from '../composables/useToast'
+import { useI18n } from '../composables/useI18n'
 import AppHeader from '../components/AppHeader.vue'
 import NodeSummaryBar from '../components/NodeSummaryBar.vue'
 import NodeFormModal from '../components/NodeFormModal.vue'
@@ -13,6 +14,7 @@ import ToastContainer from '../components/ToastContainer.vue'
 const router = useRouter()
 const nodeStore = useNodeStore()
 const { showToast } = useToast()
+const { t } = useI18n()
 
 const loading = ref(true)
 const searchText = ref('')
@@ -44,7 +46,7 @@ async function loadNodes() {
   try {
     await Promise.all([nodeStore.fetchNodes(), nodeStore.fetchSummary()])
   } catch (err) {
-    showToast('載入節點失敗', 'error')
+    showToast(t('nodes.loadError'), 'error')
   } finally {
     loading.value = false
   }
@@ -87,10 +89,10 @@ async function executeDelete() {
   try {
     await deleteNode(deletingNode.value.id)
     nodeStore.removeNode(deletingNode.value.id)
-    showToast(`已移除「${deletingNode.value.name}」`, 'success')
+    showToast(t('nodes.removed', { name: deletingNode.value.name }), 'success')
     nodeStore.fetchSummary()
   } catch (err: any) {
-    showToast(err.response?.data?.error || '移除失敗', 'error')
+    showToast(err.response?.data?.error || t('nodes.removeError'), 'error')
   } finally {
     showDeleteConfirm.value = false
     deletingNode.value = null
@@ -103,13 +105,9 @@ function cancelDelete() {
 }
 
 function statusLabel(status: string): string {
-  const map: Record<string, string> = {
-    online: '線上',
-    warning: '延遲',
-    offline: '離線',
-    long_offline: '長期離線',
-  }
-  return map[status] || status
+  const key = `status.${status}`
+  const translated = t(key)
+  return translated === key ? status : translated
 }
 
 function statusEmoji(status: string): string {
@@ -126,13 +124,13 @@ function lastHeartbeatText(ts: string | null): string {
   if (!ts) return '—'
   const diff = Date.now() - new Date(ts).getTime()
   const sec = Math.floor(diff / 1000)
-  if (sec < 60) return `${sec} 秒前`
+  if (sec < 60) return t('time.secondsAgo', { sec: String(sec) })
   const min = Math.floor(sec / 60)
-  if (min < 60) return `${min} 分鐘前`
+  if (min < 60) return t('time.minutesAgo', { min: String(min) })
   const hr = Math.floor(min / 60)
-  if (hr < 24) return `${hr} 小時前`
+  if (hr < 24) return t('time.hoursAgo', { hr: String(hr) })
   const day = Math.floor(hr / 24)
-  return `${day} 天前`
+  return t('time.daysAgo', { day: String(day) })
 }
 
 function toggleDownload() {
@@ -156,13 +154,13 @@ onMounted(loadNodes)
     <div class="nm-toolbar">
       <button class="nm-btn nm-btn--primary" @click="openCreateModal">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        新增節點
+        {{ t('nodes.addNode') }}
       </button>
 
       <div class="nm-dropdown" @mouseleave="closeDownload">
         <button class="nm-btn nm-btn--secondary" @click="toggleDownload">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          下載 Agent
+          {{ t('nodes.downloadAgent') || '下載 Agent' }}
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div v-if="downloadOpen" class="nm-dropdown__menu">
@@ -178,45 +176,45 @@ onMounted(loadNodes)
         <input
           v-model="searchText"
           type="search"
-          placeholder="搜尋節點名稱、位址…"
-          aria-label="搜尋節點"
+          :placeholder="t('nodes.searchNodePlaceholder')"
+          :aria-label="t('nodes.searchLabel')"
         />
-        <button v-if="searchText" class="nm-search__clear" @click="searchText = ''" aria-label="清除搜尋">✕</button>
+        <button v-if="searchText" class="nm-search__clear" @click="searchText = ''" :aria-label="t('nodes.clearSearch')">✕</button>
       </span>
     </div>
 
     <!-- Empty state -->
     <div v-if="!loading && filteredNodes.length === 0" class="nm-empty">
       <div class="nm-empty__icon">📦</div>
-      <div class="nm-empty__title">{{ nodeStore.nodes.length === 0 ? '尚無已註冊節點' : '找不到符合條件的節點' }}</div>
-      <div v-if="nodeStore.nodes.length === 0" class="nm-empty__desc">請先在目標 Linux 機器上部署 Agent，然後點擊「新增節點」進行註冊。</div>
+      <div class="nm-empty__title">{{ nodeStore.nodes.length === 0 ? t('nodes.noNodes') : t('nodes.noMatch') }}</div>
+      <div v-if="nodeStore.nodes.length === 0" class="nm-empty__desc">{{ t('nodes.emptyDesc') }}</div>
       <div v-if="nodeStore.nodes.length === 0" class="nm-empty__actions">
         <a :href="agentBinaryUrl('amd64')" class="nm-btn nm-btn--secondary">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          下載 Agent
+          {{ t('nodes.downloadAgent') || '下載 Agent' }}
         </a>
         <button class="nm-btn nm-btn--primary" @click="openCreateModal">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          新增節點
+          {{ t('nodes.addNode') }}
         </button>
       </div>
     </div>
 
     <!-- Loading -->
-    <div v-else-if="loading" class="nm-loading">載入中...</div>
+    <div v-else-if="loading" class="nm-loading">{{ t('nodes.loading') }}</div>
 
     <!-- Desktop: Nodes table -->
     <div v-else class="nm-table-wrap">
-      <table class="nm-table" aria-label="節點列表">
+      <table class="nm-table" :aria-label="t('nodes.tableLabel')">
         <thead>
           <tr>
-            <th scope="col">名稱</th>
-            <th scope="col">位址</th>
-            <th scope="col">狀態</th>
-            <th scope="col">最後心跳</th>
-            <th scope="col">版本</th>
-            <th scope="col">備註</th>
-            <th scope="col" style="text-align:right">操作</th>
+            <th scope="col">{{ t('nodes.colName') }}</th>
+            <th scope="col">{{ t('nodes.colAddress') }}</th>
+            <th scope="col">{{ t('nodes.colStatus') }}</th>
+            <th scope="col">{{ t('nodes.colHeartbeat') }}</th>
+            <th scope="col">{{ t('nodes.colVersion') }}</th>
+            <th scope="col">{{ t('nodes.colNotes') }}</th>
+            <th scope="col" style="text-align:right">{{ t('nodes.colActions') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -232,9 +230,9 @@ onMounted(loadNodes)
                   v-if="node.status === 'online' || node.status === 'warning'"
                   class="nm-node-link"
                   @click="onNodeSelect(node.id)"
-                  :title="node.status === 'warning' ? '心跳延遲' : ''"
+                  :title="node.status === 'warning' ? t('nodes.warningTooltip') : ''"
                 >{{ node.name }}</a>
-                <span v-else class="nm-node-name__text" :title="node.status === 'offline' ? '節點離線' : '節點長期離線'">{{ node.name }}</span>
+                <span v-else class="nm-node-name__text" :title="node.status === 'offline' ? t('nodes.offlineTooltip') : t('nodes.longOfflineTooltip')">{{ node.name }}</span>
               </span>
             </td>
             <td class="nm-cell-addr">{{ node.address }}</td>
@@ -251,8 +249,8 @@ onMounted(loadNodes)
             <td class="nm-cell-notes">{{ node.note || '—' }}</td>
             <td>
               <span class="nm-row-actions">
-                <button class="nm-btn-icon" @click="openEditModal(node)" title="編輯">✏️</button>
-                <button class="nm-btn-icon nm-btn-icon--danger" @click="confirmDelete(node)" title="移除">🗑️</button>
+                <button class="nm-btn-icon" @click="openEditModal(node)" :title="t('nodes.edit')">✏️</button>
+                <button class="nm-btn-icon nm-btn-icon--danger" @click="confirmDelete(node)" :title="t('nodes.remove')">🗑️</button>
               </span>
             </td>
           </tr>
@@ -279,12 +277,12 @@ onMounted(loadNodes)
         <div class="nm-card-meta">
           <span>{{ node.version || '—' }}</span>
           <span>·</span>
-          <span>心跳：{{ lastHeartbeatText(node.lastHeartbeat) }}</span>
+          <span>{{ t('nodes.heartbeat', { time: lastHeartbeatText(node.lastHeartbeat) }) }}</span>
         </div>
         <div v-if="node.note" class="nm-card-notes">{{ node.note }}</div>
         <div class="nm-card-actions">
-          <button class="nm-btn-icon" @click="openEditModal(node)">✏️ 編輯</button>
-          <button class="nm-btn-icon nm-btn-icon--danger" @click="confirmDelete(node)">🗑️ 移除</button>
+          <button class="nm-btn-icon" @click="openEditModal(node)">✏️ {{ t('nodes.edit') }}</button>
+          <button class="nm-btn-icon nm-btn-icon--danger" @click="confirmDelete(node)">🗑️ {{ t('nodes.remove') }}</button>
         </div>
       </div>
     </div>
@@ -302,23 +300,23 @@ onMounted(loadNodes)
     <!-- Delete confirm -->
     <Teleport to="body">
       <div v-if="showDeleteConfirm" class="nm-modal-overlay" @click.self="cancelDelete">
-        <div class="nm-modal" style="max-width:400px" role="alertdialog" aria-modal="true" aria-label="移除節點">
+        <div class="nm-modal" style="max-width:400px" role="alertdialog" aria-modal="true" :aria-label="t('nodes.deleteTitle')">
           <div class="nm-modal__head">
-            <h3>移除節點</h3>
-            <button class="nm-modal__close" @click="cancelDelete" aria-label="關閉">&times;</button>
+            <h3>{{ t('nodes.deleteTitle') }}</h3>
+            <button class="nm-modal__close" @click="cancelDelete" :aria-label="t('nodes.close')">&times;</button>
           </div>
           <div class="nm-modal__body">
             <div style="display:flex;align-items:flex-start;gap:0.6rem">
               <span style="font-size:1.5rem;line-height:1">⚠️</span>
               <div>
-                <div style="font-weight:700;margin-bottom:0.3rem">確定要移除此節點？</div>
-                <small style="color:var(--lms-muted);line-height:1.6">所有歷史資料將保留。此操作無法復原。</small>
+                <div style="font-weight:700;margin-bottom:0.3rem">{{ t('nodes.deleteConfirm') }}</div>
+                <small style="color:var(--lms-muted);line-height:1.6">{{ t('nodes.deleteDesc') }}</small>
               </div>
             </div>
           </div>
           <div class="nm-modal__foot">
-            <button class="nm-btn nm-btn--ghost" @click="cancelDelete">取消</button>
-            <button class="nm-btn nm-btn--danger" @click="executeDelete">確認移除</button>
+            <button class="nm-btn nm-btn--ghost" @click="cancelDelete">{{ t('nodes.cancel') }}</button>
+            <button class="nm-btn nm-btn--danger" @click="executeDelete">{{ t('nodes.deleteConfirmBtn') }}</button>
           </div>
         </div>
       </div>

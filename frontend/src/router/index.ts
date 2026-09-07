@@ -5,6 +5,7 @@ import DashboardView from '../views/DashboardView.vue'
 
 const AuditLogView = () => import('../views/AuditLogView.vue')
 const NodeManagementView = () => import('../views/NodeManagementView.vue')
+const NotificationsView = () => import('../views/NotificationsView.vue')
 
 const router = createRouter({
   history: createWebHistory(),
@@ -13,6 +14,7 @@ const router = createRouter({
     { path: '/', name: 'dashboard', component: DashboardView, meta: { auth: true } },
     { path: '/audit', name: 'audit', component: AuditLogView, meta: { auth: true } },
     { path: '/nodes', name: 'NodeManagement', component: NodeManagementView, meta: { auth: true } },
+    { path: '/notifications', name: 'notifications', component: NotificationsView, meta: { auth: true } },
   ],
 })
 

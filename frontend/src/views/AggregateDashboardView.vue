@@ -99,7 +99,7 @@ onMounted(() => {
     <div class="stats-bar aggregate-stats" data-testid="aggregate-stats">
       <span class="stat-chip">
         <span class="chip-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
-        <span class="chip-label">{{ t('nodes.total') }}</span> <b>{{ summary?.total_nodes ?? '—' }}</b>
+        <span class="chip-label">{{ t('nodes.total') }}</span> <b>{{ summary?.totalNodes ?? summary?.total_nodes ?? '—' }}</b>
       </span>
       <span class="stat-chip online">
         <span class="chip-icon"><svg width="13" height="13" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="var(--lms-success)"/></svg></span>
@@ -112,15 +112,15 @@ onMounted(() => {
       <span class="stat-divider" aria-hidden="true"></span>
       <span class="stat-chip">
         <span class="chip-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></span>
-        <span class="chip-label">{{ t('nodes.totalServices') }}</span> <b>{{ summary?.total_services ?? '—' }}</b>
+        <span class="chip-label">{{ t('nodes.totalServices') }}</span> <b>{{ summary?.servicesTotal ?? summary?.total_services ?? '—' }}</b>
       </span>
       <span class="stat-chip">
         <span class="chip-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
-        <span class="chip-label">{{ t('nodes.activeServices') }}</span> <b>{{ summary?.active_services ?? '—' }}</b>
+        <span class="chip-label">{{ t('nodes.activeServices') }}</span> <b>{{ summary?.running ?? summary?.active_services ?? '—' }}</b>
       </span>
       <span class="stat-chip offline">
         <span class="chip-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></span>
-        <span class="chip-label">{{ t('nodes.failedServices') }}</span> <b>{{ summary?.failed_services ?? '—' }}</b>
+        <span class="chip-label">{{ t('nodes.failedServices') }}</span> <b>{{ summary?.failed ?? summary?.failed_services ?? '—' }}</b>
       </span>
     </div>
 
@@ -172,7 +172,7 @@ onMounted(() => {
 
     <NodeDetailPanel v-if="detailNodeId" :node-id="detailNodeId" @close="detailNodeId = null" @edit="onEditDetailNode" />
 
-    <NodeFormModal v-if="editingNode" :node="editingNode" @close="editingNode = null" @saved="editingNode = null; nodesStore.fetchNodes()" />
+    <NodeFormModal v-if="editingNode" mode="edit" :initial-data="editingNode" @close="editingNode = null" @updated="editingNode = null; nodesStore.fetchNodes()" />
 
     <!-- Toast（節點離線/恢復/註冊等全域通知；UIUX 014 決策 7：三視圖皆需 Toast） -->
     <ToastContainer />

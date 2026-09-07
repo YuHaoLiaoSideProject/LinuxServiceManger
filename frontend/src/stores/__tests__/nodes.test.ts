@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import type { Node, NodeSummary } from '../../types/node'
+import type { ManagedNode, NodeSummary } from '../../types/node'
 
 const { mockListNodes, mockGetNodesSummary, mockToast } = vi.hoisted(() => ({
   mockListNodes: vi.fn(),
@@ -30,29 +30,38 @@ import { useNodesStore } from '../nodes'
 
 // ── 測試資料 ──
 
-function makeNode(overrides: Partial<Node> = {}): Node {
+function makeNode(overrides: Partial<ManagedNode> = {}): ManagedNode {
   return {
     id: 'n1',
     name: 'web-server-01',
+    hostname: 'web-server-01',
     address: '10.0.0.5:8443',
     status: 'online',
+    version: '1.2.3',
+    versionCompatible: true,
+    versionMessage: '',
+    lastHeartbeat: null,
+    lastOnlineAt: null,
+    onlineSince: null,
+    offlineSince: null,
+    servicesTotal: 3,
+    servicesRunning: 2,
+    servicesFailed: 1,
     service_stats: { total: 3, active: 2, failed: 1 },
-    created_at: '2026-08-13T08:00:00Z',
-    updated_at: '2026-08-13T08:00:00Z',
     ...overrides,
-  } as Node
+  } as ManagedNode
 }
 
 const FULL_SUMMARY: NodeSummary = {
-  total_nodes: 6,
+  totalNodes: 6,
   online: 2,
   degraded: 1,
   offline: 1,
   long_offline: 1,
   warning: 1,
-  total_services: 30,
-  active_services: 25,
-  failed_services: 2,
+  servicesTotal: 30,
+  running: 25,
+  failed: 2,
 }
 
 describe('stores/nodes（F-NS）', () => {
@@ -90,15 +99,15 @@ describe('stores/nodes（F-NS）', () => {
     await store.fetchSummary()
 
     expect(store.summary).toEqual(FULL_SUMMARY)
-    expect(store.summary!.total_nodes).toBe(6)
+    expect(store.summary!.totalNodes).toBe(6)
     expect(store.summary!.online).toBe(2)
     expect(store.summary!.degraded).toBe(1)
     expect(store.summary!.offline).toBe(1)
     expect(store.summary!.long_offline).toBe(1)
     expect(store.summary!.warning).toBe(1)
-    expect(store.summary!.total_services).toBe(30)
-    expect(store.summary!.active_services).toBe(25)
-    expect(store.summary!.failed_services).toBe(2)
+    expect(store.summary!.servicesTotal).toBe(30)
+    expect(store.summary!.running).toBe(25)
+    expect(store.summary!.failed).toBe(2)
   })
 
   it('F-NS-03: setActiveNode — id 設定 active 節點；null 表示 Aggregate 模式', () => {
@@ -194,7 +203,7 @@ describe('stores/nodes（F-NS）', () => {
     mockGetNodesSummary.mockResolvedValue(FULL_SUMMARY)
     await store.fetchSummary()
 
-    expect(store.summary!.total_nodes).toBe(6)
+    expect(store.summary!.totalNodes).toBe(6)
     // 線上台數嚴格計 status==online（degraded/warning 為獨立欄位，決策 3）
     const strictOnline = store.nodes.filter(n => n.status === 'online').length
     expect(store.summary!.online).toBe(strictOnline)

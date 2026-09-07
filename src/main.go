@@ -19,6 +19,7 @@ import (
 	"linux-service-manager/internal/nodemonitor"
 	"linux-service-manager/internal/noderegistry"
 	"linux-service-manager/internal/nodeproxy"
+	"linux-service-manager/internal/notify"
 	"linux-service-manager/internal/systemd"
 	"linux-service-manager/internal/token"
 	"linux-service-manager/internal/websocket"
@@ -99,6 +100,15 @@ func main() {
 	// Attach hub to handler
 	h.Hub = hub
 
+	// ── Notify Module ──
+	notifyMod := notify.New(notify.Config{
+		Hub: hub,
+	})
+	notifyMod.Load()
+	hub.OnStatusChange = notifyMod.HandleStatusChange
+	h.Notify = notifyMod
+	go notifyMod.Run()
+
 	// ── Multi-node Agent Management ──
 	nodesPath := os.Getenv("NODES_FILE_PATH")
 	if nodesPath == "" {
@@ -176,9 +186,24 @@ func main() {
 		r.Get("/api/v1/audit/export", h.HandleAuditExport)
 	})
 
+	// ── Notify Channels API (protected) ──
+	r.Route("/api/v1/notify", func(r chi.Router) {
+		r.Use(middleware.AuthMiddlewareJSON)
+		r.Get("/channels", h.HandleListChannels)
+		r.Post("/channels", h.HandleCreateChannel)
+		r.Get("/history", h.HandleNotifyHistory)
+		r.Route("/channels/{id}", func(r chi.Router) {
+			r.Put("/", h.HandleUpdateChannel)
+			r.Delete("/", h.HandleDeleteChannel)
+			r.Patch("/", h.HandlePatchChannelEnabled)
+			r.Post("/test", h.HandleTestChannel)
+		})
+	})
+
 	// ── Nodes API (protected) ──
 	r.Route("/api/v1/nodes", func(r chi.Router) {
 		r.Use(middleware.AuthMiddlewareJSON)
+		r.Get("/", nh.HandleListNodes)
 		r.Post("/", nh.HandleCreateNode)
 		r.Post("/test-connection", nh.HandleTestConnection)
 		r.Get("/summary", nh.HandleSummary)

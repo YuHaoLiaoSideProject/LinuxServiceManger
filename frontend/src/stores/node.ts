@@ -82,7 +82,10 @@ export const useNodeStore = defineStore('node', () => {
     summary.value = {
       totalNodes: nodes.value.length,
       online: nodes.value.filter(n => n.status === 'online').length,
-      offline: nodes.value.filter(n => n.status === 'offline' || n.status === 'long_offline').length,
+      degraded: nodes.value.filter(n => n.status === 'degraded').length,
+      offline: nodes.value.filter(n => n.status === 'offline').length,
+      long_offline: nodes.value.filter(n => n.status === 'long_offline').length,
+      warning: nodes.value.filter(n => n.status === 'warning').length,
       servicesTotal: nodes.value.reduce((sum, n) => sum + n.servicesTotal, 0),
       running: nodes.value.reduce((sum, n) => sum + n.servicesRunning, 0),
       failed: nodes.value.reduce((sum, n) => sum + n.servicesFailed, 0),

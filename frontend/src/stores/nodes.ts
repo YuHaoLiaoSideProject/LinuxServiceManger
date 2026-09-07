@@ -69,15 +69,15 @@ export const useNodesStore = defineStore('nodes', () => {
   function recomputeSummary(): void {
     const list = nodes.value
     summary.value = {
-      total_nodes: list.length,
+      totalNodes: list.length,
       online: list.filter(n => n.status === 'online').length,
       degraded: list.filter(n => n.status === 'degraded').length,
       offline: list.filter(n => n.status === 'offline').length,
       long_offline: list.filter(n => n.status === 'long_offline').length,
       warning: list.filter(n => n.status === 'warning').length,
-      total_services: list.reduce((s, n) => s + (n.service_stats?.total ?? 0), 0),
-      active_services: list.reduce((s, n) => s + (n.service_stats?.active ?? 0), 0),
-      failed_services: list.reduce((s, n) => s + (n.service_stats?.failed ?? 0), 0),
+      servicesTotal: list.reduce((s, n) => s + (n.service_stats?.total ?? 0), 0),
+      running: list.reduce((s, n) => s + (n.service_stats?.active ?? 0), 0),
+      failed: list.reduce((s, n) => s + (n.service_stats?.failed ?? 0), 0),
     }
   }
 
